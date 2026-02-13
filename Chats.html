@@ -3,11 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CZH Messenger - Вход</title>
-    <!-- Firebase 9.x -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <title>CZH Messenger - Контакты</title>
     <style>
         * {
             margin: 0;
@@ -19,653 +15,288 @@
         body {
             background: #000;
             color: #fff;
-            min-height: 100vh;
+            height: 100vh;
             display: flex;
-            justify-content: center;
-            align-items: center;
+            flex-direction: column;
+        }
+
+        /* Шапка */
+        .header {
             padding: 20px;
-            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
         }
 
-        .container {
-            width: 100%;
-            max-width: 400px;
-            text-align: center;
-        }
-
-        .logo {
-            margin-bottom: 40px;
-        }
-
-        .logo h1 {
-            font-size: 42px;
-            font-weight: 800;
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
             background: linear-gradient(135deg, #667eea, #764ba2);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            letter-spacing: -0.5px;
         }
 
-        .logo p {
-            color: rgba(255,255,255,0.6);
-            margin-top: 10px;
-            font-size: 16px;
-        }
-
-        .card {
-            background: rgba(28,28,30,0.9);
-            backdrop-filter: blur(10px);
-            border-radius: 30px;
-            padding: 30px;
-            border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
-        }
-
-        .tabs {
+        .header-icons {
             display: flex;
-            gap: 10px;
-            margin-bottom: 30px;
-            background: rgba(255,255,255,0.05);
-            padding: 5px;
-            border-radius: 15px;
+            gap: 20px;
         }
 
-        .tab {
-            flex: 1;
-            padding: 12px;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: 0.3s;
-            color: rgba(255,255,255,0.5);
-        }
-
-        .tab.active {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-        }
-
-        .form-container {
-            position: relative;
-            min-height: 350px;
-        }
-
-        .form {
-            transition: 0.3s;
-            opacity: 1;
-            visibility: visible;
-        }
-
-        .form.hidden {
-            display: none;
-            opacity: 0;
-            visibility: hidden;
-        }
-
-        h2 {
-            margin-bottom: 25px;
+        .header-icons span {
             font-size: 22px;
-            font-weight: 600;
+            cursor: pointer;
+            opacity: 0.7;
         }
 
-        .phone-input {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
+        /* Поиск */
+        .search {
+            padding: 10px 20px;
         }
 
-        select, input {
-            padding: 16px;
+        .search input {
+            width: 100%;
+            padding: 12px 20px;
             background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 16px;
+            border-radius: 25px;
             color: white;
             font-size: 16px;
             outline: none;
-            transition: 0.3s;
         }
 
-        select:focus, input:focus {
+        .search input:focus {
             border-color: #667eea;
-            background: rgba(255,255,255,0.1);
         }
 
-        select {
-            width: 100px;
-            appearance: none;
-            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
-            background-repeat: no-repeat;
-            background-position: right 10px center;
-            background-size: 20px;
-        }
-
-        input {
+        /* Список пользователей */
+        .users-list {
             flex: 1;
+            overflow-y: auto;
+            padding: 0 20px;
         }
 
-        button {
-            width: 100%;
-            padding: 16px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            border: none;
-            border-radius: 16px;
-            font-size: 16px;
-            font-weight: 600;
+        .user-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
             cursor: pointer;
-            margin-top: 10px;
-            transition: 0.3s;
         }
 
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(102,126,234,0.4);
+        .user-item:hover {
+            background: rgba(255,255,255,0.02);
         }
 
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-
-        .secondary-btn {
-            background: transparent;
-            border: 1px solid #667eea;
-            color: #667eea;
-            margin-top: 10px;
-        }
-
-        .secondary-btn:hover {
-            background: rgba(102,126,234,0.1);
-            transform: none;
-            box-shadow: none;
-        }
-
-        #recaptcha-container {
-            margin: 20px 0;
-            min-height: 78px;
-            display: flex;
-            justify-content: center;
-            transform: scale(0.9);
-        }
-
-        .message {
-            padding: 14px;
-            border-radius: 12px;
-            margin: 15px 0;
-            animation: slideIn 0.3s;
-            font-weight: 500;
-        }
-
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .success {
-            background: rgba(52,199,89,0.15);
-            color: #34c759;
-            border: 1px solid #34c759;
-        }
-
-        .error {
-            background: rgba(255,59,48,0.15);
-            color: #ff3b30;
-            border: 1px solid #ff3b30;
-        }
-
-        .info {
-            background: rgba(102,126,234,0.15);
-            color: #667eea;
-            border: 1px solid #667eea;
-        }
-
-        .otp-box {
-            margin-top: 20px;
-        }
-
-        .otp-inputs {
-            display: flex;
-            justify-content: center;
-            gap: 8px;
-            margin: 20px 0;
-        }
-
-        .otp-input {
-            width: 45px;
+        .user-avatar {
+            width: 55px;
             height: 55px;
-            text-align: center;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
             font-size: 24px;
             font-weight: 600;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 12px;
             color: white;
-            outline: none;
+            flex-shrink: 0;
         }
 
-        .otp-input:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 2px rgba(102,126,234,0.3);
+        .user-info {
+            flex: 1;
         }
 
-        .timer {
-            color: rgba(255,255,255,0.5);
-            margin: 15px 0;
-            font-size: 14px;
-        }
-
-        .timer a {
-            color: #667eea;
-            text-decoration: none;
+        .user-name {
+            font-size: 17px;
             font-weight: 600;
+            margin-bottom: 5px;
         }
 
-        .hint {
-            color: rgba(255,255,255,0.4);
-            font-size: 13px;
-            margin-top: 15px;
-            padding: 10px;
-            background: rgba(255,255,255,0.03);
-            border-radius: 10px;
+        .user-username {
+            font-size: 14px;
+            color: rgba(255,255,255,0.5);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 50px 20px;
+            color: rgba(255,255,255,0.3);
+            font-size: 16px;
+        }
+
+        /* Нижняя панель */
+        .bottom-nav {
+            background: rgba(28,28,30,0.9);
+            backdrop-filter: blur(10px);
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-around;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: rgba(255,255,255,0.5);
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .nav-item.active {
+            color: #667eea;
+        }
+
+        .nav-item span {
+            font-size: 22px;
+            margin-bottom: 4px;
+        }
+
+        /* Кнопка выхода */
+        .logout-btn {
+            margin: 20px;
+            padding: 12px;
+            background: rgba(255,59,48,0.1);
+            border: 1px solid #ff3b30;
+            border-radius: 12px;
+            color: #ff3b30;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="logo">
-            <h1>CZH Messenger</h1>
-            <p>Вход в мессенджер</p>
-        </div>
-
-        <div class="card">
-            <!-- Вкладки -->
-            <div class="tabs">
-                <div class="tab active" onclick="switchTab('phone')" id="tabPhone">📱 Телефон</div>
-                <div class="tab" onclick="switchTab('username')" id="tabUsername">👤 Username</div>
-            </div>
-
-            <!-- Контейнер для форм -->
-            <div class="form-container">
-                <!-- ФОРМА ВХОДА ПО ТЕЛЕФОНУ -->
-                <div id="phoneForm" class="form">
-                    <h2>Вход по номеру</h2>
-
-                    <div class="phone-input">
-                        <select id="countryCode">
-                            <option value="+7">+7 RU</option>
-                            <option value="+1">+1 US</option>
-                            <option value="+44">+44 UK</option>
-                            <option value="+380">+380 UA</option>
-                            <option value="+375">+375 BY</option>
-                        </select>
-                        <input type="tel" id="phoneNumber" placeholder="900 123 45 67" 
-                               onkeypress="return event.charCode >= 48 && event.charCode <= 57"
-                               value="9991234567">
-                    </div>
-
-                    <div id="recaptcha-container"></div>
-
-                    <button onclick="sendSMSCode()" id="sendBtn">Получить код в SMS</button>
-                    
-                    <!-- Форма ввода кода (изначально скрыта) -->
-                    <div id="otpContainer" style="display: none;">
-                        <div class="otp-box">
-                            <p id="phoneDisplay" style="color: rgba(255,255,255,0.8); margin: 15px 0;"></p>
-                            
-                            <div class="otp-inputs">
-                                <input type="text" id="otp1" class="otp-input" maxlength="1" inputmode="numeric">
-                                <input type="text" id="otp2" class="otp-input" maxlength="1" inputmode="numeric">
-                                <input type="text" id="otp3" class="otp-input" maxlength="1" inputmode="numeric">
-                                <input type="text" id="otp4" class="otp-input" maxlength="1" inputmode="numeric">
-                                <input type="text" id="otp5" class="otp-input" maxlength="1" inputmode="numeric">
-                                <input type="text" id="otp6" class="otp-input" maxlength="1" inputmode="numeric">
-                            </div>
-                            
-                            <p id="timer" class="timer">Повторная отправка через 60 сек</p>
-                            
-                            <button onclick="verifyCode()" id="verifyBtn">Подтвердить</button>
-                            <button onclick="backToPhone()" class="secondary-btn">Изменить номер</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ФОРМА ВХОДА ПО USERNAME -->
-                <div id="usernameForm" class="form hidden">
-                    <h2>Вход по username</h2>
-
-                    <input type="text" id="username" placeholder="Username" style="width: 100%; margin-bottom: 15px;" value="admin">
-                    <input type="password" id="password" placeholder="Пароль" style="width: 100%; margin-bottom: 15px;" value="admin123">
-
-                    <button onclick="loginWithUsername()" id="usernameLoginBtn">Войти</button>
-                    <button onclick="registerWithUsername()" class="secondary-btn">Создать аккаунт</button>
-                </div>
-            </div>
-
-            <!-- Сообщения -->
-            <div id="message" class="message"></div>
+    <div class="header">
+        <h1>Контакты</h1>
+        <div class="header-icons">
+            <span>➕</span>
         </div>
     </div>
 
+    <div class="search">
+        <input type="text" id="searchInput" placeholder="Поиск по username" oninput="filterUsers()">
+    </div>
+
+    <div class="users-list" id="usersList">
+        <!-- Пользователи будут загружены через JS -->
+    </div>
+
+    <div class="bottom-nav">
+        <div class="nav-item active">
+            <span>👥</span>
+            <span>Контакты</span>
+        </div>
+        <div class="nav-item" onclick="goToSettings()">
+            <span>⚙️</span>
+            <span>Настройки</span>
+        </div>
+    </div>
+
+    <div class="logout-btn" onclick="logout()">
+        Выйти
+    </div>
+
     <script>
-        // ==================== КОНФИГУРАЦИЯ ====================
-        const firebaseConfig = {
-            apiKey: "AIzaSyB6wgY0_Yx3A8Ht8QZgm-bSP_umAcPe29g",
-            authDomain: "connect-41f33.firebaseapp.com",
-            projectId: "connect-41f33",
-            storageBucket: "connect-41f33.appspot.com",
-            messagingSenderId: "56431451204",
-            appId: "1:56431451204:web:43c55041fc0fa14b71251"
-        };
+        // Текущий пользователь
+        let currentUser = null;
+        let allUsers = [];
+        let filteredUsers = [];
 
-        // ==================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ====================
-        let auth = null;
-        let db = null;
-        let confirmationResult = null;
-        let recaptchaVerifier = null;
-        let countdown = 60;
-        let countdownInterval = null;
-
-        // Тестовые пользователи для username входа
-        const testUsers = [
-            { username: 'admin', password: 'admin123', name: 'Admin' },
-            { username: 'user', password: 'user123', name: 'User' },
-            { username: 'test', password: 'test123', name: 'Test' }
-        ];
-
-        // ==================== ИНИЦИАЛИЗАЦИЯ ====================
-        function initFirebase() {
-            try {
-                if (!firebase.apps.length) {
-                    firebase.initializeApp(firebaseConfig);
-                }
-                auth = firebase.auth();
-                db = firebase.firestore();
-                setTimeout(initRecaptcha, 1000);
-            } catch (error) {
-                console.error("Ошибка Firebase:", error);
-            }
-        }
-
-        // ==================== reCAPTCHA ====================
-        function initRecaptcha() {
-            try {
-                recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
-                    'size': 'normal',
-                    'callback': function() {
-                        document.getElementById('sendBtn').disabled = false;
-                    }
-                });
-                recaptchaVerifier.render();
-            } catch (error) {
-                console.error("Ошибка reCAPTCHA:", error);
-            }
-        }
-
-        // ==================== ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК ====================
-        function switchTab(tab) {
-            const phoneForm = document.getElementById('phoneForm');
-            const usernameForm = document.getElementById('usernameForm');
-            const tabPhone = document.getElementById('tabPhone');
-            const tabUsername = document.getElementById('tabUsername');
-
-            if (tab === 'phone') {
-                phoneForm.classList.remove('hidden');
-                usernameForm.classList.add('hidden');
-                tabPhone.classList.add('active');
-                tabUsername.classList.remove('active');
-            } else {
-                phoneForm.classList.add('hidden');
-                usernameForm.classList.remove('hidden');
-                tabPhone.classList.remove('active');
-                tabUsername.classList.add('active');
-            }
-        }
-
-        // ==================== ОТПРАВКА SMS ====================
-        async function sendSMSCode() {
-            const country = document.getElementById('countryCode').value;
-            const phone = document.getElementById('phoneNumber').value.replace(/\D/g, '');
-            const fullPhone = country + phone;
-
-            if (phone.length < 10) {
-                showMessage("Введите полный номер телефона", "error");
-                return;
-            }
-
-            document.getElementById('sendBtn').disabled = true;
-            document.getElementById('sendBtn').textContent = "Отправка...";
-
-            try {
-                confirmationResult = await auth.signInWithPhoneNumber(fullPhone, recaptchaVerifier);
-                
-                document.getElementById('phoneForm').style.display = 'none';
-                document.getElementById('otpContainer').style.display = 'block';
-                document.getElementById('phoneDisplay').textContent = formatPhone(fullPhone);
-                
-                startCountdown();
-                setupOtpInputs();
-                document.getElementById('otp1').focus();
-                
-                showMessage("Код отправлен", "success");
-            } catch (error) {
-                console.error(error);
-                showMessage("Ошибка отправки SMS", "error");
-            } finally {
-                document.getElementById('sendBtn').disabled = false;
-                document.getElementById('sendBtn').textContent = "Получить код в SMS";
-            }
-        }
-
-        // ==================== ПОДТВЕРЖДЕНИЕ КОДА ====================
-        async function verifyCode() {
-            const code = 
-                document.getElementById('otp1').value +
-                document.getElementById('otp2').value +
-                document.getElementById('otp3').value +
-                document.getElementById('otp4').value +
-                document.getElementById('otp5').value +
-                document.getElementById('otp6').value;
-
-            if (code.length !== 6) {
-                showMessage("Введите код", "error");
-                return;
-            }
-
-            document.getElementById('verifyBtn').disabled = true;
-            document.getElementById('verifyBtn').textContent = "Проверка...";
-
-            try {
-                const result = await confirmationResult.confirm(code);
-                await saveUser(result.user, 'phone');
-            } catch (error) {
-                showMessage("Неверный код", "error");
-                clearOtpFields();
-                document.getElementById('verifyBtn').disabled = false;
-                document.getElementById('verifyBtn').textContent = "Подтвердить";
-            }
-        }
-
-        // ==================== ВХОД ПО USERNAME ====================
-        function loginWithUsername() {
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value.trim();
-
-            if (!username || !password) {
-                showMessage("Введите username и пароль", "error");
-                return;
-            }
-
-            const user = testUsers.find(u => u.username === username && u.password === password);
-
-            if (user) {
-                const fakeUser = {
-                    uid: username,
-                    displayName: user.name,
-                    username: username
-                };
-                saveUser(fakeUser, 'username');
-            } else {
-                showMessage("Неверный username или пароль", "error");
-            }
-        }
-
-        // ==================== РЕГИСТРАЦИЯ ====================
-        function registerWithUsername() {
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value.trim();
-
-            if (!username || !password) {
-                showMessage("Введите username и пароль", "error");
-                return;
-            }
-
-            if (username.length < 3) {
-                showMessage("Username минимум 3 символа", "error");
-                return;
-            }
-
-            if (password.length < 3) {
-                showMessage("Пароль минимум 3 символа", "error");
-                return;
-            }
-
-            if (testUsers.find(u => u.username === username)) {
-                showMessage("Пользователь уже существует", "error");
-                return;
-            }
-
-            testUsers.push({ username, password, name: username });
-            showMessage("Аккаунт создан! Теперь войдите", "success");
-            
-            setTimeout(() => {
-                document.getElementById('password').value = password;
-                loginWithUsername();
-            }, 1500);
-        }
-
-        // ==================== СОХРАНЕНИЕ И ПЕРЕХОД ====================
-        async function saveUser(user, method) {
-            const userData = {
-                uid: user.uid,
-                username: user.username || user.displayName,
-                displayName: user.displayName || user.username || 'Пользователь',
-                loginMethod: method,
-                loggedIn: true,
-                timestamp: new Date().toISOString()
-            };
-
-            localStorage.setItem('czh_user', JSON.stringify(userData));
-            
-            showMessage("Вход выполнен", "success");
-            
-            setTimeout(() => {
-                window.location.href = 'Chats.html';
-            }, 1500);
-        }
-
-        // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
-        function formatPhone(phone) {
-            const num = phone.replace(/\D/g, '');
-            if (num.length === 11) {
-                return `+${num[0]} (${num.substring(1,4)}) ${num.substring(4,7)}-${num.substring(7,9)}-${num.substring(9)}`;
-            }
-            return phone;
-        }
-
-        function startCountdown() {
-            countdown = 60;
-            clearInterval(countdownInterval);
-            const timerEl = document.getElementById('timer');
-            
-            countdownInterval = setInterval(() => {
-                countdown--;
-                timerEl.textContent = `Повторная отправка через ${countdown} сек`;
-                
-                if (countdown <= 0) {
-                    clearInterval(countdownInterval);
-                    timerEl.innerHTML = '<a href="#" onclick="resendCode()">Отправить код повторно</a>';
-                }
-            }, 1000);
-        }
-
-        function resendCode() {
-            backToPhone();
-            showMessage("Введите номер заново", "info");
-        }
-
-        function backToPhone() {
-            document.getElementById('phoneForm').style.display = 'block';
-            document.getElementById('otpContainer').style.display = 'none';
-            clearInterval(countdownInterval);
-            clearOtpFields();
-        }
-
-        function clearOtpFields() {
-            for (let i = 1; i <= 6; i++) {
-                document.getElementById('otp' + i).value = '';
-            }
-        }
-
-        function setupOtpInputs() {
-            const inputs = [];
-            for (let i = 1; i <= 6; i++) {
-                inputs.push(document.getElementById('otp' + i));
-            }
-
-            inputs.forEach((input, index) => {
-                input.addEventListener('input', function() {
-                    this.value = this.value.replace(/[^0-9]/g, '').slice(0, 1);
-                    if (this.value.length === 1 && index < 5) {
-                        inputs[index + 1].focus();
-                    }
-                    
-                    const allFilled = inputs.every(inp => inp.value.length === 1);
-                    if (allFilled) {
-                        verifyCode();
-                    }
-                });
-
-                input.addEventListener('keydown', function(e) {
-                    if (e.key === 'Backspace' && !this.value && index > 0) {
-                        inputs[index - 1].focus();
-                    }
-                });
-            });
-        }
-
-        function showMessage(text, type) {
-            const msg = document.getElementById('message');
-            msg.textContent = text;
-            msg.className = 'message ' + type;
-            
-            setTimeout(() => {
-                msg.textContent = '';
-                msg.className = 'message';
-            }, 3000);
-        }
-
-        // ==================== ЗАПУСК ====================
-        window.onload = function() {
-            initFirebase();
-            setupOtpInputs();
-            
-            // Проверяем сессию
+        // Загрузка пользователя
+        function loadUser() {
             const saved = localStorage.getItem('czh_user');
             if (saved) {
-                const user = JSON.parse(saved);
-                if (user.loggedIn) {
-                    window.location.href = 'Chats.html';
+                try {
+                    currentUser = JSON.parse(saved);
+                } catch (e) {
+                    currentUser = null;
                 }
             }
+            
+            if (!currentUser || !currentUser.loggedIn) {
+                window.location.href = 'index.html';
+            }
+        }
+
+        // Загрузка всех пользователей из базы
+        function loadUsers() {
+            // Получаем всех зарегистрированных пользователей
+            const saved = localStorage.getItem('czh_users');
+            if (saved) {
+                try {
+                    allUsers = JSON.parse(saved);
+                } catch (e) {
+                    allUsers = [];
+                }
+            }
+
+            // Убираем текущего пользователя из списка
+            if (currentUser) {
+                allUsers = allUsers.filter(u => u.username !== currentUser.username);
+            }
+
+            filteredUsers = [...allUsers];
+            renderUsers();
+        }
+
+        // Отображение пользователей
+        function renderUsers() {
+            const container = document.getElementById('usersList');
+            
+            if (filteredUsers.length === 0) {
+                container.innerHTML = '<div class="empty-state'>Никого не найдено</div>';
+                return;
+            }
+
+            container.innerHTML = filteredUsers.map(user => `
+                <div class="user-item" onclick="openChat('${user.username}')">
+                    <div class="user-avatar">${user.username[0].toUpperCase()}</div>
+                    <div class="user-info">
+                        <div class="user-name">${user.name || user.username}</div>
+                        <div class="user-username">@${user.username}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Поиск пользователей
+        function filterUsers() {
+            const query = document.getElementById('searchInput').value.toLowerCase().trim();
+            
+            if (!query) {
+                filteredUsers = [...allUsers];
+            } else {
+                filteredUsers = allUsers.filter(user => 
+                    user.username.toLowerCase().includes(query) || 
+                    (user.name && user.name.toLowerCase().includes(query))
+                );
+            }
+            
+            renderUsers();
+        }
+
+        // Открыть чат с пользователем
+        function openChat(username) {
+            alert(`Чат с @${username} будет здесь`);
+            // Здесь потом будет переход в чат
+        }
+
+        // Настройки
+        function goToSettings() {
+            alert('Настройки появятся позже');
+        }
+
+        // Выход
+        function logout() {
+            localStorage.removeItem('czh_user');
+            window.location.href = 'index.html';
+        }
+
+        // Инициализация
+        window.onload = function() {
+            loadUser();
+            loadUsers();
         };
     </script>
 </body>
