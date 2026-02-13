@@ -47,52 +47,14 @@
             border: 1px solid rgba(255,255,255,0.1);
         }
 
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 30px;
-            background: rgba(255,255,255,0.05);
-            padding: 5px;
-            border-radius: 12px;
-        }
-
-        .tab {
-            flex: 1;
-            padding: 12px;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            text-align: center;
-            color: rgba(255,255,255,0.5);
-        }
-
-        .tab.active {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-        }
-
-        .form {
-            display: block;
-        }
-
-        .form.hidden {
-            display: none;
-        }
-
         h2 {
             margin-bottom: 25px;
             font-size: 22px;
             text-align: center;
         }
 
-        .phone-input {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-
-        select, input {
+        input {
+            width: 100%;
             padding: 16px;
             background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.1);
@@ -100,14 +62,11 @@
             color: white;
             font-size: 16px;
             outline: none;
+            margin-bottom: 15px;
         }
 
-        select {
-            width: 100px;
-        }
-
-        input {
-            flex: 1;
+        input:focus {
+            border-color: #667eea;
         }
 
         button {
@@ -123,22 +82,10 @@
             margin-top: 10px;
         }
 
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
         .secondary-btn {
             background: transparent;
             border: 1px solid #667eea;
             color: #667eea;
-        }
-
-        #recaptcha-container {
-            margin: 20px 0;
-            min-height: 78px;
-            display: flex;
-            justify-content: center;
         }
 
         .message {
@@ -159,38 +106,23 @@
             border: 1px solid #ff3b30;
         }
 
-        .otp-container {
+        .info {
+            background: rgba(102,126,234,0.15);
+            color: #667eea;
+            border: 1px solid #667eea;
+        }
+
+        .switch-form {
+            text-align: center;
             margin-top: 20px;
-        }
-
-        .otp-inputs {
-            display: flex;
-            justify-content: center;
-            gap: 8px;
-            margin: 20px 0;
-        }
-
-        .otp-input {
-            width: 45px;
-            height: 55px;
-            text-align: center;
-            font-size: 24px;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 12px;
-            color: white;
-        }
-
-        .timer {
-            text-align: center;
             color: rgba(255,255,255,0.5);
-            margin: 15px 0;
-            font-size: 14px;
         }
 
-        .timer a {
+        .switch-form a {
             color: #667eea;
             text-decoration: none;
+            font-weight: 600;
+            cursor: pointer;
         }
     </style>
 </head>
@@ -201,60 +133,33 @@
         </div>
 
         <div class="card">
-            <div class="tabs">
-                <div class="tab active" onclick="switchTab('phone')">📱 Телефон</div>
-                <div class="tab" onclick="switchTab('username')">👤 Username</div>
-            </div>
+            <!-- Форма входа -->
+            <div id="loginForm">
+                <h2>Вход</h2>
 
-            <!-- Форма телефона -->
-            <div id="phoneForm" class="form">
-                <h2>Вход по телефону</h2>
+                <input type="text" id="loginUsername" placeholder="Username">
+                <input type="password" id="loginPassword" placeholder="Пароль">
 
-                <div class="phone-input">
-                    <select id="countryCode">
-                        <option value="+7">+7</option>
-                        <option value="+1">+1</option>
-                        <option value="+44">+44</option>
-                    </select>
-                    <input type="tel" id="phoneNumber" placeholder="900 123 45 67" 
-                           onkeypress="return event.charCode >= 48 && event.charCode <= 57">
-                </div>
+                <button onclick="login()">Войти</button>
 
-                <div id="recaptcha-container"></div>
-
-                <button onclick="sendSMSCode()" id="sendBtn">Получить код</button>
-
-                <!-- Форма ввода кода -->
-                <div id="otpContainer" style="display: none;">
-                    <div class="otp-container">
-                        <p style="text-align: center; margin: 15px 0;" id="phoneDisplay"></p>
-                        
-                        <div class="otp-inputs">
-                            <input type="text" id="otp1" class="otp-input" maxlength="1" inputmode="numeric">
-                            <input type="text" id="otp2" class="otp-input" maxlength="1" inputmode="numeric">
-                            <input type="text" id="otp3" class="otp-input" maxlength="1" inputmode="numeric">
-                            <input type="text" id="otp4" class="otp-input" maxlength="1" inputmode="numeric">
-                            <input type="text" id="otp5" class="otp-input" maxlength="1" inputmode="numeric">
-                            <input type="text" id="otp6" class="otp-input" maxlength="1" inputmode="numeric">
-                        </div>
-                        
-                        <p id="timer" class="timer"></p>
-                        
-                        <button onclick="verifyCode()" id="verifyBtn">Подтвердить</button>
-                        <button onclick="backToPhone()" class="secondary-btn">Назад</button>
-                    </div>
+                <div class="switch-form">
+                    Нет аккаунта? <a onclick="showRegister()">Создать</a>
                 </div>
             </div>
 
-            <!-- Форма username -->
-            <div id="usernameForm" class="form hidden">
-                <h2>Вход по username</h2>
+            <!-- Форма регистрации (скрыта) -->
+            <div id="registerForm" style="display: none;">
+                <h2>Регистрация</h2>
 
-                <input type="text" id="username" placeholder="Username" style="width: 100%; margin-bottom: 15px;">
-                <input type="password" id="password" placeholder="Пароль" style="width: 100%; margin-bottom: 15px;">
+                <input type="text" id="regUsername" placeholder="Username">
+                <input type="password" id="regPassword" placeholder="Пароль">
+                <input type="password" id="regConfirmPassword" placeholder="Повторите пароль">
 
-                <button onclick="loginWithUsername()">Войти</button>
-                <button onclick="registerWithUsername()" class="secondary-btn">Регистрация</button>
+                <button onclick="register()">Зарегистрироваться</button>
+
+                <div class="switch-form">
+                    Уже есть аккаунт? <a onclick="showLogin()">Войти</a>
+                </div>
             </div>
 
             <div id="message" class="message"></div>
@@ -262,252 +167,135 @@
     </div>
 
     <script>
-        // Конфиг Firebase
-        const firebaseConfig = {
-            apiKey: "AIzaSyB6wgY0_Yx3A8Ht8QZgm-bSP_umAcPe29g",
-            authDomain: "connect-41f33.firebaseapp.com",
-            projectId: "connect-41f33",
-            storageBucket: "connect-41f33.appspot.com",
-            messagingSenderId: "56431451204",
-            appId: "1:56431451204:web:43c55041fc0fa14b71251"
-        };
+        // База пользователей (в реальном проекте заменится на Firebase)
+        let users = [];
 
-        // Инициализация Firebase
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-
-        let confirmationResult = null;
-        let recaptchaVerifier = null;
-        let countdownInterval = null;
-
-        // Тестовые пользователи
-        const testUsers = [
-            { username: 'admin', password: 'admin123', name: 'Admin' },
-            { username: 'user', password: 'user123', name: 'User' }
-        ];
-
-        // Переключение вкладок
-        function switchTab(tab) {
-            const phoneForm = document.getElementById('phoneForm');
-            const usernameForm = document.getElementById('usernameForm');
-            const tabs = document.querySelectorAll('.tab');
-
-            if (tab === 'phone') {
-                phoneForm.classList.remove('hidden');
-                usernameForm.classList.add('hidden');
-                tabs[0].classList.add('active');
-                tabs[1].classList.remove('active');
+        // Загружаем пользователей из localStorage
+        try {
+            const saved = localStorage.getItem('czh_users');
+            if (saved) {
+                users = JSON.parse(saved);
             } else {
-                phoneForm.classList.add('hidden');
-                usernameForm.classList.remove('hidden');
-                tabs[0].classList.remove('active');
-                tabs[1].classList.add('active');
+                // Тестовые пользователи
+                users = [
+                    { username: 'admin', password: 'admin123', name: 'Admin' },
+                    { username: 'user', password: 'user123', name: 'User' }
+                ];
+                localStorage.setItem('czh_users', JSON.stringify(users));
             }
+        } catch (e) {
+            console.log('Ошибка загрузки пользователей');
         }
 
-        // Инициализация reCAPTCHA
-        function initRecaptcha() {
-            recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
-                'size': 'normal',
-                'callback': function() {
-                    document.getElementById('sendBtn').disabled = false;
-                }
-            });
+        // Переключение на форму регистрации
+        function showRegister() {
+            document.getElementById('loginForm').style.display = 'none';
+            document.getElementById('registerForm').style.display = 'block';
+            clearMessage();
         }
 
-        // Отправка SMS
-        async function sendSMSCode() {
-            const country = document.getElementById('countryCode').value;
-            const phone = document.getElementById('phoneNumber').value.replace(/\D/g, '');
-            const fullPhone = country + phone;
-
-            if (phone.length < 10) {
-                showMessage('Введите полный номер', 'error');
-                return;
-            }
-
-            document.getElementById('sendBtn').disabled = true;
-            document.getElementById('sendBtn').textContent = 'Отправка...';
-
-            try {
-                if (!recaptchaVerifier) {
-                    initRecaptcha();
-                }
-
-                confirmationResult = await auth.signInWithPhoneNumber(fullPhone, recaptchaVerifier);
-                
-                document.getElementById('phoneForm').style.display = 'none';
-                document.getElementById('otpContainer').style.display = 'block';
-                document.getElementById('phoneDisplay').textContent = formatPhone(fullPhone);
-                
-                startCountdown();
-                setupOtpInputs();
-                document.getElementById('otp1').focus();
-                
-                showMessage('Код отправлен', 'success');
-            } catch (error) {
-                console.error(error);
-                showMessage('Ошибка отправки', 'error');
-            } finally {
-                document.getElementById('sendBtn').disabled = false;
-                document.getElementById('sendBtn').textContent = 'Получить код';
-            }
-        }
-
-        // Проверка кода
-        async function verifyCode() {
-            const code = 
-                document.getElementById('otp1').value +
-                document.getElementById('otp2').value +
-                document.getElementById('otp3').value +
-                document.getElementById('otp4').value +
-                document.getElementById('otp5').value +
-                document.getElementById('otp6').value;
-
-            if (code.length !== 6) {
-                showMessage('Введите код', 'error');
-                return;
-            }
-
-            document.getElementById('verifyBtn').disabled = true;
-            document.getElementById('verifyBtn').textContent = 'Проверка...';
-
-            try {
-                const result = await confirmationResult.confirm(code);
-                await saveUser(result.user, 'phone');
-            } catch (error) {
-                showMessage('Неверный код', 'error');
-                clearOtpFields();
-                document.getElementById('verifyBtn').disabled = false;
-                document.getElementById('verifyBtn').textContent = 'Подтвердить';
-            }
-        }
-
-        // Вход по username
-        function loginWithUsername() {
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value.trim();
-
-            const user = testUsers.find(u => u.username === username && u.password === password);
-
-            if (user) {
-                const fakeUser = {
-                    uid: username,
-                    displayName: user.name,
-                    username: username
-                };
-                saveUser(fakeUser, 'username');
-            } else {
-                showMessage('Неверный логин или пароль', 'error');
-            }
+        // Переключение на форму входа
+        function showLogin() {
+            document.getElementById('registerForm').style.display = 'none';
+            document.getElementById('loginForm').style.display = 'block';
+            clearMessage();
         }
 
         // Регистрация
-        function registerWithUsername() {
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value.trim();
+        function register() {
+            const username = document.getElementById('regUsername').value.trim();
+            const password = document.getElementById('regPassword').value.trim();
+            const confirm = document.getElementById('regConfirmPassword').value.trim();
 
-            if (!username || !password) {
+            // Проверка полей
+            if (!username || !password || !confirm) {
                 showMessage('Заполните все поля', 'error');
                 return;
             }
 
             if (username.length < 3) {
-                showMessage('Username минимум 3 символа', 'error');
+                showMessage('Username должен быть минимум 3 символа', 'error');
                 return;
             }
 
-            if (testUsers.find(u => u.username === username)) {
+            if (password.length < 3) {
+                showMessage('Пароль должен быть минимум 3 символа', 'error');
+                return;
+            }
+
+            if (password !== confirm) {
+                showMessage('Пароли не совпадают', 'error');
+                return;
+            }
+
+            // Проверка на существующего пользователя
+            if (users.find(u => u.username === username)) {
                 showMessage('Пользователь уже существует', 'error');
                 return;
             }
 
-            testUsers.push({ username, password, name: username });
-            showMessage('Аккаунт создан', 'success');
-        }
-
-        // Сохранение пользователя и переход
-        async function saveUser(user, method) {
-            const userData = {
-                uid: user.uid,
-                displayName: user.displayName || user.username || 'User',
-                loginMethod: method,
-                loggedIn: true
+            // Создаем нового пользователя
+            const newUser = {
+                username: username,
+                password: password,
+                name: username,
+                created: new Date().toISOString()
             };
 
-            localStorage.setItem('czh_user', JSON.stringify(userData));
-            
-            showMessage('Вход выполнен', 'success');
-            
+            users.push(newUser);
+            localStorage.setItem('czh_users', JSON.stringify(users));
+
+            showMessage('Аккаунт создан! Теперь войдите', 'success');
+
+            // Очищаем поля
+            document.getElementById('regUsername').value = '';
+            document.getElementById('regPassword').value = '';
+            document.getElementById('regConfirmPassword').value = '';
+
+            // Переключаем на форму входа
             setTimeout(() => {
-                window.location.href = 'Chats.html';
-            }, 1000);
+                showLogin();
+                document.getElementById('loginUsername').value = username;
+            }, 1500);
         }
 
-        // Вспомогательные функции
-        function formatPhone(phone) {
-            return phone;
-        }
+        // Вход
+        function login() {
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value.trim();
 
-        function startCountdown() {
-            let countdown = 60;
-            const timerEl = document.getElementById('timer');
-            
-            countdownInterval = setInterval(() => {
-                countdown--;
-                timerEl.textContent = `Повторная отправка через ${countdown}с`;
+            if (!username || !password) {
+                showMessage('Введите username и пароль', 'error');
+                return;
+            }
+
+            // Ищем пользователя
+            const user = users.find(u => u.username === username && u.password === password);
+
+            if (user) {
+                // Сохраняем сессию
+                const session = {
+                    uid: username,
+                    username: username,
+                    displayName: user.name || username,
+                    loggedIn: true,
+                    timestamp: new Date().toISOString()
+                };
+
+                localStorage.setItem('czh_user', JSON.stringify(session));
                 
-                if (countdown <= 0) {
-                    clearInterval(countdownInterval);
-                    timerEl.innerHTML = '<a href="#" onclick="resendCode()">Отправить повторно</a>';
-                }
-            }, 1000);
-        }
-
-        function resendCode() {
-            backToPhone();
-            showMessage('Введите номер заново', 'info');
-        }
-
-        function backToPhone() {
-            document.getElementById('phoneForm').style.display = 'block';
-            document.getElementById('otpContainer').style.display = 'none';
-            clearInterval(countdownInterval);
-            clearOtpFields();
-        }
-
-        function clearOtpFields() {
-            for (let i = 1; i <= 6; i++) {
-                document.getElementById('otp' + i).value = '';
+                showMessage('Вход выполнен', 'success');
+                
+                // Переход в чаты
+                setTimeout(() => {
+                    window.location.href = 'Chats.html';
+                }, 1000);
+            } else {
+                showMessage('Неверный username или пароль', 'error');
             }
         }
 
-        function setupOtpInputs() {
-            const inputs = [];
-            for (let i = 1; i <= 6; i++) {
-                inputs.push(document.getElementById('otp' + i));
-            }
-
-            inputs.forEach((input, index) => {
-                input.addEventListener('input', function() {
-                    if (this.value.length === 1 && index < 5) {
-                        inputs[index + 1].focus();
-                    }
-                    
-                    const allFilled = inputs.every(inp => inp.value.length === 1);
-                    if (allFilled) {
-                        verifyCode();
-                    }
-                });
-
-                input.addEventListener('keydown', function(e) {
-                    if (e.key === 'Backspace' && !this.value && index > 0) {
-                        inputs[index - 1].focus();
-                    }
-                });
-            });
-        }
-
+        // Показать сообщение
         function showMessage(text, type) {
             const msg = document.getElementById('message');
             msg.textContent = text;
@@ -519,11 +307,15 @@
             }, 3000);
         }
 
-        // Инициализация
+        // Очистить сообщение
+        function clearMessage() {
+            const msg = document.getElementById('message');
+            msg.textContent = '';
+            msg.className = 'message';
+        }
+
+        // Проверка сессии при загрузке
         window.onload = function() {
-            initRecaptcha();
-            
-            // Проверяем, не залогинен ли уже
             const saved = localStorage.getItem('czh_user');
             if (saved) {
                 const user = JSON.parse(saved);
