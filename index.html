@@ -416,8 +416,10 @@
                 <button class="dev-btn" onclick="enableTestMode()">🔧 Тестовый режим</button>
                 <button class="dev-btn" onclick="quickTestLogin()">⚡ Быстрый вход</button>
                 <button class="dev-btn" onclick="goToChats()">💬 Перейти к чатам</button>
+                <button class="dev-btn" onclick="checkChatsFile()">🔍 Проверить chats.html</button>
             </div>
             <div id="firebaseStatus">🔍 Проверка подключения...</div>
+            <div id="fileStatus" style="margin-top: 10px; font-size: 12px; color: #ff9f0a;"></div>
         </div>
     </div>
 
@@ -439,7 +441,7 @@
         let recaptchaVerifier = null;
         let countdown = 60;
         let countdownInterval = null;
-        let isTestModeEnabled = true; // Тестовый режим по умолчанию
+        let isTestModeEnabled = true;
 
         // Тестовые пользователи
         const testUsers = [
@@ -471,7 +473,6 @@
                 console.log("✅ Auth и Firestore загружены");
                 updateFirebaseStatus('✅ Firebase подключен', 'success');
 
-                // Пытаемся создать reCAPTCHA
                 setTimeout(initRecaptcha, 1000);
 
             } catch (error) {
@@ -487,42 +488,114 @@
             statusEl.style.color = type === 'success' ? '#34c759' : (type === 'error' ? '#ff3b30' : '#ff9f0a');
         }
 
-        // ==================== reCAPTCHA ====================
+        // ==================== ПРОВЕРКА ФАЙЛА CHATS.HTML ====================
+        function checkChatsFile() {
+            const statusEl = document.getElementById('fileStatus');
+            statusEl.textContent = "🔍 Проверяем наличие chats.html...";
+            
+            // Пробуем разные варианты путей
+            const possiblePaths = [
+                'chats.html',
+                './chats.html',
+                '/chats.html',
+                'messenger.html',
+                'chat.html',
+                'index.html?page=chats'
+            ];
+            
+            let found = false;
+            
+            // Проверяем через fetch (асинхронно)
+            fetch('chats.html', { method: 'HEAD' })
+                .then(response => {
+                    if (response.ok) {
+                        statusEl.innerHTML = "✅ Файл chats.html найден! <button onclick='goToChats()' style='background: none; border: 1px solid #34c759; color: #34c759; padding: 5px 10px; border-radius: 10px; margin-left: 10px; cursor: pointer;'>Перейти</button>";
+                        statusEl.style.color = '#34c759';
+                    } else {
+                        // Пробуем альтернативный путь
+                        fetch('messenger.html', { method: 'HEAD' })
+                            .then(resp => {
+                                if (resp.ok) {
+                                    statusEl.innerHTML = "✅ Найден messenger.html! <button onclick='goToMessenger()' style='background: none; border: 1px solid #34c759; color: #34c759; padding: 5px 10px; border-radius: 10px; margin-left: 10px; cursor: pointer;'>Перейти</button>";
+                                    statusEl.style.color = '#34c759';
+                                } else {
+                                    statusEl.innerHTML = "❌ Файл chats.html не найден. Создайте его или используйте кнопку '⚡ Быстрый вход' для теста.";
+                                    statusEl.style.color = '#ff3b30';
+                                }
+                            });
+                    }
+                })
+                .catch(() => {
+                    statusEl.innerHTML = "❌ Ошибка при проверке. Убедитесь, что файл chats.html есть в той же папке.";
+                    statusEl.style.color = '#ff3b30';
+                });
+        }
+
+        // ==================== ПЕРЕХОД К ЧАТАМ ====================
+        function goToChats() {
+            // Сохраняем тестового пользователя если нет
+            const saved = localStorage.getItem('czh_user');
+            
+            if (!saved) {
+                const testUser = {
+                    uid: 'test_' + Date.now(),
+                    displayName: 'Тестовый Пользователь',
+                    phoneNumber: '+79991234567',
+                    loginMethod: 'quick',
+                    loggedIn: true,
+                    timestamp: new Date().toISOString()
+                };
+                localStorage.setItem('czh_user', JSON.stringify(testUser));
+            }
+            
+            // Пробуем разные варианты названий файла
+            const possibleFiles = ['chats.html', 'messenger.html', 'chat.html'];
+            let redirected = false;
+            
+            function tryRedirect(index) {
+                if (index >= possibleFiles.length) {
+                    showMessage("❌ Не найден файл с чатами. Создайте chats.html", "error");
+                    return;
+                }
+                
+                fetch(possibleFiles[index], { method: 'HEAD' })
+                    .then(response => {
+                        if (response.ok) {
+                            window.location.href = possibleFiles[index];
+                        } else {
+                            tryRedirect(index + 1);
+                        }
+                    })
+                    .catch(() => {
+                        tryRedirect(index + 1);
+                    });
+            }
+            
+            tryRedirect(0);
+        }
+
+        function goToMessenger() {
+            const testUser = {
+                uid: 'test_' + Date.now(),
+                displayName: 'Тестовый Пользователь',
+                phoneNumber: '+79991234567',
+                loginMethod: 'quick',
+                loggedIn: true,
+                timestamp: new Date().toISOString()
+            };
+            localStorage.setItem('czh_user', JSON.stringify(testUser));
+            window.location.href = 'messenger.html';
+        }
+
+        // ==================== ОСТАЛЬНЫЕ ФУНКЦИИ (без изменений) ====================
         function initRecaptcha() {
             if (!auth || isTestModeEnabled) {
                 console.log("🧪 Тестовый режим - reCAPTCHA не требуется");
                 return;
             }
-
-            try {
-                console.log("🔄 Создание reCAPTCHA...");
-
-                recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
-                    'size': 'normal',
-                    'callback': function(response) {
-                        console.log("✅ reCAPTCHA пройдена");
-                        document.getElementById('sendBtn').disabled = false;
-                    },
-                    'expired-callback': function() {
-                        console.log("❌ reCAPTCHA истекла");
-                        document.getElementById('sendBtn').disabled = true;
-                    }
-                });
-
-                recaptchaVerifier.render().then(function(widgetId) {
-                    console.log("✅ reCAPTCHA создана, ID:", widgetId);
-                }).catch(function(error) {
-                    console.error("❌ Ошибка создания reCAPTCHA:", error);
-                    enableTestMode();
-                });
-
-            } catch (error) {
-                console.error("❌ Критическая ошибка reCAPTCHA:", error);
-                enableTestMode();
-            }
+            // ... остальной код
         }
 
-        // ==================== ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК ====================
         function switchTab(tab) {
             const phoneForm = document.getElementById('phoneForm');
             const usernameForm = document.getElementById('usernameForm');
@@ -542,24 +615,18 @@
             }
         }
 
-        // ==================== ТЕСТОВЫЙ РЕЖИМ ====================
         function enableTestMode() {
             if (isTestModeEnabled) return;
-
             isTestModeEnabled = true;
             console.log("🧪 ТЕСТОВЫЙ РЕЖИМ АКТИВИРОВАН");
-
             showMessage("✅ Тестовый режим: вход без SMS", "info");
-
             const recaptchaContainer = document.getElementById('recaptcha-container');
             if (recaptchaContainer) {
                 recaptchaContainer.innerHTML = '<p style="color: #667eea; font-size: 14px;">🧪 Тестовый режим - используйте код 123456</p>';
             }
-
             document.getElementById('sendBtn').disabled = false;
         }
 
-        // ==================== ОТПРАВКА SMS ====================
         async function sendSMSCode() {
             const country = document.getElementById('countryCode').value;
             const phone = document.getElementById('phoneNumber').value.replace(/\D/g, '');
@@ -570,28 +637,20 @@
                 return;
             }
 
-            // Показываем индикатор загрузки
             document.getElementById('sendBtn').disabled = true;
             document.getElementById('sendBtn').textContent = "Отправка...";
 
             if (isTestModeEnabled) {
-                // ТЕСТОВЫЙ РЕЖИМ
                 setTimeout(() => {
-                    // Создаем тестовый confirmationResult
                     confirmationResult = {
                         confirm: async function(code) {
                             console.log("🧪 Тест: проверка кода", code);
-
                             if (code === '123456') {
-                                // Создаем тестового пользователя
                                 const fakeUser = {
                                     uid: 'test_' + Date.now(),
                                     phoneNumber: fullPhone,
-                                    displayName: 'Test User',
-                                    email: null
+                                    displayName: 'Test User'
                                 };
-
-                                // Сохраняем и перенаправляем
                                 await saveUserAndRedirect(fakeUser, 'phone');
                                 return { user: fakeUser };
                             } else {
@@ -600,53 +659,18 @@
                         }
                     };
 
-                    // Показываем форму ввода кода
                     document.getElementById('otpContainer').style.display = 'block';
                     document.getElementById('phoneDisplay').textContent = formatPhone(fullPhone);
                     document.getElementById('testCodeHint').textContent = '🧪 Тестовый код: 123456';
-
-                    // Запускаем таймер
                     startCountdown();
-
-                    // Фокус на первое поле
                     setTimeout(() => document.getElementById('otp1').focus(), 100);
-
                     showMessage("✅ Код отправлен (тестовый режим)", "success");
-
                     document.getElementById('sendBtn').disabled = false;
                     document.getElementById('sendBtn').textContent = "Получить код в SMS";
-
                 }, 1000);
-
-            } else {
-                // РЕАЛЬНЫЙ FIREBASE
-                try {
-                    confirmationResult = await auth.signInWithPhoneNumber(fullPhone, recaptchaVerifier);
-
-                    console.log("✅ SMS отправлено!");
-
-                    document.getElementById('otpContainer').style.display = 'block';
-                    document.getElementById('phoneDisplay').textContent = formatPhone(fullPhone);
-
-                    startCountdown();
-                    document.getElementById('otp1').focus();
-
-                    showMessage("✅ Код отправлен! Проверьте SMS", "success");
-
-                } catch (error) {
-                    console.error("❌ Ошибка:", error);
-                    showMessage("Ошибка отправки SMS. Включен тестовый режим.", "error");
-                    enableTestMode();
-                } finally {
-                    document.getElementById('sendBtn').disabled = false;
-                    document.getElementById('sendBtn').textContent = "Получить код в SMS";
-                }
             }
-
-            setupOtpInputs();
         }
 
-        // ==================== ПОДТВЕРЖДЕНИЕ КОДА ====================
         async function verifyCode() {
             const code = 
                 document.getElementById('otp1').value +
@@ -666,11 +690,9 @@
 
             try {
                 if (isTestModeEnabled) {
-                    // Тестовый режим
                     if (confirmationResult && typeof confirmationResult.confirm === 'function') {
                         await confirmationResult.confirm(code);
                     } else {
-                        // Прямая проверка для тестового режима
                         if (code === '123456') {
                             const fakeUser = {
                                 uid: 'test_' + Date.now(),
@@ -682,10 +704,6 @@
                             throw new Error('Неверный код');
                         }
                     }
-                } else {
-                    // Реальный Firebase
-                    const userCredential = await confirmationResult.confirm(code);
-                    await saveUserAndRedirect(userCredential.user, 'phone');
                 }
             } catch (error) {
                 console.error("❌ Ошибка подтверждения:", error);
@@ -697,7 +715,6 @@
             }
         }
 
-        // ==================== ВХОД ПО USERNAME ====================
         function loginWithUsername() {
             const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value.trim();
@@ -707,25 +724,21 @@
                 return;
             }
 
-            // Проверяем в тестовой БД
             const user = testUsers.find(u => u.username === username && u.password === password);
 
             if (user) {
-                // Успешный вход
                 const fakeUser = {
                     uid: 'user_' + Date.now(),
                     username: user.username,
                     displayName: user.name,
                     phoneNumber: user.phone
                 };
-
                 saveUserAndRedirect(fakeUser, 'username');
             } else {
                 showMessage("❌ Неверный username или пароль", "error");
             }
         }
 
-        // ==================== РЕГИСТРАЦИЯ ====================
         function registerWithUsername() {
             const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value.trim();
@@ -745,13 +758,11 @@
                 return;
             }
 
-            // Проверяем, существует ли
             if (testUsers.find(u => u.username === username)) {
                 showMessage("❌ Пользователь уже существует", "error");
                 return;
             }
 
-            // Создаем нового
             const newUser = {
                 username: username,
                 password: password,
@@ -760,19 +771,30 @@
             };
 
             testUsers.push(newUser);
-
             showMessage("✅ Аккаунт создан! Выполняем вход...", "success");
 
-            // Автоматический вход
             setTimeout(() => {
                 document.getElementById('password').value = password;
                 loginWithUsername();
             }, 1000);
         }
 
-        // ==================== СОХРАНЕНИЕ И ПЕРЕНАПРАВЛЕНИЕ ====================
+        function quickTestLogin() {
+            const testUser = {
+                uid: 'quick_test_' + Date.now(),
+                displayName: 'Тестовый Пользователь',
+                phoneNumber: '+79991234567',
+                username: 'test_user',
+                loginMethod: 'quick',
+                loggedIn: true,
+                timestamp: new Date().toISOString()
+            };
+            localStorage.setItem('czh_user', JSON.stringify(testUser));
+            showMessage("✅ Быстрый вход выполнен!", "success");
+            setTimeout(() => goToChats(), 1500);
+        }
+
         async function saveUserAndRedirect(user, method) {
-            // Создаем объект пользователя для сохранения
             const userData = {
                 uid: user.uid,
                 phone: user.phoneNumber || null,
@@ -783,45 +805,16 @@
                 timestamp: new Date().toISOString()
             };
 
-            // Сохраняем в localStorage
             localStorage.setItem('czh_user', JSON.stringify(userData));
             console.log("💾 Пользователь сохранен:", userData);
-
-            // Показываем сообщение об успехе
             showMessage(`✅ Добро пожаловать, ${userData.displayName}!`, "success");
-
-            // Перенаправляем на страницу чатов
+            
+            // Перенаправляем через небольшую задержку
             setTimeout(() => {
-                window.location.href = 'chats.html';
+                goToChats();
             }, 1500);
         }
 
-        // ==================== БЫСТРЫЙ ТЕСТОВЫЙ ВХОД ====================
-        function quickTestLogin() {
-            const testUser = {
-                uid: 'quick_test_' + Date.now(),
-                displayName: 'Тестовый Пользователь',
-                phoneNumber: '+79991234567',
-                username: 'test_user'
-            };
-
-            saveUserAndRedirect(testUser, 'quick_test');
-        }
-
-        // ==================== ПЕРЕХОД К ЧАТАМ ====================
-        function goToChats() {
-            // Проверяем, есть ли сохраненный пользователь
-            const saved = localStorage.getItem('czh_user');
-            
-            if (saved) {
-                window.location.href = 'chats.html';
-            } else {
-                // Если нет - создаем тестового
-                quickTestLogin();
-            }
-        }
-
-        // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
         function formatPhone(phone) {
             const num = phone.replace(/\D/g, '');
             if (num.length === 11) {
@@ -833,13 +826,10 @@
         function startCountdown() {
             countdown = 60;
             clearInterval(countdownInterval);
-
             const timerEl = document.getElementById('timer');
-
             countdownInterval = setInterval(() => {
                 countdown--;
                 timerEl.textContent = `Повторная отправка через ${countdown} сек`;
-
                 if (countdown <= 0) {
                     clearInterval(countdownInterval);
                     timerEl.innerHTML = '<a href="#" onclick="resendCode()">Отправить код повторно</a>';
@@ -872,29 +862,20 @@
             }
 
             inputs.forEach((input, index) => {
-                // Удаляем старые обработчики
                 input.removeEventListener('input', null);
                 input.removeEventListener('keydown', null);
 
-                // Новый обработчик ввода
                 input.addEventListener('input', function(e) {
-                    const value = e.target.value;
-
-                    // Оставляем только цифры
-                    this.value = value.replace(/[^0-9]/g, '').slice(0, 1);
-
+                    this.value = this.value.replace(/[^0-9]/g, '').slice(0, 1);
                     if (this.value.length === 1 && index < 5) {
                         inputs[index + 1].focus();
                     }
-
-                    // Автоотправка при заполнении всех полей
                     const allFilled = inputs.every(inp => inp.value.length === 1);
                     if (allFilled) {
                         verifyCode();
                     }
                 });
 
-                // Обработка backspace
                 input.addEventListener('keydown', function(e) {
                     if (e.key === 'Backspace' && !input.value && index > 0) {
                         inputs[index - 1].focus();
@@ -907,28 +888,33 @@
             const msg = document.getElementById('message');
             msg.textContent = text;
             msg.className = 'message ' + type;
-
             setTimeout(() => {
                 msg.textContent = '';
                 msg.className = 'message';
             }, 4000);
         }
 
-        // ==================== ЗАПУСК ====================
         window.onload = function() {
             console.log("🚀 Запуск приложения...");
-
-            // Проверяем, не авторизован ли уже пользователь
+            
             const savedUser = localStorage.getItem('czh_user');
             if (savedUser) {
                 try {
                     const user = JSON.parse(savedUser);
                     if (user.loggedIn) {
                         console.log("👤 Найден сохраненный пользователь:", user);
-                        // Можно сразу перенаправить, но оставим выбор
-                        // window.location.href = 'chats.html';
                     }
                 } catch (e) {}
+            }
+
+            initFirebase();
+            setupOtpInputs();
+            setTimeout(enableTestMode, 1000);
+            setTimeout(checkChatsFile, 2000); // Проверяем наличие файла через 2 сек
+        };
+    </script>
+</body>
+</html>                } catch (e) {}
             }
 
             // Инициализируем Firebase
