@@ -167,7 +167,7 @@
     </div>
 
     <script>
-        // База пользователей (в реальном проекте заменится на Firebase)
+        // База пользователей
         let users = [];
 
         // Загружаем пользователей из localStorage
@@ -207,7 +207,6 @@
             const password = document.getElementById('regPassword').value.trim();
             const confirm = document.getElementById('regConfirmPassword').value.trim();
 
-            // Проверка полей
             if (!username || !password || !confirm) {
                 showMessage('Заполните все поля', 'error');
                 return;
@@ -228,13 +227,11 @@
                 return;
             }
 
-            // Проверка на существующего пользователя
             if (users.find(u => u.username === username)) {
                 showMessage('Пользователь уже существует', 'error');
                 return;
             }
 
-            // Создаем нового пользователя
             const newUser = {
                 username: username,
                 password: password,
@@ -247,12 +244,10 @@
 
             showMessage('Аккаунт создан! Теперь войдите', 'success');
 
-            // Очищаем поля
             document.getElementById('regUsername').value = '';
             document.getElementById('regPassword').value = '';
             document.getElementById('regConfirmPassword').value = '';
 
-            // Переключаем на форму входа
             setTimeout(() => {
                 showLogin();
                 document.getElementById('loginUsername').value = username;
@@ -269,11 +264,9 @@
                 return;
             }
 
-            // Ищем пользователя
             const user = users.find(u => u.username === username && u.password === password);
 
             if (user) {
-                // Сохраняем сессию
                 const session = {
                     uid: username,
                     username: username,
@@ -314,15 +307,11 @@
             msg.className = 'message';
         }
 
-        // Проверка сессии при загрузке
+        // Очищаем старую сессию при загрузке
         window.onload = function() {
-            const saved = localStorage.getItem('czh_user');
-            if (saved) {
-                const user = JSON.parse(saved);
-                if (user.loggedIn) {
-                    window.location.href = 'Chats.html';
-                }
-            }
+            // Удаляем старую сессию, чтобы не было автоматического перехода
+            localStorage.removeItem('czh_user');
+            console.log('Сессия очищена, страница входа загружена');
         };
     </script>
 </body>
