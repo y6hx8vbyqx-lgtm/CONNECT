@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CZH Messenger - Вход</title>
+    <title>CZH Messenger - Контакты</title>
     <style>
         * {
             margin: 0;
@@ -15,303 +15,288 @@
         body {
             background: #000;
             color: #fff;
-            min-height: 100vh;
+            height: 100vh;
             display: flex;
-            justify-content: center;
-            align-items: center;
+            flex-direction: column;
+        }
+
+        /* Шапка */
+        .header {
             padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
         }
 
-        .container {
-            width: 100%;
-            max-width: 400px;
-        }
-
-        .logo {
-            margin-bottom: 40px;
-            text-align: center;
-        }
-
-        .logo h1 {
-            font-size: 42px;
-            font-weight: 800;
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
             background: linear-gradient(135deg, #667eea, #764ba2);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
-        .card {
-            background: rgba(28,28,30,0.9);
-            border-radius: 20px;
-            padding: 30px;
-            border: 1px solid rgba(255,255,255,0.1);
+        .header-icons {
+            display: flex;
+            gap: 20px;
         }
 
-        h2 {
-            margin-bottom: 25px;
+        .header-icons span {
             font-size: 22px;
-            text-align: center;
+            cursor: pointer;
+            opacity: 0.7;
         }
 
-        input {
+        /* Поиск */
+        .search {
+            padding: 10px 20px;
+        }
+
+        .search input {
             width: 100%;
-            padding: 16px;
+            padding: 12px 20px;
             background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 12px;
+            border-radius: 25px;
             color: white;
             font-size: 16px;
             outline: none;
-            margin-bottom: 15px;
         }
 
-        input:focus {
+        .search input:focus {
             border-color: #667eea;
         }
 
-        button {
-            width: 100%;
-            padding: 16px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
+        /* Список пользователей */
+        .users-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 20px;
+        }
+
+        .user-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
             cursor: pointer;
-            margin-top: 10px;
         }
 
-        .secondary-btn {
-            background: transparent;
-            border: 1px solid #667eea;
-            color: #667eea;
+        .user-item:hover {
+            background: rgba(255,255,255,0.02);
         }
 
-        .message {
-            padding: 12px;
-            border-radius: 10px;
-            margin: 15px 0;
+        .user-avatar {
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 600;
+            color: white;
+            flex-shrink: 0;
         }
 
-        .success {
-            background: rgba(52,199,89,0.15);
-            color: #34c759;
-            border: 1px solid #34c759;
+        .user-info {
+            flex: 1;
         }
 
-        .error {
-            background: rgba(255,59,48,0.15);
-            color: #ff3b30;
-            border: 1px solid #ff3b30;
+        .user-name {
+            font-size: 17px;
+            font-weight: 600;
+            margin-bottom: 5px;
         }
 
-        .info {
-            background: rgba(102,126,234,0.15);
-            color: #667eea;
-            border: 1px solid #667eea;
-        }
-
-        .switch-form {
-            text-align: center;
-            margin-top: 20px;
+        .user-username {
+            font-size: 14px;
             color: rgba(255,255,255,0.5);
         }
 
-        .switch-form a {
-            color: #667eea;
-            text-decoration: none;
-            font-weight: 600;
+        .empty-state {
+            text-align: center;
+            padding: 50px 20px;
+            color: rgba(255,255,255,0.3);
+            font-size: 16px;
+        }
+
+        /* Нижняя панель */
+        .bottom-nav {
+            background: rgba(28,28,30,0.9);
+            backdrop-filter: blur(10px);
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-around;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: rgba(255,255,255,0.5);
             cursor: pointer;
+            font-size: 12px;
+        }
+
+        .nav-item.active {
+            color: #667eea;
+        }
+
+        .nav-item span {
+            font-size: 22px;
+            margin-bottom: 4px;
+        }
+
+        /* Кнопка выхода */
+        .logout-btn {
+            margin: 20px;
+            padding: 12px;
+            background: rgba(255,59,48,0.1);
+            border: 1px solid #ff3b30;
+            border-radius: 12px;
+            color: #ff3b30;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="logo">
-            <h1>CZH</h1>
-        </div>
-
-        <div class="card">
-            <!-- Форма входа -->
-            <div id="loginForm">
-                <h2>Вход</h2>
-
-                <input type="text" id="loginUsername" placeholder="Username">
-                <input type="password" id="loginPassword" placeholder="Пароль">
-
-                <button onclick="login()">Войти</button>
-
-                <div class="switch-form">
-                    Нет аккаунта? <a onclick="showRegister()">Создать</a>
-                </div>
-            </div>
-
-            <!-- Форма регистрации (скрыта) -->
-            <div id="registerForm" style="display: none;">
-                <h2>Регистрация</h2>
-
-                <input type="text" id="regUsername" placeholder="Username">
-                <input type="password" id="regPassword" placeholder="Пароль">
-                <input type="password" id="regConfirmPassword" placeholder="Повторите пароль">
-
-                <button onclick="register()">Зарегистрироваться</button>
-
-                <div class="switch-form">
-                    Уже есть аккаунт? <a onclick="showLogin()">Войти</a>
-                </div>
-            </div>
-
-            <div id="message" class="message"></div>
+    <div class="header">
+        <h1>Контакты</h1>
+        <div class="header-icons">
+            <span>➕</span>
         </div>
     </div>
 
-    <script>
-        // База пользователей
-        let users = [];
+    <div class="search">
+        <input type="text" id="searchInput" placeholder="Поиск по username" oninput="filterUsers()">
+    </div>
 
-        // Загружаем пользователей из localStorage
-        try {
+    <div class="users-list" id="usersList">
+        <!-- Пользователи будут загружены через JS -->
+    </div>
+
+    <div class="bottom-nav">
+        <div class="nav-item active">
+            <span>👥</span>
+            <span>Контакты</span>
+        </div>
+        <div class="nav-item" onclick="goToSettings()">
+            <span>⚙️</span>
+            <span>Настройки</span>
+        </div>
+    </div>
+
+    <div class="logout-btn" onclick="logout()">
+        Выйти
+    </div>
+
+    <script>
+        // Текущий пользователь
+        let currentUser = null;
+        let allUsers = [];
+        let filteredUsers = [];
+
+        // Загрузка пользователя
+        function loadUser() {
+            const saved = localStorage.getItem('czh_user');
+            if (saved) {
+                try {
+                    currentUser = JSON.parse(saved);
+                } catch (e) {
+                    currentUser = null;
+                }
+            }
+            
+            if (!currentUser || !currentUser.loggedIn) {
+                window.location.href = 'index.html';
+            }
+        }
+
+        // Загрузка всех пользователей из базы
+        function loadUsers() {
+            // Получаем всех зарегистрированных пользователей
             const saved = localStorage.getItem('czh_users');
             if (saved) {
-                users = JSON.parse(saved);
-            } else {
-                // Тестовые пользователи
-                users = [
-                    { username: 'admin', password: 'admin123', name: 'Admin' },
-                    { username: 'user', password: 'user123', name: 'User' }
-                ];
-                localStorage.setItem('czh_users', JSON.stringify(users));
+                try {
+                    allUsers = JSON.parse(saved);
+                } catch (e) {
+                    allUsers = [];
+                }
             }
-        } catch (e) {
-            console.log('Ошибка загрузки пользователей');
+
+            // Убираем текущего пользователя из списка
+            if (currentUser) {
+                allUsers = allUsers.filter(u => u.username !== currentUser.username);
+            }
+
+            filteredUsers = [...allUsers];
+            renderUsers();
         }
 
-        // Переключение на форму регистрации
-        function showRegister() {
-            document.getElementById('loginForm').style.display = 'none';
-            document.getElementById('registerForm').style.display = 'block';
-            clearMessage();
-        }
-
-        // Переключение на форму входа
-        function showLogin() {
-            document.getElementById('registerForm').style.display = 'none';
-            document.getElementById('loginForm').style.display = 'block';
-            clearMessage();
-        }
-
-        // Регистрация
-        function register() {
-            const username = document.getElementById('regUsername').value.trim();
-            const password = document.getElementById('regPassword').value.trim();
-            const confirm = document.getElementById('regConfirmPassword').value.trim();
-
-            if (!username || !password || !confirm) {
-                showMessage('Заполните все поля', 'error');
-                return;
-            }
-
-            if (username.length < 3) {
-                showMessage('Username должен быть минимум 3 символа', 'error');
-                return;
-            }
-
-            if (password.length < 3) {
-                showMessage('Пароль должен быть минимум 3 символа', 'error');
-                return;
-            }
-
-            if (password !== confirm) {
-                showMessage('Пароли не совпадают', 'error');
-                return;
-            }
-
-            if (users.find(u => u.username === username)) {
-                showMessage('Пользователь уже существует', 'error');
-                return;
-            }
-
-            const newUser = {
-                username: username,
-                password: password,
-                name: username,
-                created: new Date().toISOString()
-            };
-
-            users.push(newUser);
-            localStorage.setItem('czh_users', JSON.stringify(users));
-
-            showMessage('Аккаунт создан! Теперь войдите', 'success');
-
-            document.getElementById('regUsername').value = '';
-            document.getElementById('regPassword').value = '';
-            document.getElementById('regConfirmPassword').value = '';
-
-            setTimeout(() => {
-                showLogin();
-                document.getElementById('loginUsername').value = username;
-            }, 1500);
-        }
-
-        // Вход
-        function login() {
-            const username = document.getElementById('loginUsername').value.trim();
-            const password = document.getElementById('loginPassword').value.trim();
-
-            if (!username || !password) {
-                showMessage('Введите username и пароль', 'error');
-                return;
-            }
-
-            const user = users.find(u => u.username === username && u.password === password);
-
-            if (user) {
-                const session = {
-                    uid: username,
-                    username: username,
-                    displayName: user.name || username,
-                    loggedIn: true,
-                    timestamp: new Date().toISOString()
-                };
-
-                localStorage.setItem('czh_user', JSON.stringify(session));
-                
-                showMessage('Вход выполнен', 'success');
-                
-                // Переход в чаты
-                setTimeout(() => {
-                    window.location.href = 'Chats.html';
-                }, 1000);
-            } else {
-                showMessage('Неверный username или пароль', 'error');
-            }
-        }
-
-        // Показать сообщение
-        function showMessage(text, type) {
-            const msg = document.getElementById('message');
-            msg.textContent = text;
-            msg.className = 'message ' + type;
+        // Отображение пользователей
+        function renderUsers() {
+            const container = document.getElementById('usersList');
             
-            setTimeout(() => {
-                msg.textContent = '';
-                msg.className = 'message';
-            }, 3000);
+            if (filteredUsers.length === 0) {
+                container.innerHTML = '<div class="empty-state'>Никого не найдено</div>';
+                return;
+            }
+
+            container.innerHTML = filteredUsers.map(user => `
+                <div class="user-item" onclick="openChat('${user.username}')">
+                    <div class="user-avatar">${user.username[0].toUpperCase()}</div>
+                    <div class="user-info">
+                        <div class="user-name">${user.name || user.username}</div>
+                        <div class="user-username">@${user.username}</div>
+                    </div>
+                </div>
+            `).join('');
         }
 
-        // Очистить сообщение
-        function clearMessage() {
-            const msg = document.getElementById('message');
-            msg.textContent = '';
-            msg.className = 'message';
+        // Поиск пользователей
+        function filterUsers() {
+            const query = document.getElementById('searchInput').value.toLowerCase().trim();
+            
+            if (!query) {
+                filteredUsers = [...allUsers];
+            } else {
+                filteredUsers = allUsers.filter(user => 
+                    user.username.toLowerCase().includes(query) || 
+                    (user.name && user.name.toLowerCase().includes(query))
+                );
+            }
+            
+            renderUsers();
         }
 
-        // Очищаем старую сессию при загрузке
-        window.onload = function() {
-            // Удаляем старую сессию, чтобы не было автоматического перехода
+        // Открыть чат с пользователем
+        function openChat(username) {
+            alert(`Чат с @${username} будет здесь`);
+            // Здесь потом будет переход в чат
+        }
+
+        // Настройки
+        function goToSettings() {
+            alert('Настройки появятся позже');
+        }
+
+        // Выход
+        function logout() {
             localStorage.removeItem('czh_user');
-            console.log('Сессия очищена, страница входа загружена');
+            window.location.href = 'index.html';
+        }
+
+        // Инициализация
+        window.onload = function() {
+            loadUser();
+            loadUsers();
         };
     </script>
 </body>
