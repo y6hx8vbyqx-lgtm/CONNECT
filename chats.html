@@ -84,6 +84,7 @@
             flex-direction: column;
             background: var(--bg-primary);
             padding-top: var(--safe-area-top);
+            padding-bottom: var(--safe-area-bottom);
             position: relative;
         }
 
@@ -166,7 +167,7 @@
             padding: 8px 12px;
             min-height: 100%;
             background: var(--bg-primary);
-            padding-bottom: 20px; /* Небольшой отступ для удобства */
+            padding-bottom: 20px;
         }
         .chats-list { display: flex; flex-direction: column; gap: 4px; }
         .chat-item {
@@ -515,6 +516,7 @@
             padding: 0 12px;
             flex-shrink: 0;
             z-index: 1000;
+            width: 100%;
         }
 
         .nav-item {
@@ -556,15 +558,22 @@
             pointer-events: none;
             transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             padding-top: var(--safe-area-top);
+            padding-bottom: 0;
         }
-        .chat-overlay.show { opacity: 1; pointer-events: auto; }
+        .chat-overlay.show { 
+            opacity: 1; 
+            pointer-events: auto; 
+        }
+        
         .chat-container { 
             flex: 1; 
             display: flex; 
             flex-direction: column; 
             height: 100%; 
             background: var(--bg-primary);
+            overflow: hidden;
         }
+        
         .chat-header {
             height: var(--header-height);
             background: var(--nav-bg);
@@ -577,6 +586,7 @@
             gap: 8px;
             flex-shrink: 0;
         }
+        
         .back-btn {
             width: 36px;
             height: 36px;
@@ -592,6 +602,7 @@
             transition: var(--transition-default);
         }
         .back-btn:hover { background: var(--bg-hover); }
+        
         .chat-user-info {
             display: flex;
             align-items: center;
@@ -599,6 +610,7 @@
             flex: 1;
             cursor: pointer;
         }
+        
         .chat-header-avatar {
             width: 40px;
             height: 40px;
@@ -614,13 +626,28 @@
             background-position: center;
             background-repeat: no-repeat;
         }
-        .chat-header-text { display: flex; flex-direction: column; }
+        
+        .chat-header-text { 
+            display: flex; 
+            flex-direction: column; 
+            min-width: 0;
+            flex: 1;
+        }
+        
         .chat-header-username {
             font-size: 16px;
             font-weight: 600;
             color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
-        .chat-header-status { font-size: 13px; color: var(--text-muted); }
+        
+        .chat-header-status { 
+            font-size: 13px; 
+            color: var(--text-muted); 
+        }
+        
         .chat-close-btn {
             width: 36px;
             height: 36px;
@@ -650,6 +677,7 @@
             background: var(--bg-primary);
         }
         .chat-messages::-webkit-scrollbar { display: none; }
+        
         .message {
             max-width: 78%;
             padding: 10px 14px;
@@ -755,11 +783,14 @@
             -webkit-backdrop-filter: blur(30px);
             border-top: 1px solid var(--border-light);
             padding: 8px 12px;
+            padding-bottom: max(8px, var(--safe-area-bottom));
             display: flex;
             flex-direction: column;
             gap: 8px;
             flex-shrink: 0;
+            width: 100%;
         }
+        
         .reply-container { width: 100%; }
         .reply-preview {
             background: var(--bg-tertiary);
@@ -789,11 +820,14 @@
             transition: var(--transition-default);
         }
         .reply-close-btn:hover { background: var(--bg-hover); }
+        
         .chat-input-wrapper {
             display: flex;
-            align-items: center;
+            align-items: flex-end;
             gap: 8px;
+            width: 100%;
         }
+        
         .menu-btn {
             width: 40px;
             height: 40px;
@@ -808,8 +842,10 @@
             font-size: 20px;
             transition: var(--transition-default);
             backdrop-filter: blur(10px);
+            flex-shrink: 0;
         }
         .menu-btn:hover { background: var(--bg-hover); }
+        
         .chat-input {
             flex: 1;
             background: var(--input-bg);
@@ -831,6 +867,7 @@
             background: var(--bg-tertiary);
         }
         .chat-input:disabled { opacity: 0.5; cursor: not-allowed; }
+        
         .chat-send-btn {
             width: 40px;
             height: 40px;
@@ -844,6 +881,7 @@
             cursor: pointer;
             font-size: 18px;
             transition: var(--transition-default);
+            flex-shrink: 0;
         }
         .chat-send-btn:hover:not(:disabled) { background: var(--accent-hover); transform: scale(1.05); }
         .chat-send-btn:active:not(:disabled) { transform: scale(0.95); }
@@ -2454,6 +2492,15 @@ document.addEventListener('touchstart', (e) => {
 document.addEventListener('click', (e) => {
     if (!searchResults.contains(e.target) && !searchInput.contains(e.target)) {
         searchResults.style.display = 'none';
+    }
+});
+
+// Проверка, что нижняя навигация видна при загрузке
+window.addEventListener('load', function() {
+    // Убедимся, что нижняя навигация отображается
+    const bottomNav = document.querySelector('.bottom-nav');
+    if (bottomNav) {
+        bottomNav.style.display = 'flex';
     }
 });
 </script>
