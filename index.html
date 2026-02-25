@@ -7,56 +7,414 @@
     
     <!-- PWA -->
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#1e1e1e">
+    <meta name="theme-color" content="#0a0a0a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
     
-    <!-- Fonts & Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     
-    <!-- CSS -->
-    <link rel="stylesheet" href="style.css">
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-color: #0a0a0a;
+            --bg-secondary: #1a1a1a;
+            --bg-tertiary: #252525;
+            --bg-input: #252525;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0a0;
+            --text-muted: #707070;
+            --accent-color: #2b7ef5;
+            --accent-hover: #4090f7;
+            --border-color: #333333;
+            --error-color: #ff4d4d;
+            --success-color: #4caf50;
+            --card-shadow: 0 8px 30px rgba(0, 0, 0, 0.8);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
+        }
+
+        /* Welcome Screen */
+        .welcome-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 600px;
+            text-align: center;
+        }
+
+        .logo-wrapper {
+            position: relative;
+            width: 130px;
+            height: 130px;
+            margin: 0 auto 30px;
+        }
+
+        .logo-circle {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(145deg, var(--accent-color), #1a5ec9);
+            border-radius: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 15px 30px rgba(43, 126, 245, 0.4);
+            transform: rotate(5deg);
+            transition: transform 0.3s ease;
+        }
+
+        .logo-circle i {
+            font-size: 60px;
+            color: white;
+            transform: rotate(-5deg);
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+        }
+
+        .at-badge {
+            position: absolute;
+            bottom: -5px;
+            right: -10px;
+            background: var(--bg-secondary);
+            color: var(--accent-color);
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            font-weight: bold;
+            border: 3px solid var(--accent-color);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        .rose-icon {
+            position: absolute;
+            top: -15px;
+            left: -15px;
+            width: 50px;
+            height: 50px;
+            background: var(--bg-tertiary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-color);
+            font-size: 24px;
+            border: 2px solid var(--border-color);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        .app-title {
+            font-size: 48px;
+            font-weight: 700;
+            margin: 10px 0 5px;
+            background: linear-gradient(to bottom, #ffffff, #cccccc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .app-subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            margin-bottom: 50px;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 16px 24px;
+            border: none;
+            border-radius: 14px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            font-family: inherit;
+        }
+
+        .btn-primary {
+            background: var(--accent-color);
+            color: white;
+            box-shadow: 0 5px 15px rgba(43, 126, 245, 0.4);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(43, 126, 245, 0.5);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: #2f2f2f;
+        }
+
+        .buttons-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        /* Auth Forms */
+        .auth-form {
+            background: var(--bg-secondary);
+            border-radius: 30px;
+            padding: 25px;
+            box-shadow: var(--card-shadow);
+            border: 1px solid var(--border-color);
+            position: relative;
+            animation: slideIn 0.3s ease;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .back-button {
+            position: absolute;
+            left: 20px;
+            top: 25px;
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .back-button:hover {
+            background: #333;
+            color: var(--text-primary);
+        }
+
+        .form-header {
+            text-align: center;
+            margin: 20px 0 30px;
+        }
+
+        .mini-logo {
+            width: 70px;
+            height: 70px;
+            background: rgba(43, 126, 245, 0.1);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 15px;
+            border: 1px solid var(--border-color);
+        }
+
+        .mini-logo i {
+            font-size: 32px;
+            color: var(--accent-color);
+        }
+
+        .form-header h2 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        /* Input Groups */
+        .input-group {
+            position: relative;
+            margin-bottom: 16px;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 16px 45px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            font-size: 16px;
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            background: #2a2a2a;
+        }
+
+        .input-group input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 18px;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        .toggle-password:hover {
+            color: var(--text-secondary);
+        }
+
+        /* Messages */
+        .error-message {
+            background: rgba(255, 77, 77, 0.1);
+            color: var(--error-color);
+            padding: 12px;
+            border-radius: 12px;
+            margin-top: 20px;
+            text-align: center;
+            font-size: 14px;
+            border: 1px solid rgba(255, 77, 77, 0.2);
+            display: none;
+        }
+
+        .success-message {
+            background: rgba(76, 175, 80, 0.1);
+            color: var(--success-color);
+            padding: 12px;
+            border-radius: 12px;
+            margin-top: 20px;
+            text-align: center;
+            font-size: 14px;
+            border: 1px solid rgba(76, 175, 80, 0.2);
+        }
+
+        /* Animations */
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes float {
+            0%, 100% { transform: rotate(5deg) translateY(0); }
+            50% { transform: rotate(5deg) translateY(-8px); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .logo-circle {
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .at-badge {
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .rose-icon {
+            animation: spin 10s linear infinite;
+        }
+
+        /* Responsive */
+        @media (max-width: 480px) {
+            .container { padding: 16px; }
+            .auth-form { padding: 20px; }
+            .app-title { font-size: 42px; }
+        }
+    </style>
 </head>
 <body>
-    <div class="container" id="app">
-        <!-- Главный экран с логотипом -->
-        <div class="welcome-screen" id="welcomeScreen">
-            <div class="logo-animation">
+    <div class="container">
+        <!-- Welcome Screen -->
+        <div id="welcomeScreen" class="welcome-screen">
+            <div class="logo-wrapper">
                 <div class="logo-circle">
-                    <i class="fas fa-paper-plane paper-plane"></i>
-                    <span class="at-symbol">@</span>
+                    <i class="fas fa-paper-plane"></i>
                 </div>
-                <div class="wind-rose">
+                <div class="at-badge">@</div>
+                <div class="rose-icon">
                     <i class="fas fa-location-dot"></i>
                 </div>
             </div>
             
-            <h1 class="app-name">Contegg</h1>
-            <p class="app-tagline">connect & chat</p>
+            <h1 class="app-title">Contegg</h1>
+            <p class="app-subtitle">CONNECT · CHAT</p>
             
-            <div class="button-group">
-                <button class="btn btn-primary" id="showRegister">
+            <div class="buttons-container">
+                <button class="btn btn-primary" id="showRegisterBtn">
                     <i class="fas fa-pen"></i>
                     Создать аккаунт
                 </button>
-                <button class="btn btn-secondary" id="showLogin">
+                <button class="btn btn-secondary" id="showLoginBtn">
                     <i class="fas fa-key"></i>
                     Войти
                 </button>
             </div>
         </div>
 
-        <!-- Форма регистрации -->
-        <div class="auth-form register-form hidden" id="registerForm">
-            <button class="back-btn" id="backFromRegister">
+        <!-- Register Form -->
+        <div id="registerForm" class="auth-form hidden">
+            <button class="back-button" id="backFromRegister">
                 <i class="fas fa-arrow-left"></i>
             </button>
             
             <div class="form-header">
                 <div class="mini-logo">
-                    <i class="fas fa-paper-plane"></i>
+                    <i class="fas fa-pen"></i>
                 </div>
                 <h2>Регистрация</h2>
             </div>
@@ -64,50 +422,32 @@
             <form id="registerFormElement">
                 <div class="input-group">
                     <i class="fas fa-user input-icon"></i>
-                    <input 
-                        type="text" 
-                        id="registerUsername" 
-                        placeholder="Имя пользователя"
-                        autocomplete="username"
-                        required
-                    >
+                    <input type="text" id="regUsername" placeholder="Имя пользователя" required>
                 </div>
 
                 <div class="input-group">
                     <i class="fas fa-lock input-icon"></i>
-                    <input 
-                        type="password" 
-                        id="registerPassword" 
-                        placeholder="Пароль"
-                        autocomplete="new-password"
-                        required
-                    >
-                    <i class="fas fa-eye toggle-password" id="toggleRegisterPassword"></i>
+                    <input type="password" id="regPassword" placeholder="Пароль" required>
+                    <i class="fas fa-eye toggle-password" onclick="togglePassword('regPassword', this)"></i>
                 </div>
 
                 <div class="input-group">
                     <i class="fas fa-lock input-icon"></i>
-                    <input 
-                        type="password" 
-                        id="confirmPassword" 
-                        placeholder="Подтвердите пароль"
-                        autocomplete="new-password"
-                        required
-                    >
+                    <input type="password" id="regConfirm" placeholder="Подтвердите пароль" required>
                 </div>
 
-                <button type="submit" class="btn btn-primary btn-block">
+                <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
                     <span>Зарегистрироваться</span>
                     <i class="fas fa-arrow-right"></i>
                 </button>
             </form>
 
-            <div class="error-message" id="registerError"></div>
+            <div id="registerError" class="error-message"></div>
         </div>
 
-        <!-- Форма входа -->
-        <div class="auth-form login-form hidden" id="loginForm">
-            <button class="back-btn" id="backFromLogin">
+        <!-- Login Form -->
+        <div id="loginForm" class="auth-form hidden">
+            <button class="back-button" id="backFromLogin">
                 <i class="fas fa-arrow-left"></i>
             </button>
             
@@ -121,41 +461,210 @@
             <form id="loginFormElement">
                 <div class="input-group">
                     <i class="fas fa-user input-icon"></i>
-                    <input 
-                        type="text" 
-                        id="loginUsername" 
-                        placeholder="Имя пользователя"
-                        autocomplete="username"
-                        required
-                    >
+                    <input type="text" id="loginUsername" placeholder="Имя пользователя" required>
                 </div>
 
                 <div class="input-group">
                     <i class="fas fa-lock input-icon"></i>
-                    <input 
-                        type="password" 
-                        id="loginPassword" 
-                        placeholder="Пароль"
-                        autocomplete="current-password"
-                        required
-                    >
-                    <i class="fas fa-eye toggle-password" id="toggleLoginPassword"></i>
+                    <input type="password" id="loginPassword" placeholder="Пароль" required>
+                    <i class="fas fa-eye toggle-password" onclick="togglePassword('loginPassword', this)"></i>
                 </div>
 
-                <button type="submit" class="btn btn-primary btn-block">
+                <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
                     <span>Войти</span>
                     <i class="fas fa-arrow-right"></i>
                 </button>
             </form>
 
-            <div class="error-message" id="loginError"></div>
+            <div id="loginError" class="error-message"></div>
         </div>
     </div>
 
-    <!-- Скрипты -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="firebase.js"></script>
-    <script src="script.js"></script>
+    <script>
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBKTPyHKC_Mp1ZO6NDiCaJVz3w1u_PWfUo",
+            authDomain: "contegg-b3b4b.firebaseapp.com",
+            projectId: "contegg-b3b4b",
+            storageBucket: "contegg-b3b4b.firebasestorage.app",
+            messagingSenderId: "678323780149",
+            appId: "1:678323780149:web:9717ac593a21d97a19cf7c"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+
+        // DOM Elements
+        const welcomeScreen = document.getElementById('welcomeScreen');
+        const registerForm = document.getElementById('registerForm');
+        const loginForm = document.getElementById('loginForm');
+        const showRegisterBtn = document.getElementById('showRegisterBtn');
+        const showLoginBtn = document.getElementById('showLoginBtn');
+        const backFromRegister = document.getElementById('backFromRegister');
+        const backFromLogin = document.getElementById('backFromLogin');
+        const registerFormElement = document.getElementById('registerFormElement');
+        const loginFormElement = document.getElementById('loginFormElement');
+        const registerError = document.getElementById('registerError');
+        const loginError = document.getElementById('loginError');
+
+        // Toggle Password
+        window.togglePassword = function(inputId, icon) {
+            const input = document.getElementById(inputId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        };
+
+        // Navigation
+        showRegisterBtn.addEventListener('click', () => {
+            welcomeScreen.classList.add('hidden');
+            registerForm.classList.remove('hidden');
+        });
+
+        showLoginBtn.addEventListener('click', () => {
+            welcomeScreen.classList.add('hidden');
+            loginForm.classList.remove('hidden');
+        });
+
+        backFromRegister.addEventListener('click', () => {
+            registerForm.classList.add('hidden');
+            welcomeScreen.classList.remove('hidden');
+            registerFormElement.reset();
+            registerError.style.display = 'none';
+        });
+
+        backFromLogin.addEventListener('click', () => {
+            loginForm.classList.add('hidden');
+            welcomeScreen.classList.remove('hidden');
+            loginFormElement.reset();
+            loginError.style.display = 'none';
+        });
+
+        // Register
+        registerFormElement.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('regUsername').value.trim();
+            const password = document.getElementById('regPassword').value;
+            const confirm = document.getElementById('regConfirm').value;
+
+            // Validation
+            if (!username || !password || !confirm) {
+                showError(registerError, 'Заполните все поля');
+                return;
+            }
+
+            if (password !== confirm) {
+                showError(registerError, 'Пароли не совпадают');
+                return;
+            }
+
+            if (password.length < 6) {
+                showError(registerError, 'Пароль должен быть не менее 6 символов');
+                return;
+            }
+
+            if (username.length < 3) {
+                showError(registerError, 'Имя должно быть не менее 3 символов');
+                return;
+            }
+
+            // Show loading
+            const submitBtn = registerFormElement.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Регистрация...';
+            submitBtn.disabled = true;
+
+            try {
+                // Firebase registration
+                const email = `${username.toLowerCase()}@contegg.app`;
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                
+                await userCredential.user.updateProfile({
+                    displayName: username
+                });
+
+                showSuccess(registerError, 'Регистрация успешна!');
+                
+                setTimeout(() => {
+                    window.location.href = '/chat.html';
+                }, 1500);
+
+            } catch (error) {
+                console.error(error);
+                let message = 'Ошибка регистрации';
+                if (error.code === 'auth/email-already-in-use') {
+                    message = 'Это имя пользователя уже занято';
+                }
+                showError(registerError, message);
+                
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            }
+        });
+
+        // Login
+        loginFormElement.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+
+            if (!username || !password) {
+                showError(loginError, 'Заполните все поля');
+                return;
+            }
+
+            const submitBtn = loginFormElement.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Вход...';
+            submitBtn.disabled = true;
+
+            try {
+                const email = `${username.toLowerCase()}@contegg.app`;
+                await auth.signInWithEmailAndPassword(email, password);
+                
+                showSuccess(loginError, 'Вход выполнен!');
+                
+                setTimeout(() => {
+                    window.location.href = '/chat.html';
+                }, 1500);
+
+            } catch (error) {
+                console.error(error);
+                showError(loginError, 'Неверное имя или пароль');
+                
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            }
+        });
+
+        // Check auth state
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                window.location.href = '/chat.html';
+            }
+        });
+
+        // Helper functions
+        function showError(element, message) {
+            element.textContent = message;
+            element.style.display = 'block';
+            element.className = 'error-message';
+        }
+
+        function showSuccess(element, message) {
+            element.textContent = message;
+            element.style.display = 'block';
+            element.className = 'success-message';
+        }
+    </script>
 </body>
 </html>
