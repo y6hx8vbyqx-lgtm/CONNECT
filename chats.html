@@ -147,7 +147,6 @@
             -webkit-overflow-scrolling: touch;
             position: relative;
             scrollbar-width: none;
-            /* Убираем нижний отступ - он не нужен */
         }
         .main-content::-webkit-scrollbar { display: none; }
 
@@ -167,6 +166,7 @@
             padding: 8px 12px;
             min-height: 100%;
             background: var(--bg-primary);
+            padding-bottom: 20px; /* Небольшой отступ для удобства */
         }
         .chats-list { display: flex; flex-direction: column; gap: 4px; }
         .chat-item {
@@ -502,7 +502,7 @@
             background: var(--bg-hover);
         }
 
-        /* ===== НИЖНЯЯ НАВИГАЦИЯ (ВСЕГДА ВНИЗУ) ===== */
+        /* ===== НИЖНЯЯ НАВИГАЦИЯ ===== */
         .bottom-nav {
             height: var(--bottom-nav-height);
             background: var(--nav-bg);
@@ -515,7 +515,6 @@
             padding: 0 12px;
             flex-shrink: 0;
             z-index: 1000;
-            box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.5);
         }
 
         .nav-item {
