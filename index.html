@@ -5,11 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Contegg · Messenger</title>
     
-    <!-- Для PWA позже добавишь -->
     <meta name="theme-color" content="#0a0a0a">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
@@ -19,7 +16,6 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     
     <style>
-        /* Стили из предыдущего сообщения - оставь те же */
         * {
             margin: 0;
             padding: 0;
@@ -85,14 +81,12 @@
             justify-content: center;
             box-shadow: 0 15px 30px rgba(43, 126, 245, 0.4);
             transform: rotate(5deg);
-            transition: transform 0.3s ease;
         }
 
         .logo-circle i {
             font-size: 60px;
             color: white;
             transform: rotate(-5deg);
-            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
         }
 
         .at-badge {
@@ -110,7 +104,6 @@
             font-size: 26px;
             font-weight: bold;
             border: 3px solid var(--accent-color);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
         }
 
         .rose-icon {
@@ -127,7 +120,6 @@
             color: var(--accent-color);
             font-size: 24px;
             border: 2px solid var(--border-color);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
         }
 
         .app-title {
@@ -173,11 +165,6 @@
         .btn-primary:hover {
             background: var(--accent-hover);
             transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(43, 126, 245, 0.5);
-        }
-
-        .btn-primary:active {
-            transform: translateY(0);
         }
 
         .btn-secondary {
@@ -205,7 +192,6 @@
             box-shadow: var(--card-shadow);
             border: 1px solid var(--border-color);
             position: relative;
-            animation: slideIn 0.3s ease;
         }
 
         .hidden {
@@ -223,7 +209,6 @@
             border: 1px solid var(--border-color);
             color: var(--text-secondary);
             cursor: pointer;
-            transition: all 0.2s ease;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -307,10 +292,6 @@
             font-size: 18px;
         }
 
-        .toggle-password:hover {
-            color: var(--text-secondary);
-        }
-
         /* Messages */
         .error-message {
             background: rgba(255, 77, 77, 0.1);
@@ -374,7 +355,10 @@
             animation: spin 10s linear infinite;
         }
 
-        /* Responsive */
+        .auth-form {
+            animation: slideIn 0.3s ease;
+        }
+
         @media (max-width: 480px) {
             .container { padding: 16px; }
             .auth-form { padding: 20px; }
@@ -421,10 +405,15 @@
                 <div class="mini-logo">
                     <i class="fas fa-user-plus"></i>
                 </div>
-                <h2>Создать аккаунт</h2>
+                <h2>Регистрация</h2>
             </div>
 
             <form id="registerFormElement">
+                <div class="input-group">
+                    <i class="fas fa-envelope input-icon"></i>
+                    <input type="email" id="regEmail" placeholder="Электронная почта" required>
+                </div>
+
                 <div class="input-group">
                     <i class="fas fa-user input-icon"></i>
                     <input type="text" id="regUsername" placeholder="Имя пользователя" required>
@@ -432,7 +421,7 @@
 
                 <div class="input-group">
                     <i class="fas fa-lock input-icon"></i>
-                    <input type="password" id="regPassword" placeholder="Пароль (минимум 6 символов)" required>
+                    <input type="password" id="regPassword" placeholder="Пароль" required>
                     <i class="fas fa-eye toggle-password" onclick="togglePassword('regPassword', this)"></i>
                 </div>
 
@@ -460,13 +449,13 @@
                 <div class="mini-logo">
                     <i class="fas fa-sign-in-alt"></i>
                 </div>
-                <h2>Вход в аккаунт</h2>
+                <h2>Вход</h2>
             </div>
 
             <form id="loginFormElement">
                 <div class="input-group">
-                    <i class="fas fa-user input-icon"></i>
-                    <input type="text" id="loginUsername" placeholder="Имя пользователя" required>
+                    <i class="fas fa-envelope input-icon"></i>
+                    <input type="email" id="loginEmail" placeholder="Электронная почта" required>
                 </div>
 
                 <div class="input-group">
@@ -497,7 +486,7 @@
         };
 
         // Initialize Firebase
-        const app = firebase.initializeApp(firebaseConfig);
+        firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
 
         // DOM Elements
@@ -556,13 +545,19 @@
         registerFormElement.addEventListener('submit', async (e) => {
             e.preventDefault();
             
+            const email = document.getElementById('regEmail').value.trim();
             const username = document.getElementById('regUsername').value.trim();
             const password = document.getElementById('regPassword').value;
             const confirm = document.getElementById('regConfirm').value;
 
             // Validation
-            if (!username || !password || !confirm) {
+            if (!email || !username || !password || !confirm) {
                 showError(registerError, 'Заполните все поля');
+                return;
+            }
+
+            if (!email.includes('@') || !email.includes('.')) {
+                showError(registerError, 'Введите корректный email');
                 return;
             }
 
@@ -577,7 +572,7 @@
             }
 
             if (username.length < 3) {
-                showError(registerError, 'Имя должно быть не менее 3 символов');
+                showError(registerError, 'Имя пользователя должно быть не менее 3 символов');
                 return;
             }
 
@@ -588,10 +583,10 @@
             submitBtn.disabled = true;
 
             try {
-                // Firebase registration
-                const email = `${username.toLowerCase()}@contegg.app`;
+                // Create user with email and password
                 const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                 
+                // Update profile with username
                 await userCredential.user.updateProfile({
                     displayName: username
                 });
@@ -606,10 +601,21 @@
                 console.error('Registration error:', error);
                 
                 let message = 'Ошибка регистрации';
-                if (error.code === 'auth/email-already-in-use') {
-                    message = 'Это имя пользователя уже занято';
-                } else if (error.code === 'auth/configuration-not-found') {
-                    message = 'Ошибка: Firebase Authentication не включен. Включи его в консоли Firebase';
+                switch(error.code) {
+                    case 'auth/email-already-in-use':
+                        message = 'Этот email уже зарегистрирован';
+                        break;
+                    case 'auth/invalid-email':
+                        message = 'Некорректный email';
+                        break;
+                    case 'auth/weak-password':
+                        message = 'Слишком слабый пароль';
+                        break;
+                    case 'auth/configuration-not-found':
+                        message = 'Ошибка: Firebase Authentication не включен. Включи его в консоли Firebase';
+                        break;
+                    default:
+                        message = error.message;
                 }
                 
                 showError(registerError, message);
@@ -623,10 +629,10 @@
         loginFormElement.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            const username = document.getElementById('loginUsername').value.trim();
+            const email = document.getElementById('loginEmail').value.trim();
             const password = document.getElementById('loginPassword').value;
 
-            if (!username || !password) {
+            if (!email || !password) {
                 showError(loginError, 'Заполните все поля');
                 return;
             }
@@ -637,7 +643,6 @@
             submitBtn.disabled = true;
 
             try {
-                const email = `${username.toLowerCase()}@contegg.app`;
                 await auth.signInWithEmailAndPassword(email, password);
                 
                 showSuccess(loginError, 'Вход выполнен! Перенаправление...');
@@ -649,9 +654,20 @@
             } catch (error) {
                 console.error('Login error:', error);
                 
-                let message = 'Неверное имя или пароль';
-                if (error.code === 'auth/configuration-not-found') {
-                    message = 'Ошибка: Firebase Authentication не включен';
+                let message = 'Неверный email или пароль';
+                switch(error.code) {
+                    case 'auth/user-not-found':
+                        message = 'Пользователь не найден';
+                        break;
+                    case 'auth/wrong-password':
+                        message = 'Неверный пароль';
+                        break;
+                    case 'auth/invalid-email':
+                        message = 'Некорректный email';
+                        break;
+                    case 'auth/configuration-not-found':
+                        message = 'Ошибка: Firebase Authentication не включен';
+                        break;
                 }
                 
                 showError(loginError, message);
@@ -661,10 +677,11 @@
             }
         });
 
-        // Check auth state
+        // Check if user is already logged in
         auth.onAuthStateChanged((user) => {
             if (user) {
-                console.log('User logged in:', user);
+                console.log('User logged in:', user.email);
+                // Uncomment to auto-redirect
                 // window.location.href = '/chat.html';
             }
         });
@@ -683,4 +700,4 @@
         }
     </script>
 </body>
-</html>
+</html></html>
