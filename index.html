@@ -5,20 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Contegg · Messenger</title>
     
-    <!-- PWA -->
-    <link rel="manifest" href="manifest.json">
+    <!-- Для PWA позже добавишь -->
     <meta name="theme-color" content="#0a0a0a">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     
-    <!-- Firebase -->
+    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     
     <style>
+        /* Стили из предыдущего сообщения - оставь те же */
         * {
             margin: 0;
             padding: 0;
@@ -173,6 +174,10 @@
             background: var(--accent-hover);
             transform: translateY(-2px);
             box-shadow: 0 8px 20px rgba(43, 126, 245, 0.5);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
         }
 
         .btn-secondary {
@@ -387,7 +392,7 @@
                 </div>
                 <div class="at-badge">@</div>
                 <div class="rose-icon">
-                    <i class="fas fa-location-dot"></i>
+                    <i class="fas fa-compass"></i>
                 </div>
             </div>
             
@@ -414,9 +419,9 @@
             
             <div class="form-header">
                 <div class="mini-logo">
-                    <i class="fas fa-pen"></i>
+                    <i class="fas fa-user-plus"></i>
                 </div>
-                <h2>Регистрация</h2>
+                <h2>Создать аккаунт</h2>
             </div>
 
             <form id="registerFormElement">
@@ -427,7 +432,7 @@
 
                 <div class="input-group">
                     <i class="fas fa-lock input-icon"></i>
-                    <input type="password" id="regPassword" placeholder="Пароль" required>
+                    <input type="password" id="regPassword" placeholder="Пароль (минимум 6 символов)" required>
                     <i class="fas fa-eye toggle-password" onclick="togglePassword('regPassword', this)"></i>
                 </div>
 
@@ -453,9 +458,9 @@
             
             <div class="form-header">
                 <div class="mini-logo">
-                    <i class="fas fa-key"></i>
+                    <i class="fas fa-sign-in-alt"></i>
                 </div>
-                <h2>Вход</h2>
+                <h2>Вход в аккаунт</h2>
             </div>
 
             <form id="loginFormElement">
@@ -492,7 +497,7 @@
         };
 
         // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
+        const app = firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
 
         // DOM Elements
@@ -591,18 +596,22 @@
                     displayName: username
                 });
 
-                showSuccess(registerError, 'Регистрация успешна!');
+                showSuccess(registerError, 'Регистрация успешна! Перенаправление...');
                 
                 setTimeout(() => {
                     window.location.href = '/chat.html';
                 }, 1500);
 
             } catch (error) {
-                console.error(error);
+                console.error('Registration error:', error);
+                
                 let message = 'Ошибка регистрации';
                 if (error.code === 'auth/email-already-in-use') {
                     message = 'Это имя пользователя уже занято';
+                } else if (error.code === 'auth/configuration-not-found') {
+                    message = 'Ошибка: Firebase Authentication не включен. Включи его в консоли Firebase';
                 }
+                
                 showError(registerError, message);
                 
                 submitBtn.innerHTML = originalText;
@@ -631,15 +640,21 @@
                 const email = `${username.toLowerCase()}@contegg.app`;
                 await auth.signInWithEmailAndPassword(email, password);
                 
-                showSuccess(loginError, 'Вход выполнен!');
+                showSuccess(loginError, 'Вход выполнен! Перенаправление...');
                 
                 setTimeout(() => {
                     window.location.href = '/chat.html';
                 }, 1500);
 
             } catch (error) {
-                console.error(error);
-                showError(loginError, 'Неверное имя или пароль');
+                console.error('Login error:', error);
+                
+                let message = 'Неверное имя или пароль';
+                if (error.code === 'auth/configuration-not-found') {
+                    message = 'Ошибка: Firebase Authentication не включен';
+                }
+                
+                showError(loginError, message);
                 
                 submitBtn.innerHTML = originalText;
                 submitBtn.disabled = false;
@@ -649,7 +664,8 @@
         // Check auth state
         auth.onAuthStateChanged((user) => {
             if (user) {
-                window.location.href = '/chat.html';
+                console.log('User logged in:', user);
+                // window.location.href = '/chat.html';
             }
         });
 
