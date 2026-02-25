@@ -43,6 +43,7 @@
             --success-color: #4caf50;
             --online-color: #4caf50;
             --card-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            --safe-area-top: env(safe-area-inset-top, 0px);
             --header-height: 60px;
             --bottom-nav-height: 70px;
         }
@@ -53,6 +54,7 @@
             color: var(--text-primary);
             height: 100vh;
             overflow: hidden;
+            padding-top: var(--safe-area-top);
         }
 
         /* App Container */
@@ -63,7 +65,7 @@
             position: relative;
         }
 
-        /* Header */
+        /* Header - с отступом для мобильных */
         .header {
             height: var(--header-height);
             background: var(--bg-secondary);
@@ -72,11 +74,24 @@
             align-items: center;
             justify-content: space-between;
             padding: 0 16px;
+            padding-top: max(0px, env(safe-area-inset-top));
             position: sticky;
             top: 0;
             z-index: 100;
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
+        }
+
+        /* Медиа-запрос для мобильных устройств */
+        @media (max-width: 768px) {
+            .header {
+                padding-top: max(15px, env(safe-area-inset-top));
+                height: calc(var(--header-height) + 10px);
+            }
+            
+            .search-container {
+                padding-top: 5px;
+            }
         }
 
         .header-left {
@@ -316,6 +331,7 @@
             align-items: center;
             justify-content: space-around;
             padding: 0 12px;
+            padding-bottom: env(safe-area-inset-bottom, 0px);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
         }
@@ -431,7 +447,7 @@
             color: var(--text-primary);
         }
 
-        .result-email {
+        .result-username {
             font-size: 13px;
             color: var(--text-muted);
         }
@@ -530,6 +546,7 @@
         let currentUserId = null;
         let pinnedChats = new Set();
         let selectedChatId = null;
+        let usersCache = new Map(); // Кэш пользователей
 
         // DOM Elements
         const chatsList = document.getElementById('chatsList');
@@ -543,7 +560,7 @@
         // Check auth state
         auth.onAuthStateChanged(async (user) => {
             if (!user) {
-                window.location.href = '/index.html';
+                window.location.href = 'index.html';
                 return;
             }
             
@@ -566,13 +583,15 @@
         // Save user to Firestore
         async function saveUserToFirestore(user) {
             try {
+                const username = user.displayName || user.email.split('@')[0];
                 await db.collection('users').doc(user.uid).set({
                     uid: user.uid,
                     email: user.email,
-                    displayName: user.displayName || user.email.split('@')[0],
+                    username: username,
+                    displayName: username,
                     online: true,
                     lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
-                    avatar: user.displayName ? user.displayName[0].toUpperCase() : 'U'
+                    avatar: username[0].toUpperCase()
                 }, { merge: true });
             } catch (error) {
                 console.error('Error saving user:', error);
@@ -599,17 +618,43 @@
             db.collection('chats')
                 .where('participants', 'array-contains', currentUserId)
                 .orderBy('lastMessageTime', 'desc')
-                .onSnapshot((snapshot) => {
+                .onSnapshot(async (snapshot) => {
                     const chats = [];
+                    
+                    // Собираем все ID участников для загрузки
+                    const participantIds = new Set();
                     snapshot.forEach(doc => {
                         const chat = { id: doc.id, ...doc.data() };
                         chats.push(chat);
+                        chat.participants.forEach(id => participantIds.add(id));
                     });
+                    
+                    // Загружаем данные всех участников
+                    await loadUsersData([...participantIds]);
                     
                     displayChats(chats);
                 }, (error) => {
                     console.error('Error loading chats:', error);
                 });
+        }
+
+        // Загрузка данных пользователей
+        async function loadUsersData(userIds) {
+            const uncached = userIds.filter(id => !usersCache.has(id) && id !== currentUserId);
+            
+            if (uncached.length === 0) return;
+            
+            // Загружаем пачками по 10
+            for (let i = 0; i < uncached.length; i += 10) {
+                const batch = uncached.slice(i, i + 10);
+                const users = await db.collection('users')
+                    .where('uid', 'in', batch)
+                    .get();
+                
+                users.forEach(doc => {
+                    usersCache.set(doc.id, doc.data());
+                });
+            }
         }
 
         // Display chats
@@ -642,18 +687,20 @@
             
             for (const chat of sortedChats) {
                 const otherParticipantId = chat.participants.find(p => p !== currentUserId);
-                const chatName = chat.name || `User ${otherParticipantId.slice(0, 6)}`;
+                const otherUser = usersCache.get(otherParticipantId) || {};
+                const chatName = otherUser.displayName || otherUser.username || 'Пользователь';
                 const lastMessage = chat.lastMessage || 'Нет сообщений';
                 const time = chat.lastMessageTime?.toDate?.() || new Date();
                 const timeString = formatTime(time);
                 const isPinned = pinnedChats.has(chat.id);
                 const avatar = chatName[0].toUpperCase();
+                const isOnline = otherUser.online || false;
                 
                 html += `
                     <div class="chat-item ${isPinned ? 'pinned' : ''}" data-chat-id="${chat.id}" data-user-id="${otherParticipantId || ''}">
                         <div class="chat-avatar">
                             ${avatar}
-                            ${chat.online ? '<span class="online-indicator"></span>' : ''}
+                            ${isOnline ? '<span class="online-indicator"></span>' : ''}
                         </div>
                         <div class="chat-info">
                             <div class="chat-header">
@@ -710,7 +757,7 @@
             const now = new Date();
             const diff = now - date;
             
-            if (diff < 60000) return 'только что';
+            if (diff < 60000) return 'сейчас';
             if (diff < 3600000) return `${Math.floor(diff / 60000)} мин`;
             if (diff < 86400000) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             if (diff < 604800000) return ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'][date.getDay()];
@@ -821,8 +868,8 @@
             try {
                 const usersRef = db.collection('users');
                 const snapshot = await usersRef
-                    .where('displayName', '>=', query)
-                    .where('displayName', '<=', query + '\uf8ff')
+                    .where('username', '>=', query)
+                    .where('username', '<=', query + '\uf8ff')
                     .limit(10)
                     .get();
                 
@@ -839,10 +886,10 @@
                     
                     html += `
                         <div class="search-result-item" data-user-id="${user.uid}">
-                            <div class="result-avatar">${user.displayName[0].toUpperCase()}</div>
+                            <div class="result-avatar">${(user.username || 'U')[0].toUpperCase()}</div>
                             <div class="result-info">
-                                <div class="result-name">${user.displayName}</div>
-                                <div class="result-email">${user.email}</div>
+                                <div class="result-name">${user.username || 'Пользователь'}</div>
+                                <div class="result-username">@${user.username || 'user'}</div>
                             </div>
                         </div>
                     `;
@@ -904,6 +951,17 @@
                 };
                 
                 const docRef = await db.collection('chats').add(newChat);
+                
+                // Send welcome message
+                await db.collection('messages').add({
+                    chatId: docRef.id,
+                    senderId: currentUserId,
+                    senderName: currentUser.displayName || 'Пользователь',
+                    text: 'Чат создан',
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    readBy: [currentUserId]
+                });
+                
                 openChat(docRef.id, otherUserId);
                 
             } catch (error) {
@@ -920,7 +978,7 @@
             // Animate and redirect
             document.body.style.animation = 'slideOut 0.2s ease';
             setTimeout(() => {
-                window.location.href = '/chat.html';
+                window.location.href = 'chat.html';
             }, 150);
         }
 
@@ -937,7 +995,7 @@
                             if (Notification.permission === 'granted') {
                                 new Notification('Новый чат', {
                                     body: 'У вас новый чат',
-                                    icon: '/icons/icon-192x192.png'
+                                    icon: 'icons/icon-192x192.png'
                                 });
                             }
                         }
