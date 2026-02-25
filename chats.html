@@ -31,62 +31,66 @@
 
         /* ===== VARIABLES ===== */
         :root {
-            /* Telegram Dark Theme Colors - без чистого чёрного */
-            --bg-primary: #0a0a0a;
+            /* Telegram Dark Theme - точные цвета */
+            --bg-primary: #0b0b0b;
             --bg-secondary: #1c1c1e;
             --bg-tertiary: #2c2c2e;
             --bg-input: #1c1c1e;
             
-            /* Основные цвета */
+            /* Текст */
             --text-primary: #ffffff;
             --text-secondary: rgba(255, 255, 255, 0.8);
-            --text-muted: rgba(255, 255, 255, 0.4);
+            --text-muted: rgba(255, 255, 255, 0.55);
             --text-hint: rgba(255, 255, 255, 0.3);
             
             /* Акцент */
-            --accent-color: #2b7ef5;
-            --accent-hover: #4090f7;
+            --accent-blue: #2ea6ff;
+            --accent-blue-rgb: 46, 166, 255;
             
             /* Границы */
-            --border-light: rgba(255, 255, 255, 0.06);
+            --border-light: rgba(255, 255, 255, 0.05);
             --border-medium: rgba(255, 255, 255, 0.1);
             
-            /* Статусы */
-            --online-color: #4caf50;
-            --danger-color: #ff453a;
-            --pinned-color: #ffd60a;
-            
-            /* Фоны с полупрозрачностью */
+            /* Фоны с размытием */
             --nav-bg: rgba(28, 28, 30, 0.85);
-            --input-bg: rgba(44, 44, 46, 0.9);
+            --tab-bg: rgba(28, 28, 30, 0.9);
             --card-bg: rgba(28, 28, 30, 0.95);
             
-            /* Размеры */
+            /* Размеры - Telegram точные */
             --safe-area-top: env(safe-area-inset-top, 0px);
             --safe-area-bottom: env(safe-area-inset-bottom, 0px);
-            --header-height: 56px;
-            --input-height: 60px;
-            --bottom-nav-height: 70px;
+            --nav-height: 56px;
+            --search-height: 44px;
+            --filter-height: 44px;
+            --tab-height: 83px;
+            --row-height: 76px;
+            --avatar-size: 56px;
             
             /* Скругления */
-            --radius-bubble: 18px;
-            --radius-card: 20px;
-            --radius-input: 20px;
             --radius-avatar: 50%;
+            --radius-search: 18px;
+            --radius-filter: 16px;
+            --radius-badge: 10px;
+            
+            /* Типографика */
+            --font-title: 17px;
+            --font-name: 17px;
+            --font-preview: 15px;
+            --font-time: 13px;
+            --font-badge: 13px;
             
             /* Анимации */
             --transition-default: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             
-            /* Тени */
-            --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.4);
-            --shadow-bubble: 0 2px 5px rgba(0, 0, 0, 0.2);
+            /* Фон с градиентом */
+            --bg-gradient: linear-gradient(180deg, #0b0b0b 0%, #0f0f0f 100%);
         }
 
         /* ===== GLOBAL STYLES ===== */
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
             background: var(--bg-primary);
+            background: var(--bg-gradient);
             color: var(--text-primary);
             height: 100vh;
             overflow: hidden;
@@ -103,12 +107,12 @@
             flex-direction: column;
             padding-top: var(--safe-area-top);
             padding-bottom: var(--safe-area-bottom);
-            background: var(--bg-primary);
+            background: transparent;
         }
 
         /* ===== НАВИГАЦИЯ (как в Telegram) ===== */
         .nav-bar {
-            height: var(--header-height);
+            height: var(--nav-height);
             background: var(--nav-bg);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
@@ -116,7 +120,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 12px;
+            padding: 0 16px;
             position: relative;
             z-index: 10;
         }
@@ -140,14 +144,7 @@
             gap: 16px;
         }
 
-        .nav-right span {
-            font-size: 15px;
-            font-weight: 500;
-            color: var(--text-secondary);
-        }
-
-        /* ===== КНОПКИ ===== */
-        .icon-btn {
+        .nav-right .nav-icon {
             width: 36px;
             height: 36px;
             border-radius: 50%;
@@ -157,28 +154,28 @@
             background: transparent;
             border: none;
             color: var(--text-secondary);
-            font-size: 18px;
+            font-size: 20px;
             cursor: pointer;
             transition: var(--transition-default);
         }
 
-        .icon-btn:hover {
+        .nav-right .nav-icon:hover {
             background: rgba(255, 255, 255, 0.08);
         }
 
-        .icon-btn:active {
+        .nav-right .nav-icon:active {
             transform: scale(0.92);
         }
 
-        /* ===== ПОИСК (как в Telegram) ===== */
+        /* ===== ПОИСК ===== */
         .search-container {
             padding: 8px 16px;
-            background: var(--bg-secondary);
-            border-bottom: 0.5px solid var(--border-light);
+            background: transparent;
         }
 
         .search-box {
             position: relative;
+            height: 44px;
         }
 
         .search-box i {
@@ -195,20 +192,17 @@
             width: 100%;
             height: 44px;
             padding: 0 45px;
-            background: var(--input-bg);
-            border: 0.5px solid var(--border-light);
-            border-radius: var(--radius-input);
+            background: rgba(118, 118, 128, 0.12);
+            border: none;
+            border-radius: var(--radius-search);
             font-size: 16px;
             color: var(--text-primary);
             transition: var(--transition-default);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
         }
 
         .search-box input:focus {
             outline: none;
-            border-color: var(--accent-color);
-            background: rgba(44, 44, 46, 0.95);
+            background: rgba(118, 118, 128, 0.18);
         }
 
         .search-box input::placeholder {
@@ -216,19 +210,65 @@
             font-weight: 400;
         }
 
+        /* ===== ФИЛЬТРЫ ===== */
+        .filters-container {
+            padding: 8px 16px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            white-space: nowrap;
+            background: transparent;
+        }
+
+        .filters-container::-webkit-scrollbar {
+            display: none;
+        }
+
+        .filters-list {
+            display: flex;
+            gap: 8px;
+        }
+
+        .filter-item {
+            height: 32px;
+            padding: 0 16px;
+            border-radius: var(--radius-filter);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition-default);
+            white-space: nowrap;
+            background: transparent;
+            color: var(--text-muted);
+            border: none;
+        }
+
+        .filter-item.active {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+        }
+
+        .filter-item:active {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
         /* ===== РЕЗУЛЬТАТЫ ПОИСКА ===== */
         .search-results {
-            margin-top: 8px;
+            margin: 8px 16px 0;
             background: var(--card-bg);
-            border-radius: var(--radius-card);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border-radius: 20px;
             overflow: hidden;
             animation: fadeSlide 0.2s ease;
             max-height: 300px;
             overflow-y: auto;
             border: 0.5px solid var(--border-light);
-            backdrop-filter: blur(30px);
-            -webkit-backdrop-filter: blur(30px);
-            box-shadow: var(--shadow-card);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
         }
 
         .search-result-item {
@@ -253,7 +293,7 @@
             width: 46px;
             height: 46px;
             border-radius: var(--radius-avatar);
-            background: linear-gradient(135deg, #2b7ef5, #764ba2);
+            background: linear-gradient(135deg, #2ea6ff, #764ba2);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -283,10 +323,10 @@
             flex: 1;
             overflow-y: auto;
             overflow-x: hidden;
-            background: var(--bg-primary);
+            background: transparent;
             -webkit-overflow-scrolling: touch;
-            padding: 8px 12px;
             scrollbar-width: none;
+            padding-top: 4px;
         }
 
         .chats-container::-webkit-scrollbar {
@@ -296,57 +336,47 @@
         .chats-list {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+        }
+
+        /* Закреплённые чаты */
+        .pinned-section {
+            margin-bottom: 8px;
+        }
+
+        .pinned-header {
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
         }
 
         /* Элемент чата */
         .chat-item {
             display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 12px 16px;
-            border-radius: var(--radius-bubble);
-            background: var(--bg-secondary);
+            padding: 10px 16px;
             cursor: pointer;
             transition: var(--transition-default);
             position: relative;
-            border: 0.5px solid transparent;
+            min-height: 76px;
+            background: transparent;
         }
 
         .chat-item:hover {
-            background: var(--bg-tertiary);
+            background: rgba(255, 255, 255, 0.02);
         }
 
         .chat-item:active {
-            transform: scale(0.98);
-        }
-
-        .chat-item.unread {
-            background: rgba(43, 126, 245, 0.1);
-        }
-
-        .chat-item.unread::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            right: 16px;
-            transform: translateY(-50%);
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--accent-color);
-        }
-
-        .chat-item.pinned {
-            background: var(--bg-tertiary);
-            border-left: 3px solid var(--pinned-color);
+            background: rgba(255, 255, 255, 0.05);
         }
 
         .chat-avatar {
-            width: 54px;
-            height: 54px;
+            width: var(--avatar-size);
+            height: var(--avatar-size);
             border-radius: var(--radius-avatar);
-            background: linear-gradient(135deg, #2b7ef5, #764ba2);
+            background: linear-gradient(135deg, #2ea6ff, #764ba2);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -354,6 +384,7 @@
             font-size: 22px;
             color: white;
             flex-shrink: 0;
+            margin-right: 12px;
             position: relative;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         }
@@ -364,116 +395,126 @@
             right: 2px;
             width: 14px;
             height: 14px;
-            background: var(--online-color);
+            background: #4caf50;
             border-radius: 50%;
             border: 2px solid var(--bg-secondary);
         }
 
-        .chat-info {
+        .chat-content {
             flex: 1;
             min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
         }
 
         .chat-header {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            margin-bottom: 4px;
+            justify-content: space-between;
+            width: 100%;
         }
 
-        .chat-user {
-            font-size: 16px;
+        .chat-name-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .chat-name {
+            font-size: var(--font-name);
             font-weight: 600;
             color: var(--text-primary);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: 150px;
+            line-height: 1.2;
         }
 
         .verified-badge {
-            color: var(--accent-color);
+            color: var(--accent-blue);
             font-size: 14px;
-            margin-left: 4px;
-        }
-
-        .chat-time {
-            font-size: 13px;
-            color: var(--text-muted);
             flex-shrink: 0;
         }
 
+        .chat-time {
+            font-size: var(--font-time);
+            color: var(--text-muted);
+            flex-shrink: 0;
+            margin-left: 8px;
+        }
+
+        .chat-preview-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            gap: 8px;
+        }
+
         .chat-preview {
-            font-size: 14px;
+            font-size: var(--font-preview);
             color: var(--text-muted);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
             line-height: 1.3;
+            flex: 1;
         }
 
-        .chat-actions {
-            position: absolute;
-            top: 50%;
-            right: 16px;
-            transform: translateY(-50%);
-            display: flex;
-            gap: 8px;
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-
-        .chat-item:hover .chat-actions {
-            opacity: 1;
-        }
-
-        @media (max-width: 768px) {
-            .chat-actions {
-                opacity: 1;
-            }
-        }
-
-        .action-btn {
-            background: rgba(28,28,30,0.9);
-            border: 0.5px solid var(--border-light);
-            color: var(--text-secondary);
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
+        .chat-badge {
+            min-width: 20px;
+            height: 20px;
+            border-radius: var(--radius-badge);
+            padding: 0 6px;
+            background: var(--accent-blue);
+            color: white;
+            font-size: var(--font-badge);
+            font-weight: 600;
             display: flex;
             align-items: center;
             justify-content: center;
-            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .chat-icons {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .chat-icon {
             font-size: 14px;
-            transition: var(--transition-default);
-            backdrop-filter: blur(10px);
+            color: var(--text-muted);
         }
 
-        .action-btn:hover {
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-            transform: scale(1.1);
+        .chat-icon.pinned {
+            color: #ffd60a;
         }
 
-        .action-btn.pin-btn:hover {
-            color: var(--pinned-color);
+        /* Разделители */
+        .chat-divider {
+            height: 0.5px;
+            background: var(--border-light);
+            margin-left: 84px;
         }
 
-        .action-btn.delete-btn:hover {
-            color: var(--danger-color);
+        /* Архив */
+        .archive-item {
+            margin-top: 8px;
+            border-top: 0.5px solid var(--border-light);
+            border-bottom: 0.5px solid var(--border-light);
         }
 
-        /* ===== ПУСТОЕ СОСТОЯНИЕ ===== */
+        /* Пустое состояние */
         .no-chats {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            flex: 1;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            width: 100%;
             padding: 0 20px;
         }
 
@@ -481,12 +522,12 @@
             background: var(--card-bg);
             backdrop-filter: blur(30px);
             -webkit-backdrop-filter: blur(30px);
-            border-radius: var(--radius-card);
+            border-radius: 20px;
             padding: 24px;
             max-width: 300px;
             text-align: center;
             border: 0.5px solid var(--border-light);
-            box-shadow: var(--shadow-card);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
         }
 
         .no-chats-icon {
@@ -503,12 +544,78 @@
         }
 
         .no-chats-description {
-            font-size: 14px;
+            font-size: 15px;
             color: var(--text-muted);
             line-height: 1.4;
         }
 
-        /* ===== ОВЕРЛЕЙ ЧАТА ===== */
+        /* ===== TAB BAR (нижняя навигация) ===== */
+        .tab-bar {
+            height: var(--tab-height);
+            background: var(--tab-bg);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border-top: 0.5px solid var(--border-light);
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            padding: 0 12px;
+            padding-bottom: max(0px, var(--safe-area-bottom));
+            position: relative;
+            z-index: 10;
+        }
+
+        .tab-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: var(--transition-default);
+            color: var(--text-muted);
+            background: transparent;
+            border: none;
+            font-size: 12px;
+            position: relative;
+        }
+
+        .tab-item i {
+            font-size: 24px;
+        }
+
+        .tab-item span {
+            font-size: 10px;
+            font-weight: 500;
+        }
+
+        .tab-item.active {
+            color: var(--accent-blue);
+        }
+
+        .tab-item:active {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab-badge {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            min-width: 16px;
+            height: 16px;
+            border-radius: 8px;
+            background: var(--accent-blue);
+            color: white;
+            font-size: 11px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+        }
+
+        /* ===== ОВЕРЛЕЙ ЧАТА (исправленное положение) ===== */
         .chat-overlay {
             position: fixed;
             inset: 0;
@@ -533,11 +640,12 @@
             display: flex;
             flex-direction: column;
             height: 100%;
+            background: var(--bg-primary);
         }
 
-        /* ===== ШАПКА ЧАТА ===== */
+        /* Шапка чата */
         .chat-header {
-            height: var(--header-height);
+            height: var(--nav-height);
             background: var(--nav-bg);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
@@ -579,7 +687,7 @@
             width: 40px;
             height: 40px;
             border-radius: var(--radius-avatar);
-            background: linear-gradient(135deg, #2b7ef5, #764ba2);
+            background: linear-gradient(135deg, #2ea6ff, #764ba2);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -624,7 +732,7 @@
             background: rgba(255, 255, 255, 0.08);
         }
 
-        /* ===== СООБЩЕНИЯ ===== */
+        /* Сообщения */
         .chat-messages {
             flex: 1;
             overflow-y: auto;
@@ -635,6 +743,7 @@
             position: relative;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
+            background: var(--bg-primary);
         }
 
         .chat-messages::-webkit-scrollbar {
@@ -644,19 +753,19 @@
         .message {
             max-width: 78%;
             padding: 10px 14px;
-            border-radius: var(--radius-bubble);
+            border-radius: 18px;
             line-height: 1.35;
             word-break: break-word;
             position: relative;
             animation: fadeSlide 0.2s ease;
             cursor: pointer;
             font-size: 16px;
-            box-shadow: var(--shadow-bubble);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
         }
 
         .message-outgoing {
             align-self: flex-end;
-            background: var(--accent-color);
+            background: var(--accent-blue);
             color: white;
             border-bottom-right-radius: 4px;
         }
@@ -675,99 +784,6 @@
 
         .message + .message-incoming {
             margin-top: 2px;
-        }
-
-        .message:not(:last-child).message-outgoing {
-            border-bottom-right-radius: var(--radius-bubble);
-        }
-
-        .message:not(:last-child).message-incoming {
-            border-bottom-left-radius: var(--radius-bubble);
-        }
-
-        /* Ответы */
-        .message-reply {
-            background: rgba(255, 255, 255, 0.1);
-            border-left: 3px solid var(--accent-color);
-            border-radius: 8px;
-            padding: 6px 10px;
-            margin-bottom: 6px;
-            font-size: 14px;
-            line-height: 1.3;
-        }
-
-        .message-reply-sender {
-            font-weight: 600;
-            color: var(--accent-color);
-            font-size: 12px;
-            margin-bottom: 2px;
-        }
-
-        .message-reply-text {
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 13px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-        }
-
-        .message-text {
-            font-size: 16px;
-            line-height: 1.35;
-        }
-
-        .message-time {
-            font-size: 11px;
-            opacity: 0.7;
-            margin-top: 4px;
-            text-align: right;
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: 4px;
-        }
-
-        .message-status {
-            font-size: 10px;
-        }
-
-        /* Реакции */
-        .message-reactions {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            margin-top: 6px;
-            flex-wrap: wrap;
-        }
-
-        .reaction {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            padding: 2px 8px;
-            font-size: 13px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            cursor: pointer;
-            transition: var(--transition-default);
-            border: 0.5px solid var(--border-light);
-        }
-
-        .reaction:hover {
-            background: rgba(255, 255, 255, 0.15);
-            transform: scale(1.05);
-        }
-
-        .reaction.liked {
-            background: rgba(255, 55, 95, 0.2);
-            color: #ff375f;
-        }
-
-        .reaction-count {
-            font-size: 12px;
-            font-weight: 500;
         }
 
         /* Разделители дат */
@@ -794,15 +810,14 @@
         }
 
         .message-date-divider span {
-            background: var(--bg-secondary);
+            background: transparent;
             padding: 4px 12px;
             border-radius: 16px;
             font-size: 12px;
             color: var(--text-muted);
-            border: 0.5px solid var(--border-light);
         }
 
-        /* ===== ОБЛАСТЬ ВВОДА ===== */
+        /* ===== ОБЛАСТЬ ВВОДА (ИСПРАВЛЕНО) ===== */
         .chat-input-area {
             background: var(--nav-bg);
             backdrop-filter: blur(30px);
@@ -813,6 +828,9 @@
             flex-direction: column;
             gap: 8px;
             flex-shrink: 0;
+            position: relative;
+            bottom: 0;
+            width: 100%;
         }
 
         .reply-container {
@@ -821,7 +839,7 @@
 
         .reply-preview {
             background: var(--bg-tertiary);
-            border-left: 3px solid var(--accent-color);
+            border-left: 3px solid var(--accent-blue);
             border-radius: 12px;
             padding: 8px 12px;
             margin-bottom: 8px;
@@ -834,7 +852,7 @@
 
         .reply-sender {
             font-weight: 600;
-            color: var(--accent-color);
+            color: var(--accent-blue);
             font-size: 13px;
         }
 
@@ -866,7 +884,7 @@
 
         .chat-input-wrapper {
             display: flex;
-            align-items: center;
+            align-items: flex-end;
             gap: 8px;
         }
 
@@ -874,8 +892,8 @@
             width: 40px;
             height: 40px;
             border-radius: 50%;
-            background: var(--input-bg);
-            border: 0.5px solid var(--border-light);
+            background: rgba(118, 118, 128, 0.12);
+            border: none;
             color: var(--text-secondary);
             display: flex;
             align-items: center;
@@ -883,18 +901,18 @@
             cursor: pointer;
             font-size: 20px;
             transition: var(--transition-default);
-            backdrop-filter: blur(10px);
+            flex-shrink: 0;
         }
 
         .menu-btn:hover {
-            background: var(--bg-tertiary);
+            background: rgba(118, 118, 128, 0.18);
         }
 
         .chat-input {
             flex: 1;
-            background: var(--input-bg);
-            border: 0.5px solid var(--border-light);
-            border-radius: var(--radius-input);
+            background: rgba(118, 118, 128, 0.12);
+            border: none;
+            border-radius: 20px;
             padding: 10px 14px;
             color: var(--text-primary);
             font-size: 16px;
@@ -908,8 +926,7 @@
 
         .chat-input:focus {
             outline: none;
-            border-color: var(--accent-color);
-            background: rgba(44, 44, 46, 0.95);
+            background: rgba(118, 118, 128, 0.18);
         }
 
         .chat-input::placeholder {
@@ -925,7 +942,7 @@
             width: 40px;
             height: 40px;
             border-radius: 50%;
-            background: var(--accent-color);
+            background: var(--accent-blue);
             border: none;
             color: white;
             display: flex;
@@ -934,10 +951,11 @@
             cursor: pointer;
             font-size: 18px;
             transition: var(--transition-default);
+            flex-shrink: 0;
         }
 
         .chat-send-btn:hover:not(:disabled) {
-            background: var(--accent-hover);
+            background: #4db2ff;
             transform: scale(1.05);
         }
 
@@ -950,7 +968,7 @@
             cursor: not-allowed;
         }
 
-        /* ===== ПУСТОЕ СОСТОЯНИЕ ЧАТА ===== */
+        /* Пустое состояние чата */
         .no-messages {
             position: absolute;
             top: 50%;
@@ -966,12 +984,12 @@
             background: var(--card-bg);
             backdrop-filter: blur(30px);
             -webkit-backdrop-filter: blur(30px);
-            border-radius: var(--radius-card);
+            border-radius: 20px;
             padding: 24px;
             max-width: 280px;
             text-align: center;
             border: 0.5px solid var(--border-light);
-            box-shadow: var(--shadow-card);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
         }
 
         .no-messages-icon {
@@ -986,7 +1004,7 @@
             line-height: 1.4;
         }
 
-        /* ===== ЗАГРУЗЧИК ===== */
+        /* Загрузчик */
         .loader {
             position: absolute;
             top: 50%;
@@ -1003,7 +1021,7 @@
             width: 36px;
             height: 36px;
             border: 3px solid var(--border-light);
-            border-top-color: var(--accent-color);
+            border-top-color: var(--accent-blue);
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
         }
@@ -1012,7 +1030,7 @@
             to { transform: rotate(360deg); }
         }
 
-        /* ===== КОНТЕКСТНОЕ МЕНЮ ===== */
+        /* Контекстное меню */
         .message-context-menu {
             position: fixed;
             background: var(--card-bg);
@@ -1020,7 +1038,7 @@
             -webkit-backdrop-filter: blur(30px);
             border-radius: 14px;
             padding: 6px;
-            box-shadow: var(--shadow-card);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
             border: 0.5px solid var(--border-light);
             z-index: 10000;
             min-width: 180px;
@@ -1046,18 +1064,18 @@
         .message-context-item i {
             width: 20px;
             font-size: 16px;
-            color: var(--accent-color);
+            color: var(--accent-blue);
         }
 
         .message-context-item.danger {
-            color: var(--danger-color);
+            color: #ff453a;
         }
 
         .message-context-item.danger i {
-            color: var(--danger-color);
+            color: #ff453a;
         }
 
-        /* ===== ПАНЕЛЬ РЕАКЦИЙ ===== */
+        /* Панель реакций */
         .reactions-panel {
             position: fixed;
             background: var(--card-bg);
@@ -1069,7 +1087,7 @@
             display: flex;
             gap: 8px;
             z-index: 10000;
-            box-shadow: var(--shadow-card);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
             opacity: 0;
             transform: translateY(10px) scale(0.95);
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1095,7 +1113,7 @@
             background: rgba(255, 255, 255, 0.1);
         }
 
-        /* ===== УВЕДОМЛЕНИЯ ===== */
+        /* Уведомления */
         .notification {
             position: fixed;
             top: calc(var(--safe-area-top) + 70px);
@@ -1116,7 +1134,7 @@
             text-align: center;
             font-size: 14px;
             border: 0.5px solid var(--border-light);
-            box-shadow: var(--shadow-card);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
         }
 
         .notification.show {
@@ -1124,7 +1142,7 @@
             transform: translateX(-50%) translateY(0);
         }
 
-        /* ===== АНИМАЦИИ ===== */
+        /* Анимации */
         @keyframes fadeSlide {
             from {
                 opacity: 0;
@@ -1151,7 +1169,7 @@
             animation: fadeSlide 0.2s ease;
         }
 
-        /* ===== HIDDEN ===== */
+        /* Hidden */
         .hidden {
             display: none !important;
         }
@@ -1159,17 +1177,16 @@
 </head>
 <body>
 
-<!-- Основной контейнер с safe areas -->
+<!-- Основной контейнер -->
 <div class="app-container">
     
-    <!-- Навигация -->
+    <!-- Верхняя навигация (как в Telegram) -->
     <div class="nav-bar">
         <div class="nav-left">
             <h1>Contegg</h1>
         </div>
         <div class="nav-right">
-            <span>Чаты</span>
-            <button class="icon-btn" onclick="logout()">
+            <button class="nav-icon" onclick="logout()">
                 <i class="fas fa-sign-out-alt"></i>
             </button>
         </div>
@@ -1184,6 +1201,17 @@
         <div id="searchResults" class="search-results" style="display:none"></div>
     </div>
 
+    <!-- Фильтры -->
+    <div class="filters-container">
+        <div class="filters-list">
+            <button class="filter-item active">Все</button>
+            <button class="filter-item">Личные</button>
+            <button class="filter-item">Группы</button>
+            <button class="filter-item">Каналы</button>
+            <button class="filter-item">Архив</button>
+        </div>
+    </div>
+
     <!-- Список чатов -->
     <div class="chats-container" id="chatsContainer">
         <div class="chats-list" id="chatsList">
@@ -1192,6 +1220,27 @@
                 <div>Загрузка...</div>
             </div>
         </div>
+    </div>
+
+    <!-- Нижняя навигация (Tab Bar) -->
+    <div class="tab-bar">
+        <button class="tab-item active">
+            <i class="fas fa-comment"></i>
+            <span>Чаты</span>
+        </button>
+        <button class="tab-item">
+            <i class="fas fa-users"></i>
+            <span>Контакты</span>
+        </button>
+        <button class="tab-item">
+            <i class="fas fa-phone-alt"></i>
+            <span>Звонки</span>
+            <span class="tab-badge">1</span>
+        </button>
+        <button class="tab-item">
+            <i class="fas fa-cog"></i>
+            <span>Настройки</span>
+        </button>
     </div>
 
 </div>
@@ -1208,7 +1257,7 @@
             <div class="chat-user-info">
                 <div class="chat-header-avatar" id="chatUserAvatar">U</div>
                 <div class="chat-header-text">
-                    <div class="chat-header-username" id="chatUserName" onclick="openProfileFromChat()">@username</div>
+                    <div class="chat-header-username" id="chatUserName">@username</div>
                     <div class="chat-header-status" id="chatUserStatus">онлайн</div>
                 </div>
             </div>
@@ -1225,13 +1274,13 @@
             </div>
         </div>
         
-        <!-- Область ввода -->
+        <!-- Область ввода (ИСПРАВЛЕНО - теперь внизу) -->
         <div class="chat-input-area">
             
             <!-- Превью ответа -->
             <div class="reply-container" id="replyContainer" style="display:none">
                 <div class="reply-preview">
-                    <i class="fas fa-reply" style="color: var(--accent-color);"></i>
+                    <i class="fas fa-reply" style="color: var(--accent-blue);"></i>
                     <div style="flex:1">
                         <div class="reply-sender" id="replySender">@username</div>
                         <div class="reply-text" id="replyText">Текст сообщения...</div>
@@ -1429,6 +1478,59 @@ async function getUserInfo(userId) {
     }
 }
 
+// ===== ФОРМАТИРОВАНИЕ ВРЕМЕНИ =====
+function formatTimeAgo(date) {
+    if (!date) return "только что";
+    
+    const now = new Date();
+    const diff = now - date;
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 7) {
+        return date.toLocaleDateString("ru-RU", {
+            day: "2-digit",
+            month: "2-digit"
+        });
+    } else if (days > 0) {
+        return `${days}д`;
+    } else if (hours > 0) {
+        return `${hours}ч`;
+    } else if (minutes > 0) {
+        return `${minutes}м`;
+    } else {
+        return "сейчас";
+    }
+}
+
+function formatMessageTime(date) {
+    if (!date) return "";
+    return date.toLocaleTimeString("ru-RU", {
+        hour: "2-digit",
+        minute: "2-digit"
+    });
+}
+
+function formatDateDivider(date) {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (date.toDateString() === today.toDateString()) {
+        return 'Сегодня';
+    } else if (date.toDateString() === yesterday.toDateString()) {
+        return 'Вчера';
+    } else {
+        return date.toLocaleDateString("ru-RU", {
+            day: "numeric",
+            month: "long",
+            year: "numeric"
+        });
+    }
+}
+
 // ===== ЗАГРУЗКА СПИСКА ЧАТОВ =====
 async function loadChatsList() {
     try {
@@ -1491,7 +1593,7 @@ async function loadChatsList() {
             return;
         }
         
-        // Сортировка: сначала закрепленные, потом по времени
+        // Сортировка: сначала закреплённые
         const pinnedChatsArray = userChats.filter(chat => chat.isPinned);
         const regularChatsArray = userChats.filter(chat => !chat.isPinned);
         
@@ -1504,53 +1606,30 @@ async function loadChatsList() {
         pinnedChatsArray.sort(sortByTime);
         regularChatsArray.sort(sortByTime);
         
-        const sortedChats = [...pinnedChatsArray, ...regularChatsArray];
-        
         let chatsHTML = '';
         
-        for (const chat of sortedChats) {
-            const otherUser = chat.otherUserInfo;
-            if (!otherUser) continue;
+        // Закреплённые
+        if (pinnedChatsArray.length > 0) {
+            chatsHTML += '<div class="pinned-section">';
+            chatsHTML += '<div class="pinned-header">Закреплённые</div>';
             
-            const lastMessageTime = chat.lastMessageTime?.toDate ? chat.lastMessageTime.toDate() : new Date();
-            const timeAgo = formatTimeAgo(lastMessageTime);
+            pinnedChatsArray.forEach((chat, index) => {
+                chatsHTML += renderChatItem(chat);
+                if (index < pinnedChatsArray.length - 1) {
+                    chatsHTML += '<div class="chat-divider"></div>';
+                }
+            });
             
-            let preview = chat.lastMessage || 'Нет сообщений';
-            if (preview.length > 50) {
-                preview = preview.substring(0, 47) + '...';
-            }
-            
-            const senderPrefix = chat.lastSender === currentUser.uid ? 'Вы: ' : '';
-            
-            chatsHTML += `
-                <div class="chat-item fade ${chat.isUnread ? 'unread' : ''} ${chat.isPinned ? 'pinned' : ''}" 
-                     onclick="openChat('${chat.otherUserId}', '${otherUser.username}', '${chat.id}')"
-                     data-chat-id="${chat.id}">
-                    <div class="chat-avatar">
-                        ${otherUser.username?.[0]?.toUpperCase() || 'U'}
-                        ${false ? '<span class="online-indicator"></span>' : ''}
-                    </div>
-                    <div class="chat-info">
-                        <div class="chat-header">
-                            <span class="chat-user">
-                                @${otherUser.username}
-                                ${adminUsers.includes(chat.otherUserId) ? '<span class="verified-badge">✓</span>' : ''}
-                            </span>
-                            <span class="chat-time">${timeAgo}</span>
-                        </div>
-                        <div class="chat-preview">${senderPrefix}${escapeHtml(preview)}</div>
-                    </div>
-                    <div class="chat-actions">
-                        <button class="action-btn pin-btn" onclick="event.stopPropagation(); togglePinChat('${chat.id}')" title="${chat.isPinned ? 'Открепить' : 'Закрепить'}">
-                            📌
-                        </button>
-                        <button class="action-btn delete-btn" onclick="event.stopPropagation(); showDeleteConfirm('${chat.id}', '${otherUser.username}')" title="Удалить">
-                            🗑️
-                        </button>
-                    </div>
-                </div>
-            `;
+            chatsHTML += '</div>';
         }
+        
+        // Обычные чаты
+        regularChatsArray.forEach((chat, index) => {
+            chatsHTML += renderChatItem(chat);
+            if (index < regularChatsArray.length - 1) {
+                chatsHTML += '<div class="chat-divider"></div>';
+            }
+        });
         
         chatsList.innerHTML = chatsHTML;
         
@@ -1569,57 +1648,68 @@ async function loadChatsList() {
     }
 }
 
-// ===== ФОРМАТИРОВАНИЕ ВРЕМЕНИ =====
-function formatTimeAgo(date) {
-    if (!date) return "только что";
+// ===== РЕНДЕР ЭЛЕМЕНТА ЧАТА =====
+function renderChatItem(chat) {
+    const otherUser = chat.otherUserInfo;
+    if (!otherUser) return '';
     
-    const now = new Date();
-    const diff = now - date;
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
+    const lastMessageTime = chat.lastMessageTime?.toDate ? chat.lastMessageTime.toDate() : new Date();
+    const timeAgo = formatTimeAgo(lastMessageTime);
     
-    if (days > 7) {
-        return date.toLocaleDateString("ru-RU", {
-            day: "2-digit",
-            month: "2-digit"
-        });
-    } else if (days > 0) {
-        return `${days}д`;
-    } else if (hours > 0) {
-        return `${hours}ч`;
-    } else if (minutes > 0) {
-        return `${minutes}м`;
-    } else {
-        return "только что";
+    let preview = chat.lastMessage || 'Нет сообщений';
+    if (preview.length > 50) {
+        preview = preview.substring(0, 47) + '...';
     }
+    
+    const senderPrefix = chat.lastSender === currentUser.uid ? 'Вы: ' : '';
+    const isUnread = chat.isUnread;
+    const isPinned = chat.isPinned;
+    
+    let badgeHTML = '';
+    if (isUnread) {
+        badgeHTML = '<span class="chat-badge">1</span>';
+    }
+    
+    let iconsHTML = '';
+    if (isPinned) {
+        iconsHTML += '<span class="chat-icon pinned">📌</span>';
+    }
+    
+    return `
+        <div class="chat-item fade" 
+             onclick="openChat('${chat.otherUserId}', '${otherUser.username}', '${chat.id}')"
+             data-chat-id="${chat.id}">
+            <div class="chat-avatar">
+                ${otherUser.username?.[0]?.toUpperCase() || 'U'}
+            </div>
+            <div class="chat-content">
+                <div class="chat-header">
+                    <div class="chat-name-wrapper">
+                        <span class="chat-name">
+                            @${otherUser.username}
+                        </span>
+                        ${adminUsers.includes(chat.otherUserId) ? '<span class="verified-badge">✓</span>' : ''}
+                    </div>
+                    <span class="chat-time">${timeAgo}</span>
+                </div>
+                <div class="chat-preview-wrapper">
+                    <span class="chat-preview">${escapeHtml(senderPrefix + preview)}</span>
+                    <div class="chat-icons">
+                        ${iconsHTML}
+                        ${badgeHTML}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
-function formatMessageTime(date) {
-    if (!date) return "";
-    return date.toLocaleTimeString("ru-RU", {
-        hour: "2-digit",
-        minute: "2-digit"
-    });
-}
-
-function formatDateDivider(date) {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    if (date.toDateString() === today.toDateString()) {
-        return 'Сегодня';
-    } else if (date.toDateString() === yesterday.toDateString()) {
-        return 'Вчера';
-    } else {
-        return date.toLocaleDateString("ru-RU", {
-            day: "numeric",
-            month: "long",
-            year: "numeric"
-        });
-    }
+// ===== ЭКРАНИРОВАНИЕ HTML =====
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // ===== ЗАКРЕПЛЕНИЕ ЧАТА =====
@@ -1632,7 +1722,7 @@ async function togglePinChat(chatId) {
             await db.collection("users").doc(currentUser.uid).update({
                 pinnedChats: pinnedChats
             });
-            showNotification("Чат откреплен");
+            showNotification("Чат откреплён");
         } else {
             if (pinnedChats.length >= 5) {
                 showNotification("Можно закрепить не более 5 чатов");
@@ -1642,7 +1732,7 @@ async function togglePinChat(chatId) {
             await db.collection("users").doc(currentUser.uid).update({
                 pinnedChats: pinnedChats
             });
-            showNotification("Чат закреплен");
+            showNotification("Чат закреплён");
         }
         
         loadChatsList();
@@ -1680,7 +1770,7 @@ async function deleteChat(chatId) {
             pinnedChats: pinnedChats
         });
         
-        showNotification("Чат удален");
+        showNotification("Чат удалён");
         
         if (currentChatId === chatId) {
             closeChat();
@@ -1747,8 +1837,6 @@ function closeChat() {
     currentChatUserId = null;
     currentChatUsername = null;
     currentChatId = null;
-    
-    loadChatsList();
 }
 
 // ===== ОТМЕТКА ПРОЧИТАННЫМ =====
@@ -1782,12 +1870,6 @@ function updateInputState(isBlocked) {
         chatSendBtn.disabled = false;
         chatInput.placeholder = 'Сообщение';
     }
-}
-
-// ===== ОТКРЫТИЕ ПРОФИЛЯ =====
-function openProfileFromChat() {
-    if (!currentChatUserId) return;
-    showNotification('Профиль будет доступен позже');
 }
 
 // ===== ЗАГРУЗКА СООБЩЕНИЙ =====
@@ -1930,14 +2012,6 @@ function addMessageToUI(msg) {
     `;
     
     chatMessages.appendChild(messageDiv);
-}
-
-// ===== ЭКРАНИРОВАНИЕ HTML =====
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 // ===== НАСТРОЙКА ОБРАБОТЧИКОВ СООБЩЕНИЙ =====
