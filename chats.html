@@ -1089,6 +1089,7 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        /* Контекстное меню для сообщений */
         .message-context-menu {
             position: fixed;
             background: var(--card-bg);
@@ -1117,6 +1118,7 @@
         .message-context-item.danger { color: var(--danger-color); }
         .message-context-item.danger i { color: var(--danger-color); }
 
+        /* Панель реакций - исправлено */
         .reactions-panel {
             position: fixed;
             background: var(--card-bg);
@@ -1132,6 +1134,8 @@
             transform: translateY(10px) scale(0.95);
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             pointer-events: none;
+            width: 280px;                /* фиксированная ширина */
+            justify-content: space-around;
         }
         .reactions-panel.show {
             opacity: 1;
@@ -1327,6 +1331,12 @@
     <div class="message-context-item danger" id="contextDeleteMessageBtn"><i class="fas fa-trash"></i><span>Удалить</span></div>
 </div>
 
+<!-- ===== НОВОЕ: Контекстное меню для чата (закрепление/удаление) ===== -->
+<div class="message-context-menu" id="chatContextMenu" style="display:none">
+    <div class="message-context-item" id="contextPinChatBtn"><i class="fas fa-thumbtack"></i><span>Закрепить</span></div>
+    <div class="message-context-item danger" id="contextDeleteChatBtn"><i class="fas fa-trash"></i><span>Удалить чат</span></div>
+</div>
+
 <!-- Панель реакций -->
 <div class="reactions-panel" id="reactionsPanel">
     <div class="reaction-emoji" onclick="addReaction('❤️')">❤️</div>
@@ -1376,6 +1386,10 @@ let currentActiveTab = 'chats';
 
 // Переменные для обрезки аватарки
 let cropper = null;
+
+// ===== НОВЫЕ ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ КОНТЕКСТНОГО МЕНЮ ЧАТА =====
+let chatContextMenu = document.getElementById('chatContextMenu');
+let currentChatContext = null; // { chatId, otherUserId, isPinned, element }
 
 // ===== DOM ЭЛЕМЕНТЫ =====
 const mainTitle = document.getElementById('mainTitle');
@@ -1501,7 +1515,7 @@ async function getUserInfo(userId) {
     }
 }
 
-// ===== ЗАГРУЗКА СПИСКА ЧАТОВ =====
+// ===== ЗАГРУЗКА СПИСКА ЧАТОВ (с добавлением обработчиков контекстного меню) =====
 async function loadChatsList() {
     try {
         const chatsSnap = await db.collection('chats').get();
@@ -1566,6 +1580,9 @@ async function loadChatsList() {
             
             chatsHTML += `
                 <div class="chat-item fade ${chat.isUnread ? 'unread' : ''} ${chat.isPinned ? 'pinned' : ''}" 
+                     data-chat-id="${chat.id}"
+                     data-other-user-id="${chat.otherUserId}"
+                     data-is-pinned="${chat.isPinned}"
                      onclick="openChat('${chat.otherUserId}', '${otherUser.username}', '${chat.id}')">
                     <div class="chat-avatar" ${avatarStyle}>
                         ${otherUser.avatarBase64 ? '' : (otherUser.displayName?.[0]?.toUpperCase() || otherUser.username?.[0]?.toUpperCase() || 'U')}
@@ -1583,266 +1600,198 @@ async function loadChatsList() {
                 </div>`;
         }
         chatsList.innerHTML = chatsHTML;
+
+        // ===== ДОБАВЛЯЕМ ОБРАБОТЧИКИ КОНТЕКСТНОГО МЕНЮ ДЛЯ КАЖДОГО ЧАТА =====
+        document.querySelectorAll('.chat-item').forEach(item => {
+            const chatId = item.dataset.chatId;
+            const otherUserId = item.dataset.otherUserId;
+            const isPinned = item.dataset.isPinned === 'true';
+
+            // Обработка правого клика (компьютер)
+            item.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showChatContextMenu(e, chatId, otherUserId, isPinned, item);
+            });
+
+            // Долгое нажатие для мобильных
+            let longPressTimer;
+            item.addEventListener('touchstart', (e) => {
+                longPressTimer = setTimeout(() => {
+                    showChatContextMenu(e, chatId, otherUserId, isPinned, item);
+                }, 600);
+            });
+            item.addEventListener('touchend', () => clearTimeout(longPressTimer));
+            item.addEventListener('touchmove', () => clearTimeout(longPressTimer));
+        });
+
     } catch (error) {
         console.error('Ошибка загрузки чатов:', error);
         chatsList.innerHTML = `<div class="no-chats"><div class="no-chats-card"><div class="no-chats-icon">⚠️</div><div class="no-chats-title">Ошибка загрузки</div><div class="no-chats-description">${error.message}</div></div></div>`;
     }
 }
 
-// ===== ОТРИСОВКА ПРОФИЛЯ =====
-async function renderProfile() {
-    if (!userData) return;
-    
-    const avatarLetter = (userData.displayName || userData.username || 'U')[0].toUpperCase();
-    const avatarStyle = userData.avatarBase64 
-        ? `style="background-image: url('${userData.avatarBase64}');"` 
-        : '';
-    
-    const profileHTML = `
-        <div class="profile-header">
-            <div class="profile-avatar-wrapper">
-                <div class="profile-avatar" ${avatarStyle}>${userData.avatarBase64 ? '' : avatarLetter}</div>
-                <button class="avatar-upload-btn" onclick="triggerAvatarUpload()"><i class="fas fa-camera"></i></button>
-            </div>
-            <div class="profile-name">
-                <span id="profileDisplayNameValue">${escapeHtml(userData.displayName || 'Пользователь')}</span>
-                <button class="edit-btn" onclick="editField('displayName')"><i class="fas fa-pencil-alt"></i></button>
-            </div>
-            <div class="profile-username" id="profileUsernameValue">@${escapeHtml(userData.username || 'username')}</div>
-            <div class="profile-email">${escapeHtml(userData.email || 'email@example.com')}</div>
-        </div>
-        
-        <div class="profile-section">
-            <div class="section-title">О себе</div>
-            <div class="profile-field">
-                <span class="field-label"><i class="fas fa-info-circle"></i> Описание</span>
-                <span class="field-value editable" id="profileBioValue" onclick="editField('bio')">${escapeHtml(userData.bio || 'Расскажите о себе...')}</span>
-            </div>
-        </div>
-        
-        <div class="profile-section">
-            <div class="section-title">Личная информация</div>
-            <div class="profile-field">
-                <span class="field-label"><i class="fas fa-user"></i> Имя</span>
-                <span class="field-value editable" id="profileDisplayNameField" onclick="editField('displayName')">${escapeHtml(userData.displayName || 'Пользователь')}</span>
-            </div>
-            <div class="profile-field">
-                <span class="field-label"><i class="fas fa-at"></i> Никнейм</span>
-                <span class="field-value editable" id="profileUsernameField" onclick="editField('username')">@${escapeHtml(userData.username || 'username')}</span>
-            </div>
-            <div class="profile-field">
-                <span class="field-label"><i class="fas fa-envelope"></i> Почта</span>
-                <span class="field-value">${escapeHtml(userData.email || '—')}</span>
-            </div>
-        </div>
-    `;
-    
-    profileContainer.innerHTML = profileHTML;
-}
+// ===== ФУНКЦИЯ ПОКАЗА КОНТЕКСТНОГО МЕНЮ ЧАТА =====
+function showChatContextMenu(event, chatId, otherUserId, isPinned, element) {
+    event.preventDefault();
+    event.stopPropagation();
 
-// ===== ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК =====
-function switchTab(tab) {
-    if (tab === currentActiveTab) return;
-    
-    currentActiveTab = tab;
-    
-    if (tab === 'chats') {
-        tabChats.classList.add('active');
-        tabProfile.classList.remove('active');
-        navChats.classList.add('active');
-        navProfile.classList.remove('active');
-        mainTitle.textContent = 'Contegg · Чаты';
-        mainContent.scrollTop = 0;
+    let x, y;
+    if (event.type.includes('touch')) {
+        const touch = event.touches[0] || event.changedTouches[0];
+        x = touch.clientX;
+        y = touch.clientY;
     } else {
-        tabProfile.classList.add('active');
-        tabChats.classList.remove('active');
-        navProfile.classList.add('active');
-        navChats.classList.remove('active');
-        mainTitle.textContent = 'Contegg · Профиль';
-        mainContent.scrollTop = 0;
-        
-        if (profileContainer.innerHTML.includes('loader')) {
-            renderProfile();
-        }
+        x = event.clientX;
+        y = event.clientY;
     }
-}
 
-// ===== ФУНКЦИИ ДЛЯ АВАТАРКИ =====
-function triggerAvatarUpload() {
-    avatarUploadInput.click();
-}
+    currentChatContext = { chatId, otherUserId, isPinned, element };
 
-avatarUploadInput.addEventListener('change', handleAvatarSelect);
+    // Обновляем текст пункта "Закрепить/Открепить"
+    const pinBtn = document.getElementById('contextPinChatBtn');
+    pinBtn.innerHTML = isPinned ? '<i class="fas fa-thumbtack"></i><span>Открепить</span>' : '<i class="fas fa-thumbtack"></i><span>Закрепить</span>';
 
-function handleAvatarSelect(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        cropImage.src = e.target.result;
-        cropModal.classList.add('show');
-        setTimeout(() => {
-            if (cropper) cropper.destroy();
-            cropper = new Cropper(cropImage, {
-                aspectRatio: 1,
-                viewMode: 1,
-                dragMode: 'move',
-                autoCropArea: 1,
-                cropBoxMovable: true,
-                cropBoxResizable: true,
-                background: false,
-                modal: true,
-                guides: true,
-                center: true,
-                highlight: false,
-                toggleDragModeOnDblclick: false,
-            });
-        }, 100);
-    };
-    reader.readAsDataURL(file);
-    avatarUploadInput.value = '';
-}
+    // Позиционируем меню
+    chatContextMenu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
+    chatContextMenu.style.top = Math.min(y, window.innerHeight - 150) + 'px';
+    chatContextMenu.style.display = 'block';
 
-function closeCropModal() {
-    cropModal.classList.remove('show');
-    if (cropper) {
-        cropper.destroy();
-        cropper = null;
-    }
-}
-
-function saveCroppedAvatar() {
-    if (!cropper) return;
-    
-    const canvas = cropper.getCroppedCanvas({
-        width: 300,
-        height: 300,
-        imageSmoothingEnabled: true,
-        imageSmoothingQuality: 'high',
-    });
-    
-    canvas.toBlob(async (blob) => {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            const base64Data = e.target.result;
-            
-            try {
-                await db.collection("users").doc(currentUser.uid).update({
-                    avatarBase64: base64Data
-                });
-                
-                userData.avatarBase64 = base64Data;
-                usersCache.delete(currentUser.uid);
-                
-                renderProfile();
-                loadChatsList();
-                
-                showNotification('Аватар успешно обновлен');
-            } catch (error) {
-                console.error('Ошибка сохранения аватара:', error);
-                showNotification('Ошибка при сохранении аватара');
+    setTimeout(() => {
+        const closeMenu = (e) => {
+            if (!chatContextMenu.contains(e.target)) {
+                chatContextMenu.style.display = 'none';
+                document.removeEventListener('click', closeMenu);
+                document.removeEventListener('touchstart', closeMenu);
             }
-            
-            closeCropModal();
         };
-        reader.readAsDataURL(blob);
-    }, 'image/jpeg', 0.9);
+        document.addEventListener('click', closeMenu);
+        document.addEventListener('touchstart', closeMenu);
+    }, 10);
 }
 
-// ===== РЕДАКТИРОВАНИЕ ПОЛЕЙ =====
-function editField(field) {
-    let currentValue = '';
-    let promptMessage = '';
-    
-    if (field === 'displayName') {
-        currentValue = userData.displayName || '';
-        promptMessage = 'Введите новое имя:';
-    } else if (field === 'username') {
-        currentValue = userData.username || '';
-        promptMessage = 'Введите новый никнейм (без @):';
-    } else if (field === 'bio') {
-        currentValue = userData.bio || '';
-        promptMessage = 'Введите новое описание:';
+// ===== ЗАКРЕПИТЬ / ОТКРЕПИТЬ ЧАТ =====
+async function pinChat(chatId, shouldPin) {
+    if (shouldPin && pinnedChats.length >= 5) {
+        showNotification('Максимум 5 закреплённых чатов');
+        return;
     }
-    
-    const newValue = prompt(promptMessage, currentValue);
-    if (newValue === null || newValue.trim() === '') return;
-    
-    updateProfileField(field, newValue.trim());
-}
 
-async function updateProfileField(field, value) {
     try {
-        const updateData = {};
-        updateData[field] = value;
-        
-        await db.collection("users").doc(currentUser.uid).update(updateData);
-        
-        userData[field] = value;
-        if (field === 'username') {
-            headerUsernameSpan.textContent = value;
+        const userRef = db.collection('users').doc(currentUser.uid);
+        if (shouldPin) {
+            await userRef.update({
+                pinnedChats: firebase.firestore.FieldValue.arrayUnion(chatId)
+            });
+            pinnedChats.push(chatId);
+        } else {
+            await userRef.update({
+                pinnedChats: firebase.firestore.FieldValue.arrayRemove(chatId)
+            });
+            pinnedChats = pinnedChats.filter(id => id !== chatId);
         }
-        
-        if (field === 'displayName') {
-            document.getElementById('profileDisplayNameValue').textContent = value;
-            document.getElementById('profileDisplayNameField').textContent = value;
-        } else if (field === 'username') {
-            document.getElementById('profileUsernameValue').textContent = '@' + value;
-            document.getElementById('profileUsernameField').textContent = '@' + value;
-        } else if (field === 'bio') {
-            document.getElementById('profileBioValue').textContent = value || 'Расскажите о себе...';
-        }
-        
-        showNotification('Профиль обновлен');
+        // Обновить отображение списка чатов
+        await loadChatsList();
+        showNotification(shouldPin ? 'Чат закреплён' : 'Чат откреплён');
     } catch (error) {
-        console.error('Ошибка обновления профиля:', error);
+        console.error('Ошибка при закреплении/откреплении:', error);
         showNotification('Ошибка: ' + error.message);
     }
 }
 
-// ===== ОТКРЫТИЕ ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ =====
-async function openUserProfileFromChat() {
-    if (!currentChatUserId) return;
-    
-    const userInfo = await getUserInfo(currentChatUserId);
-    const avatarLetter = (userInfo.displayName || userInfo.username || 'U')[0].toUpperCase();
-    const avatarStyle = userInfo.avatarBase64 
-        ? `style="background-image: url('${userInfo.avatarBase64}');"` 
-        : '';
-    
-    const cardHTML = `
-        <div class="user-profile-header">
-            <h3>Профиль</h3>
-            <button class="close-profile-btn" onclick="closeUserProfile()"><i class="fas fa-times"></i></button>
-        </div>
-        <div class="user-profile-avatar" ${avatarStyle}>${userInfo.avatarBase64 ? '' : avatarLetter}</div>
-        
-        <div class="user-profile-field">
-            <div class="user-field-label">Имя</div>
-            <div class="user-field-value">${escapeHtml(userInfo.displayName || '—')}</div>
-        </div>
-        
-        <div class="user-profile-field">
-            <div class="user-field-label">Никнейм</div>
-            <div class="user-field-value">@${escapeHtml(userInfo.username || 'username')}</div>
-        </div>
-        
-        <div class="user-profile-field">
-            <div class="user-field-label">О себе</div>
-            <div class="user-field-value">${escapeHtml(userInfo.bio || 'Пользователь пока ничего не рассказал о себе.')}</div>
-        </div>
-    `;
-    
-    userProfileCard.innerHTML = cardHTML;
-    userProfileOverlay.classList.add('show');
+// ===== УДАЛИТЬ ЧАТ (для себя и собеседника) =====
+async function deleteChat(chatId) {
+    if (!confirm('Удалить чат? Это действие нельзя отменить.')) return;
+
+    try {
+        // Удаляем весь документ чата и все его подколлекции (сообщения)
+        const batch = db.batch();
+        const chatRef = db.collection('chats').doc(chatId);
+
+        // Удаляем все сообщения внутри чата
+        const messagesSnap = await chatRef.collection('messages').get();
+        messagesSnap.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+
+        // Удаляем сам документ чата
+        batch.delete(chatRef);
+
+        await batch.commit();
+
+        // Также удаляем chatId из списка закреплённых, если он там был
+        if (pinnedChats.includes(chatId)) {
+            await db.collection('users').doc(currentUser.uid).update({
+                pinnedChats: firebase.firestore.FieldValue.arrayRemove(chatId)
+            });
+            pinnedChats = pinnedChats.filter(id => id !== chatId);
+        }
+
+        // Обновляем список чатов
+        await loadChatsList();
+        showNotification('Чат удалён');
+    } catch (error) {
+        console.error('Ошибка при удалении чата:', error);
+        showNotification('Ошибка удаления: ' + error.message);
+    }
 }
 
-function closeUserProfile() {
-    userProfileOverlay.classList.remove('show');
+// ===== ОБРАБОТЧИКИ ДЛЯ ПУНКТОВ МЕНЮ ЧАТА =====
+document.getElementById('contextPinChatBtn').addEventListener('click', () => {
+    chatContextMenu.style.display = 'none';
+    if (currentChatContext) {
+        pinChat(currentChatContext.chatId, !currentChatContext.isPinned);
+    }
+});
+
+document.getElementById('contextDeleteChatBtn').addEventListener('click', () => {
+    chatContextMenu.style.display = 'none';
+    if (currentChatContext) {
+        deleteChat(currentChatContext.chatId);
+    }
+});
+
+// ===== УЛУЧШЕННАЯ ФУНКЦИЯ ПОКАЗА ПАНЕЛИ РЕАКЦИЙ =====
+function showReactionsPanel(event, messageId, messageData) {
+    let x, y;
+    if (event.type.includes('touch')) {
+        const touch = event.touches[0] || event.changedTouches[0];
+        x = touch.clientX;
+        y = touch.clientY;
+    } else {
+        x = event.clientX;
+        y = event.clientY;
+    }
+
+    const panelWidth = 280;                 // должна совпадать с width в CSS
+    const panelHeight = 70;                  // примерная высота
+    let left = x - panelWidth / 2;
+    let top = y - panelHeight - 10;           // появляется над сообщением
+
+    // Корректировка, чтобы не выходило за границы
+    left = Math.max(10, Math.min(left, window.innerWidth - panelWidth - 10));
+    top = Math.max(10, Math.min(top, window.innerHeight - panelHeight - 10));
+
+    reactionsPanel.style.left = left + 'px';
+    reactionsPanel.style.top = top + 'px';
+
+    selectedMessageForReaction = { id: messageId, ...messageData };
+    reactionsPanel.classList.add('show');
+
+    setTimeout(() => {
+        const closePanel = (e) => {
+            if (!reactionsPanel.contains(e.target)) {
+                reactionsPanel.classList.remove('show');
+                document.removeEventListener('click', closePanel);
+                document.removeEventListener('touchstart', closePanel);
+            }
+        };
+        document.addEventListener('click', closePanel);
+        document.addEventListener('touchstart', closePanel);
+    }, 10);
 }
 
-// ===== ФУНКЦИИ ЧАТОВ =====
+// ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
 function formatTimeAgo(date) {
     if (!date) return "только что";
     const now = new Date();
@@ -1861,6 +1810,13 @@ function formatTimeAgo(date) {
 function formatMessageTime(date) {
     if (!date) return "";
     return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // Функция открытия чата
@@ -2039,13 +1995,6 @@ function addMessageToUI(msg) {
     chatMessages.appendChild(messageDiv);
 }
 
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
 function setupMessageClickHandler(messageDiv, msg) {
     if ('ontouchstart' in window) {
         let longPressTimer;
@@ -2155,33 +2104,6 @@ async function sendMessage() {
     } finally {
         chatSendBtn.disabled = false;
     }
-}
-
-function showReactionsPanel(event, messageId, messageData) {
-    let x, y;
-    if (event.type.includes('touch')) {
-        const touch = event.touches[0] || event.changedTouches[0];
-        x = touch.clientX;
-        y = touch.clientY;
-    } else {
-        x = event.clientX;
-        y = event.clientY;
-    }
-    selectedMessageForReaction = { id: messageId, ...messageData };
-    reactionsPanel.style.left = Math.min(x - 100, window.innerWidth - 220) + 'px';
-    reactionsPanel.style.top = Math.min(y - 60, window.innerHeight - 80) + 'px';
-    reactionsPanel.classList.add('show');
-    setTimeout(() => {
-        const closePanel = (e) => {
-            if (!reactionsPanel.contains(e.target)) {
-                reactionsPanel.classList.remove('show');
-                document.removeEventListener('click', closePanel);
-                document.removeEventListener('touchstart', closePanel);
-            }
-        };
-        document.addEventListener('click', closePanel);
-        document.addEventListener('touchstart', closePanel);
-    }, 10);
 }
 
 async function addReaction(emoji) {
@@ -2420,6 +2342,259 @@ async function createOrOpenChat(otherUserId) {
     } catch (error) {
         console.error('Error creating chat:', error);
         showNotification('Ошибка при создании чата');
+    }
+}
+
+// ===== ОТРИСОВКА ПРОФИЛЯ =====
+async function renderProfile() {
+    if (!userData) return;
+    
+    const avatarLetter = (userData.displayName || userData.username || 'U')[0].toUpperCase();
+    const avatarStyle = userData.avatarBase64 
+        ? `style="background-image: url('${userData.avatarBase64}');"` 
+        : '';
+    
+    const profileHTML = `
+        <div class="profile-header">
+            <div class="profile-avatar-wrapper">
+                <div class="profile-avatar" ${avatarStyle}>${userData.avatarBase64 ? '' : avatarLetter}</div>
+                <button class="avatar-upload-btn" onclick="triggerAvatarUpload()"><i class="fas fa-camera"></i></button>
+            </div>
+            <div class="profile-name">
+                <span id="profileDisplayNameValue">${escapeHtml(userData.displayName || 'Пользователь')}</span>
+                <button class="edit-btn" onclick="editField('displayName')"><i class="fas fa-pencil-alt"></i></button>
+            </div>
+            <div class="profile-username" id="profileUsernameValue">@${escapeHtml(userData.username || 'username')}</div>
+            <div class="profile-email">${escapeHtml(userData.email || 'email@example.com')}</div>
+        </div>
+        
+        <div class="profile-section">
+            <div class="section-title">О себе</div>
+            <div class="profile-field">
+                <span class="field-label"><i class="fas fa-info-circle"></i> Описание</span>
+                <span class="field-value editable" id="profileBioValue" onclick="editField('bio')">${escapeHtml(userData.bio || 'Расскажите о себе...')}</span>
+            </div>
+        </div>
+        
+        <div class="profile-section">
+            <div class="section-title">Личная информация</div>
+            <div class="profile-field">
+                <span class="field-label"><i class="fas fa-user"></i> Имя</span>
+                <span class="field-value editable" id="profileDisplayNameField" onclick="editField('displayName')">${escapeHtml(userData.displayName || 'Пользователь')}</span>
+            </div>
+            <div class="profile-field">
+                <span class="field-label"><i class="fas fa-at"></i> Никнейм</span>
+                <span class="field-value editable" id="profileUsernameField" onclick="editField('username')">@${escapeHtml(userData.username || 'username')}</span>
+            </div>
+            <div class="profile-field">
+                <span class="field-label"><i class="fas fa-envelope"></i> Почта</span>
+                <span class="field-value">${escapeHtml(userData.email || '—')}</span>
+            </div>
+        </div>
+    `;
+    
+    profileContainer.innerHTML = profileHTML;
+}
+
+// ===== РЕДАКТИРОВАНИЕ ПОЛЕЙ =====
+function editField(field) {
+    let currentValue = '';
+    let promptMessage = '';
+    
+    if (field === 'displayName') {
+        currentValue = userData.displayName || '';
+        promptMessage = 'Введите новое имя:';
+    } else if (field === 'username') {
+        currentValue = userData.username || '';
+        promptMessage = 'Введите новый никнейм (без @):';
+    } else if (field === 'bio') {
+        currentValue = userData.bio || '';
+        promptMessage = 'Введите новое описание:';
+    }
+    
+    const newValue = prompt(promptMessage, currentValue);
+    if (newValue === null || newValue.trim() === '') return;
+    
+    updateProfileField(field, newValue.trim());
+}
+
+async function updateProfileField(field, value) {
+    try {
+        const updateData = {};
+        updateData[field] = value;
+        
+        await db.collection("users").doc(currentUser.uid).update(updateData);
+        
+        userData[field] = value;
+        if (field === 'username') {
+            headerUsernameSpan.textContent = value;
+        }
+        
+        if (field === 'displayName') {
+            document.getElementById('profileDisplayNameValue').textContent = value;
+            document.getElementById('profileDisplayNameField').textContent = value;
+        } else if (field === 'username') {
+            document.getElementById('profileUsernameValue').textContent = '@' + value;
+            document.getElementById('profileUsernameField').textContent = '@' + value;
+        } else if (field === 'bio') {
+            document.getElementById('profileBioValue').textContent = value || 'Расскажите о себе...';
+        }
+        
+        showNotification('Профиль обновлен');
+    } catch (error) {
+        console.error('Ошибка обновления профиля:', error);
+        showNotification('Ошибка: ' + error.message);
+    }
+}
+
+// ===== ОТКРЫТИЕ ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ =====
+async function openUserProfileFromChat() {
+    if (!currentChatUserId) return;
+    
+    const userInfo = await getUserInfo(currentChatUserId);
+    const avatarLetter = (userInfo.displayName || userInfo.username || 'U')[0].toUpperCase();
+    const avatarStyle = userInfo.avatarBase64 
+        ? `style="background-image: url('${userInfo.avatarBase64}');"` 
+        : '';
+    
+    const cardHTML = `
+        <div class="user-profile-header">
+            <h3>Профиль</h3>
+            <button class="close-profile-btn" onclick="closeUserProfile()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="user-profile-avatar" ${avatarStyle}>${userInfo.avatarBase64 ? '' : avatarLetter}</div>
+        
+        <div class="user-profile-field">
+            <div class="user-field-label">Имя</div>
+            <div class="user-field-value">${escapeHtml(userInfo.displayName || '—')}</div>
+        </div>
+        
+        <div class="user-profile-field">
+            <div class="user-field-label">Никнейм</div>
+            <div class="user-field-value">@${escapeHtml(userInfo.username || 'username')}</div>
+        </div>
+        
+        <div class="user-profile-field">
+            <div class="user-field-label">О себе</div>
+            <div class="user-field-value">${escapeHtml(userInfo.bio || 'Пользователь пока ничего не рассказал о себе.')}</div>
+        </div>
+    `;
+    
+    userProfileCard.innerHTML = cardHTML;
+    userProfileOverlay.classList.add('show');
+}
+
+function closeUserProfile() {
+    userProfileOverlay.classList.remove('show');
+}
+
+// ===== ФУНКЦИИ ДЛЯ АВАТАРКИ =====
+function triggerAvatarUpload() {
+    avatarUploadInput.click();
+}
+
+avatarUploadInput.addEventListener('change', handleAvatarSelect);
+
+function handleAvatarSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        cropImage.src = e.target.result;
+        cropModal.classList.add('show');
+        setTimeout(() => {
+            if (cropper) cropper.destroy();
+            cropper = new Cropper(cropImage, {
+                aspectRatio: 1,
+                viewMode: 1,
+                dragMode: 'move',
+                autoCropArea: 1,
+                cropBoxMovable: true,
+                cropBoxResizable: true,
+                background: false,
+                modal: true,
+                guides: true,
+                center: true,
+                highlight: false,
+                toggleDragModeOnDblclick: false,
+            });
+        }, 100);
+    };
+    reader.readAsDataURL(file);
+    avatarUploadInput.value = '';
+}
+
+function closeCropModal() {
+    cropModal.classList.remove('show');
+    if (cropper) {
+        cropper.destroy();
+        cropper = null;
+    }
+}
+
+function saveCroppedAvatar() {
+    if (!cropper) return;
+    
+    const canvas = cropper.getCroppedCanvas({
+        width: 300,
+        height: 300,
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high',
+    });
+    
+    canvas.toBlob(async (blob) => {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const base64Data = e.target.result;
+            
+            try {
+                await db.collection("users").doc(currentUser.uid).update({
+                    avatarBase64: base64Data
+                });
+                
+                userData.avatarBase64 = base64Data;
+                usersCache.delete(currentUser.uid);
+                
+                renderProfile();
+                loadChatsList();
+                
+                showNotification('Аватар успешно обновлен');
+            } catch (error) {
+                console.error('Ошибка сохранения аватара:', error);
+                showNotification('Ошибка при сохранении аватара');
+            }
+            
+            closeCropModal();
+        };
+        reader.readAsDataURL(blob);
+    }, 'image/jpeg', 0.9);
+}
+
+// ===== ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК =====
+function switchTab(tab) {
+    if (tab === currentActiveTab) return;
+    
+    currentActiveTab = tab;
+    
+    if (tab === 'chats') {
+        tabChats.classList.add('active');
+        tabProfile.classList.remove('active');
+        navChats.classList.add('active');
+        navProfile.classList.remove('active');
+        mainTitle.textContent = 'Contegg · Чаты';
+        mainContent.scrollTop = 0;
+    } else {
+        tabProfile.classList.add('active');
+        tabChats.classList.remove('active');
+        navProfile.classList.add('active');
+        navChats.classList.remove('active');
+        mainTitle.textContent = 'Contegg · Профиль';
+        mainContent.scrollTop = 0;
+        
+        if (profileContainer.innerHTML.includes('loader')) {
+            renderProfile();
+        }
     }
 }
 
