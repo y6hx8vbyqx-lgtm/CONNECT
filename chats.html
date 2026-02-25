@@ -28,6 +28,7 @@
             -webkit-tap-highlight-color: transparent;
         }
 
+        /* iPhone 16 Pro Max размеры */
         :root {
             --bg-color: #0a0a0a;
             --bg-secondary: #1a1a1a;
@@ -42,10 +43,12 @@
             --error-color: #ff4d4d;
             --success-color: #4caf50;
             --online-color: #4caf50;
-            --card-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-            --safe-area-top: env(safe-area-inset-top, 0px);
+            
+            /* iPhone 16 Pro Max safe areas */
+            --safe-area-top: env(safe-area-inset-top, 47px); /* Динамический остров */
+            --safe-area-bottom: env(safe-area-inset-bottom, 34px);
             --header-height: 60px;
-            --bottom-nav-height: 70px;
+            --bottom-nav-height: 83px; /* С учетом home indicator */
         }
 
         body {
@@ -54,7 +57,8 @@
             color: var(--text-primary);
             height: 100vh;
             overflow: hidden;
-            padding-top: var(--safe-area-top);
+            position: fixed;
+            width: 100%;
         }
 
         /* App Container */
@@ -62,10 +66,12 @@
             height: 100vh;
             display: flex;
             flex-direction: column;
-            position: relative;
+            background: var(--bg-color);
+            padding-top: var(--safe-area-top);
+            padding-bottom: var(--safe-area-bottom);
         }
 
-        /* Header - с отступом для мобильных */
+        /* Header */
         .header {
             height: var(--header-height);
             background: var(--bg-secondary);
@@ -73,56 +79,29 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 16px;
-            padding-top: max(0px, env(safe-area-inset-top));
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-        }
-
-        /* Медиа-запрос для мобильных устройств */
-        @media (max-width: 768px) {
-            .header {
-                padding-top: max(15px, env(safe-area-inset-top));
-                height: calc(var(--header-height) + 10px);
-            }
-            
-            .search-container {
-                padding-top: 5px;
-            }
-        }
-
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            padding: 0 20px;
+            position: relative;
+            z-index: 10;
         }
 
         .header-left h1 {
-            font-size: 24px;
+            font-size: 28px;
             font-weight: 700;
             background: linear-gradient(135deg, #fff, #b0b0b0);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-        }
-
-        .header-right {
-            display: flex;
-            align-items: center;
-            gap: 16px;
+            letter-spacing: -0.3px;
         }
 
         .header-right span {
             color: var(--text-secondary);
-            font-size: 16px;
+            font-size: 17px;
             font-weight: 500;
         }
 
         /* Search Bar */
         .search-container {
-            padding: 12px 16px;
+            padding: 12px 20px;
             background: var(--bg-secondary);
             border-bottom: 1px solid var(--border-color);
         }
@@ -138,14 +117,16 @@
             transform: translateY(-50%);
             color: var(--text-muted);
             font-size: 16px;
+            z-index: 1;
         }
 
         .search-box input {
             width: 100%;
-            padding: 14px 45px;
+            height: 46px;
+            padding: 0 45px;
             background: var(--bg-input);
             border: 1px solid var(--border-color);
-            border-radius: 24px;
+            border-radius: 23px;
             font-size: 16px;
             color: var(--text-primary);
             transition: all 0.2s ease;
@@ -165,34 +146,36 @@
         .chats-container {
             flex: 1;
             overflow-y: auto;
-            padding: 8px 12px;
+            overflow-x: hidden;
             background: var(--bg-color);
             -webkit-overflow-scrolling: touch;
+            padding: 8px 12px;
         }
 
         .chats-list {
             display: flex;
             flex-direction: column;
-            gap: 2px;
+            gap: 4px;
         }
 
         .chat-item {
             display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 12px;
-            border-radius: 12px;
+            gap: 16px;
+            padding: 12px 16px;
+            border-radius: 16px;
             background: var(--bg-secondary);
             cursor: pointer;
             transition: all 0.2s ease;
             position: relative;
-            user-select: none;
             border: 1px solid transparent;
+            width: 100%;
+            min-height: 80px;
         }
 
-        .chat-item:hover {
+        .chat-item:active {
             background: var(--bg-tertiary);
-            transform: translateX(4px);
+            transform: scale(0.98);
         }
 
         .chat-item.pinned {
@@ -201,26 +184,27 @@
         }
 
         .chat-avatar {
-            width: 56px;
-            height: 56px;
-            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            border-radius: 30px;
             background: linear-gradient(135deg, var(--accent-color), #1a5ec9);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 24px;
+            font-size: 26px;
             font-weight: 600;
             color: white;
             flex-shrink: 0;
             position: relative;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
         }
 
         .online-indicator {
             position: absolute;
             bottom: 2px;
             right: 2px;
-            width: 14px;
-            height: 14px;
+            width: 16px;
+            height: 16px;
             background: var(--online-color);
             border-radius: 50%;
             border: 3px solid var(--bg-secondary);
@@ -235,21 +219,24 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
         }
 
         .chat-name {
-            font-size: 16px;
+            font-size: 17px;
             font-weight: 600;
             color: var(--text-primary);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            max-width: 180px;
         }
 
         .chat-time {
-            font-size: 12px;
+            font-size: 13px;
             color: var(--text-muted);
+            flex-shrink: 0;
+            margin-left: 8px;
         }
 
         .chat-last-message {
@@ -265,6 +252,7 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            max-width: 200px;
         }
 
         .unread-badge {
@@ -272,45 +260,87 @@
             color: white;
             font-size: 12px;
             font-weight: 600;
-            min-width: 20px;
-            height: 20px;
-            border-radius: 10px;
+            min-width: 22px;
+            height: 22px;
+            border-radius: 11px;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 0 6px;
+            flex-shrink: 0;
+        }
+
+        /* Bottom Navigation */
+        .bottom-nav {
+            height: var(--bottom-nav-height);
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            padding: 0 20px;
+            padding-bottom: max(0px, env(safe-area-inset-bottom, 10px));
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 20px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--text-muted);
+        }
+
+        .nav-item.active {
+            color: var(--accent-color);
+        }
+
+        .nav-item i {
+            font-size: 24px;
+        }
+
+        .nav-item span {
+            font-size: 12px;
+            font-weight: 500;
         }
 
         /* Context Menu */
         .context-menu {
             position: fixed;
             background: var(--bg-tertiary);
-            border-radius: 12px;
+            border-radius: 14px;
             padding: 8px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
             border: 1px solid var(--border-color);
             z-index: 1000;
-            min-width: 180px;
+            min-width: 200px;
             animation: fadeIn 0.1s ease;
         }
 
         .context-menu-item {
-            padding: 12px 16px;
+            padding: 14px 16px;
             display: flex;
             align-items: center;
             gap: 12px;
             color: var(--text-primary);
-            border-radius: 8px;
+            border-radius: 10px;
             cursor: pointer;
             transition: all 0.2s ease;
+            font-size: 16px;
         }
 
-        .context-menu-item:hover {
+        .context-menu-item:active {
             background: var(--bg-secondary);
         }
 
         .context-menu-item i {
-            width: 20px;
+            width: 22px;
+            font-size: 18px;
             color: var(--accent-color);
         }
 
@@ -322,44 +352,85 @@
             color: var(--error-color);
         }
 
-        /* Bottom Navigation */
-        .bottom-nav {
-            height: var(--bottom-nav-height);
-            background: var(--bg-secondary);
-            border-top: 1px solid var(--border-color);
-            display: flex;
-            align-items: center;
-            justify-content: space-around;
-            padding: 0 12px;
-            padding-bottom: env(safe-area-inset-bottom, 0px);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
+        /* Search Results */
+        .search-results {
+            margin-top: 8px;
+            background: var(--bg-tertiary);
+            border-radius: 16px;
+            overflow: hidden;
+            animation: fadeIn 0.2s ease;
+            max-height: 300px;
+            overflow-y: auto;
         }
 
-        .nav-item {
+        .search-result-item {
             display: flex;
-            flex-direction: column;
             align-items: center;
-            gap: 4px;
-            padding: 8px 16px;
-            border-radius: 12px;
+            gap: 14px;
+            padding: 14px 18px;
             cursor: pointer;
             transition: all 0.2s ease;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .search-result-item:active {
+            background: var(--bg-secondary);
+        }
+
+        .result-avatar {
+            width: 46px;
+            height: 46px;
+            border-radius: 23px;
+            background: var(--accent-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .result-info {
+            flex: 1;
+        }
+
+        .result-name {
+            font-size: 17px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .result-username {
+            font-size: 14px;
             color: var(--text-muted);
         }
 
-        .nav-item.active {
-            color: var(--accent-color);
-            background: rgba(43, 126, 245, 0.1);
+        /* No Chats */
+        .no-chats {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
         }
 
-        .nav-item i {
-            font-size: 22px;
+        .no-chats i {
+            font-size: 64px;
+            margin-bottom: 20px;
+            opacity: 0.5;
         }
 
-        .nav-item span {
-            font-size: 11px;
-            font-weight: 500;
+        .no-chats p {
+            font-size: 17px;
+            margin-bottom: 8px;
+        }
+
+        .no-chats .sub {
+            font-size: 14px;
+            opacity: 0.7;
         }
 
         /* Animations */
@@ -378,91 +449,28 @@
             to { transform: translateX(100%); }
         }
 
-        /* Scrollbar */
-        ::-webkit-scrollbar {
-            width: 4px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: var(--bg-color);
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--bg-tertiary);
-            border-radius: 2px;
-        }
-
         /* Hidden */
         .hidden {
             display: none !important;
         }
 
-        /* User Search Results */
-        .search-results {
-            margin-top: 8px;
-            background: var(--bg-tertiary);
-            border-radius: 12px;
-            overflow: hidden;
-            animation: fadeIn 0.2s ease;
-        }
-
-        .search-result-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px 16px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .search-result-item:last-child {
-            border-bottom: none;
-        }
-
-        .search-result-item:hover {
-            background: var(--bg-secondary);
-        }
-
-        .result-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: var(--accent-color);
+        /* Pull to refresh */
+        .refresh-indicator {
+            height: 50px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 18px;
-            font-weight: 600;
-            color: white;
-        }
-
-        .result-info {
-            flex: 1;
-        }
-
-        .result-name {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-
-        .result-username {
-            font-size: 13px;
             color: var(--text-muted);
+            font-size: 14px;
         }
 
-        /* No Chats */
-        .no-chats {
-            text-align: center;
-            padding: 40px 20px;
-            color: var(--text-muted);
+        .fa-spinner {
+            animation: spin 1s linear infinite;
         }
 
-        .no-chats i {
-            font-size: 48px;
-            margin-bottom: 16px;
-            opacity: 0.5;
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
@@ -482,7 +490,7 @@
         <div class="search-container">
             <div class="search-box">
                 <i class="fas fa-search"></i>
-                <input type="text" id="searchInput" placeholder="Поиск по нику...">
+                <input type="text" id="searchInput" placeholder="Поиск по нику..." autocomplete="off">
             </div>
             <div id="searchResults" class="search-results hidden"></div>
         </div>
@@ -508,7 +516,7 @@
             </div>
         </nav>
 
-        <!-- Context Menu (hidden by default) -->
+        <!-- Context Menu -->
         <div id="contextMenu" class="context-menu hidden">
             <div class="context-menu-item" id="pinChat">
                 <i class="fas fa-thumbtack"></i>
@@ -537,16 +545,25 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
-        // Enable offline persistence for faster loading
-        db.enablePersistence({ synchronizeTabs: true })
-            .catch(err => console.log('Persistence error:', err));
+        // Enable offline persistence
+        db.enablePersistence({
+            synchronizeTabs: true
+        }).catch((err) => {
+            if (err.code === 'failed-precondition') {
+                console.log('Persistence failed');
+            } else if (err.code === 'unimplemented') {
+                console.log('Persistence not available');
+            }
+        });
 
-        // Current user
+        // State
         let currentUser = null;
         let currentUserId = null;
         let pinnedChats = new Set();
         let selectedChatId = null;
-        let usersCache = new Map(); // Кэш пользователей
+        let usersCache = new Map();
+        let unsubscribeChats = null;
+        let isTransitioning = false;
 
         // DOM Elements
         const chatsList = document.getElementById('chatsList');
@@ -557,7 +574,7 @@
         const deleteChatBtn = document.getElementById('deleteChat');
         const navItems = document.querySelectorAll('.nav-item');
 
-        // Check auth state
+        // Check auth
         auth.onAuthStateChanged(async (user) => {
             if (!user) {
                 window.location.href = 'index.html';
@@ -567,17 +584,14 @@
             currentUser = user;
             currentUserId = user.uid;
             
-            // Save user to Firestore
+            // Save user
             await saveUserToFirestore(user);
             
-            // Load pinned chats from localStorage
+            // Load pinned chats
             loadPinnedChats();
             
             // Load chats
-            loadChats();
-            
-            // Listen for new chats
-            listenForChats();
+            setupChatsListener();
         });
 
         // Save user to Firestore
@@ -586,7 +600,6 @@
                 const username = user.displayName || user.email.split('@')[0];
                 await db.collection('users').doc(user.uid).set({
                     uid: user.uid,
-                    email: user.email,
                     username: username,
                     displayName: username,
                     online: true,
@@ -598,30 +611,40 @@
             }
         }
 
-        // Load pinned chats from localStorage
+        // Load pinned chats
         function loadPinnedChats() {
-            const saved = localStorage.getItem(`pinned_${currentUserId}`);
-            if (saved) {
-                pinnedChats = new Set(JSON.parse(saved));
+            try {
+                const saved = localStorage.getItem(`pinned_${currentUserId}`);
+                if (saved) {
+                    pinnedChats = new Set(JSON.parse(saved));
+                }
+            } catch (e) {
+                console.log('Error loading pinned:', e);
             }
         }
 
-        // Save pinned chats to localStorage
+        // Save pinned chats
         function savePinnedChats() {
-            localStorage.setItem(`pinned_${currentUserId}`, JSON.stringify([...pinnedChats]));
+            try {
+                localStorage.setItem(`pinned_${currentUserId}`, JSON.stringify([...pinnedChats]));
+            } catch (e) {
+                console.log('Error saving pinned:', e);
+            }
         }
 
-        // Load chats
-        function loadChats() {
-            if (!currentUserId) return;
-            
-            db.collection('chats')
+        // Setup chats listener
+        function setupChatsListener() {
+            if (unsubscribeChats) {
+                unsubscribeChats();
+            }
+
+            unsubscribeChats = db.collection('chats')
                 .where('participants', 'array-contains', currentUserId)
                 .orderBy('lastMessageTime', 'desc')
                 .onSnapshot(async (snapshot) => {
                     const chats = [];
                     
-                    // Собираем все ID участников для загрузки
+                    // Collect participant IDs
                     const participantIds = new Set();
                     snapshot.forEach(doc => {
                         const chat = { id: doc.id, ...doc.data() };
@@ -629,48 +652,57 @@
                         chat.participants.forEach(id => participantIds.add(id));
                     });
                     
-                    // Загружаем данные всех участников
+                    // Load users data
                     await loadUsersData([...participantIds]);
                     
                     displayChats(chats);
                 }, (error) => {
-                    console.error('Error loading chats:', error);
+                    console.error('Chats listener error:', error);
                 });
         }
 
-        // Загрузка данных пользователей
+        // Load users data
         async function loadUsersData(userIds) {
             const uncached = userIds.filter(id => !usersCache.has(id) && id !== currentUserId);
             
             if (uncached.length === 0) return;
             
-            // Загружаем пачками по 10
-            for (let i = 0; i < uncached.length; i += 10) {
-                const batch = uncached.slice(i, i + 10);
-                const users = await db.collection('users')
-                    .where('uid', 'in', batch)
-                    .get();
+            try {
+                const chunks = [];
+                for (let i = 0; i < uncached.length; i += 10) {
+                    chunks.push(uncached.slice(i, i + 10));
+                }
                 
-                users.forEach(doc => {
-                    usersCache.set(doc.id, doc.data());
-                });
+                for (const chunk of chunks) {
+                    const users = await db.collection('users')
+                        .where('uid', 'in', chunk)
+                        .get();
+                    
+                    users.forEach(doc => {
+                        usersCache.set(doc.id, doc.data());
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading users:', error);
             }
         }
 
         // Display chats
         function displayChats(chats) {
+            if (!chatsList) return;
+
             if (chats.length === 0) {
                 chatsList.innerHTML = `
                     <div class="no-chats">
                         <i class="fas fa-comments"></i>
                         <p>У вас пока нет чатов</p>
-                        <p style="font-size: 13px; margin-top: 8px;">Найдите пользователя через поиск</p>
+                        <p class="sub">Найдите пользователя через поиск</p>
                     </div>
                 `;
                 return;
             }
 
-            // Sort: pinned first, then by last message time
+            // Sort chats
             const sortedChats = [...chats].sort((a, b) => {
                 const aPinned = pinnedChats.has(a.id);
                 const bPinned = pinnedChats.has(b.id);
@@ -693,22 +725,25 @@
                 const time = chat.lastMessageTime?.toDate?.() || new Date();
                 const timeString = formatTime(time);
                 const isPinned = pinnedChats.has(chat.id);
-                const avatar = chatName[0].toUpperCase();
+                const avatar = chatName[0]?.toUpperCase() || '?';
                 const isOnline = otherUser.online || false;
                 
                 html += `
-                    <div class="chat-item ${isPinned ? 'pinned' : ''}" data-chat-id="${chat.id}" data-user-id="${otherParticipantId || ''}">
+                    <div class="chat-item ${isPinned ? 'pinned' : ''}" 
+                         data-chat-id="${chat.id}" 
+                         data-user-id="${otherParticipantId || ''}"
+                         data-username="${chatName}">
                         <div class="chat-avatar">
                             ${avatar}
                             ${isOnline ? '<span class="online-indicator"></span>' : ''}
                         </div>
                         <div class="chat-info">
                             <div class="chat-header">
-                                <span class="chat-name">${chatName}</span>
+                                <span class="chat-name">${escapeHtml(chatName)}</span>
                                 <span class="chat-time">${timeString}</span>
                             </div>
                             <div class="chat-last-message">
-                                <span>${lastMessage}</span>
+                                <span>${escapeHtml(lastMessage)}</span>
                                 ${chat.unreadCount ? `<span class="unread-badge">${chat.unreadCount}</span>` : ''}
                             </div>
                         </div>
@@ -718,32 +753,61 @@
             
             chatsList.innerHTML = html;
             
-            // Add click and context menu listeners
+            // Add event listeners
+            addChatListeners();
+        }
+
+        // Add chat listeners
+        function addChatListeners() {
             document.querySelectorAll('.chat-item').forEach(item => {
-                item.addEventListener('click', () => {
+                // Click to open chat
+                item.addEventListener('click', (e) => {
+                    if (isTransitioning) return;
+                    
                     const chatId = item.dataset.chatId;
                     const userId = item.dataset.userId;
-                    openChat(chatId, userId);
+                    const username = item.dataset.username;
+                    
+                    if (chatId && userId) {
+                        openChat(chatId, userId, username);
+                    }
                 });
                 
+                // Context menu
                 item.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
+                    e.stopPropagation();
+                    
                     const chatId = item.dataset.chatId;
-                    showContextMenu(e, chatId);
+                    if (chatId) {
+                        showContextMenu(e, chatId);
+                    }
                 });
                 
-                // For mobile: long press
+                // Mobile long press
                 let pressTimer;
+                let longPressTriggered = false;
+                
                 item.addEventListener('touchstart', (e) => {
+                    longPressTriggered = false;
                     pressTimer = setTimeout(() => {
+                        longPressTriggered = true;
                         const chatId = item.dataset.chatId;
                         const touch = e.touches[0];
-                        showContextMenu({ clientX: touch.clientX, clientY: touch.clientY }, chatId);
+                        if (chatId && touch) {
+                            showContextMenu({
+                                clientX: touch.clientX,
+                                clientY: touch.clientY
+                            }, chatId);
+                        }
                     }, 500);
                 });
                 
-                item.addEventListener('touchend', () => {
+                item.addEventListener('touchend', (e) => {
                     clearTimeout(pressTimer);
+                    if (longPressTriggered) {
+                        e.preventDefault();
+                    }
                 });
                 
                 item.addEventListener('touchmove', () => {
@@ -754,18 +818,35 @@
 
         // Format time
         function formatTime(date) {
-            const now = new Date();
-            const diff = now - date;
-            
-            if (diff < 60000) return 'сейчас';
-            if (diff < 3600000) return `${Math.floor(diff / 60000)} мин`;
-            if (diff < 86400000) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            if (diff < 604800000) return ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'][date.getDay()];
-            return date.toLocaleDateString();
+            try {
+                const now = new Date();
+                const diff = now - date;
+                
+                if (diff < 60000) return 'сейчас';
+                if (diff < 3600000) return `${Math.floor(diff / 60000)} мин`;
+                if (diff < 86400000) {
+                    return date.toLocaleTimeString('ru-RU', { 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                    });
+                }
+                if (diff < 604800000) {
+                    const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+                    return days[date.getDay()];
+                }
+                return date.toLocaleDateString('ru-RU', { 
+                    day: 'numeric', 
+                    month: 'short' 
+                });
+            } catch (e) {
+                return '';
+            }
         }
 
         // Show context menu
         function showContextMenu(event, chatId) {
+            if (!chatId) return;
+            
             selectedChatId = chatId;
             const isPinned = pinnedChats.has(chatId);
             
@@ -774,18 +855,37 @@
                 <span>${isPinned ? 'Открепить' : 'Закрепить'}</span>
             `;
             
-            contextMenu.style.left = `${event.clientX}px`;
-            contextMenu.style.top = `${event.clientY}px`;
+            // Position menu
+            let x = event.clientX;
+            let y = event.clientY;
+            
+            // Keep menu in view
+            const menuWidth = 200;
+            const menuHeight = 100;
+            
+            if (x + menuWidth > window.innerWidth) {
+                x = window.innerWidth - menuWidth - 10;
+            }
+            
+            if (y + menuHeight > window.innerHeight) {
+                y = window.innerHeight - menuHeight - 10;
+            }
+            
+            contextMenu.style.left = `${x}px`;
+            contextMenu.style.top = `${y}px`;
             contextMenu.classList.remove('hidden');
             
             // Hide on click outside
+            const hideMenu = (e) => {
+                if (!contextMenu.contains(e.target)) {
+                    contextMenu.classList.add('hidden');
+                    document.removeEventListener('click', hideMenu);
+                }
+            };
+            
             setTimeout(() => {
-                document.addEventListener('click', hideContextMenu, { once: true });
+                document.addEventListener('click', hideMenu);
             }, 100);
-        }
-
-        function hideContextMenu() {
-            contextMenu.classList.add('hidden');
         }
 
         // Pin/Unpin chat
@@ -803,10 +903,8 @@
             }
             
             savePinnedChats();
-            hideContextMenu();
-            
-            // Refresh chats display
-            loadChats();
+            contextMenu.classList.add('hidden');
+            setupChatsListener(); // Refresh
         });
 
         // Delete chat
@@ -814,23 +912,21 @@
             if (!selectedChatId || !currentUserId) return;
             
             if (!confirm('Удалить чат для всех? Это действие нельзя отменить.')) {
-                hideContextMenu();
+                contextMenu.classList.add('hidden');
                 return;
             }
             
             try {
-                // Get all messages in this chat
+                // Delete messages
                 const messages = await db.collection('messages')
                     .where('chatId', '==', selectedChatId)
                     .get();
                 
-                // Delete all messages
                 const batch = db.batch();
                 messages.forEach(doc => {
                     batch.delete(doc.ref);
                 });
                 
-                // Delete the chat
                 batch.delete(db.collection('chats').doc(selectedChatId));
                 
                 await batch.commit();
@@ -841,7 +937,8 @@
                     savePinnedChats();
                 }
                 
-                hideContextMenu();
+                contextMenu.classList.add('hidden');
+                
             } catch (error) {
                 console.error('Error deleting chat:', error);
                 alert('Ошибка при удалении чата');
@@ -860,14 +957,13 @@
             }
             
             searchTimeout = setTimeout(() => {
-                searchUsers(query);
+                performSearch(query);
             }, 500);
         });
 
-        async function searchUsers(query) {
+        async function performSearch(query) {
             try {
-                const usersRef = db.collection('users');
-                const snapshot = await usersRef
+                const snapshot = await db.collection('users')
                     .where('username', '>=', query)
                     .where('username', '<=', query + '\uf8ff')
                     .limit(10)
@@ -880,23 +976,26 @@
                 }
                 
                 let html = '';
+                let hasResults = false;
+                
                 snapshot.forEach(doc => {
                     const user = doc.data();
-                    if (user.uid === currentUserId) return; // Don't show self
+                    if (user.uid === currentUserId) return;
                     
+                    hasResults = true;
                     html += `
                         <div class="search-result-item" data-user-id="${user.uid}">
                             <div class="result-avatar">${(user.username || 'U')[0].toUpperCase()}</div>
                             <div class="result-info">
-                                <div class="result-name">${user.username || 'Пользователь'}</div>
-                                <div class="result-username">@${user.username || 'user'}</div>
+                                <div class="result-name">${escapeHtml(user.username || 'Пользователь')}</div>
+                                <div class="result-username">@${escapeHtml(user.username || 'user')}</div>
                             </div>
                         </div>
                     `;
                 });
                 
-                if (!html) {
-                    html = '<div class="search-result-item" style="justify-content: center;">Только вы</div>';
+                if (!hasResults) {
+                    html = '<div class="search-result-item" style="justify-content: center;">Ничего не найдено</div>';
                 }
                 
                 searchResults.innerHTML = html;
@@ -908,27 +1007,31 @@
                         const userId = item.dataset.userId;
                         if (userId) {
                             createOrOpenChat(userId);
+                            searchResults.classList.add('hidden');
+                            searchInput.value = '';
                         }
                     });
                 });
                 
             } catch (error) {
                 console.error('Search error:', error);
+                searchResults.classList.add('hidden');
             }
         }
 
-        // Create or open chat with user
+        // Create or open chat
         async function createOrOpenChat(otherUserId) {
+            if (!otherUserId || isTransitioning) return;
+            
             try {
-                // Check if chat already exists
-                const chatsRef = db.collection('chats');
-                const snapshot = await chatsRef
+                // Check existing chat
+                const chatsSnapshot = await db.collection('chats')
                     .where('participants', 'array-contains', currentUserId)
                     .get();
                 
                 let existingChatId = null;
                 
-                snapshot.forEach(doc => {
+                chatsSnapshot.forEach(doc => {
                     const chat = doc.data();
                     if (chat.participants.includes(otherUserId) && chat.participants.length === 2) {
                         existingChatId = doc.id;
@@ -945,16 +1048,16 @@
                     participants: [currentUserId, otherUserId],
                     type: 'private',
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    lastMessage: '',
+                    lastMessage: 'Чат создан',
                     lastMessageTime: firebase.firestore.FieldValue.serverTimestamp(),
                     createdBy: currentUserId
                 };
                 
-                const docRef = await db.collection('chats').add(newChat);
+                const chatRef = await db.collection('chats').add(newChat);
                 
                 // Send welcome message
                 await db.collection('messages').add({
-                    chatId: docRef.id,
+                    chatId: chatRef.id,
                     senderId: currentUserId,
                     senderName: currentUser.displayName || 'Пользователь',
                     text: 'Чат создан',
@@ -962,97 +1065,95 @@
                     readBy: [currentUserId]
                 });
                 
-                openChat(docRef.id, otherUserId);
+                openChat(chatRef.id, otherUserId);
                 
             } catch (error) {
                 console.error('Error creating chat:', error);
+                alert('Ошибка при создании чата');
             }
         }
 
-        // Open chat
-        function openChat(chatId, otherUserId) {
-            // Save chat info to sessionStorage for the chat page
+        // Open chat with animation
+        function openChat(chatId, otherUserId, username) {
+            if (isTransitioning) return;
+            
+            isTransitioning = true;
+            
+            // Save data
             sessionStorage.setItem('currentChatId', chatId);
             sessionStorage.setItem('otherUserId', otherUserId);
+            if (username) {
+                sessionStorage.setItem('otherUsername', username);
+            }
             
-            // Animate and redirect
-            document.body.style.animation = 'slideOut 0.2s ease';
+            // Animate out
+            document.body.style.transition = 'transform 0.2s ease';
+            document.body.style.transform = 'translateX(100%)';
+            
             setTimeout(() => {
                 window.location.href = 'chat.html';
-            }, 150);
-        }
-
-        // Listen for new chats (for real-time updates)
-        function listenForChats() {
-            if (!currentUserId) return;
-            
-            db.collection('chats')
-                .where('participants', 'array-contains', currentUserId)
-                .onSnapshot((snapshot) => {
-                    snapshot.docChanges().forEach((change) => {
-                        if (change.type === 'added') {
-                            // Play sound or show notification
-                            if (Notification.permission === 'granted') {
-                                new Notification('Новый чат', {
-                                    body: 'У вас новый чат',
-                                    icon: 'icons/icon-192x192.png'
-                                });
-                            }
-                        }
-                    });
-                });
-        }
-
-        // Request notification permission
-        if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-            Notification.requestPermission();
+            }, 180);
         }
 
         // Navigation
         navItems.forEach(item => {
             item.addEventListener('click', () => {
+                if (isTransitioning) return;
+                
                 navItems.forEach(nav => nav.classList.remove('active'));
                 item.classList.add('active');
                 
                 const tab = item.dataset.tab;
                 switch(tab) {
                     case 'chats':
-                        // Already on chats
                         break;
                     case 'settings':
-                        alert('Настройки будут доступны позже');
-                        break;
                     case 'profile':
-                        alert('Профиль будет доступен позже');
+                        alert('Раздел в разработке');
                         break;
                 }
             });
         });
 
-        // Prevent zoom on input focus
+        // Escape HTML
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Prevent zoom
         document.addEventListener('touchstart', (e) => {
             if (e.target.nodeName === 'INPUT') {
                 e.target.style.fontSize = '16px';
             }
-        }, { passive: false });
+        }, { passive: true });
 
         // Update online status
-        window.addEventListener('beforeunload', () => {
+        function setOnlineStatus(online) {
             if (currentUserId) {
                 db.collection('users').doc(currentUserId).update({
-                    online: false,
+                    online: online,
                     lastSeen: firebase.firestore.FieldValue.serverTimestamp()
-                });
+                }).catch(() => {});
             }
+        }
+
+        window.addEventListener('beforeunload', () => {
+            setOnlineStatus(false);
         });
 
-        // Set online status
-        if (currentUserId) {
-            db.collection('users').doc(currentUserId).update({
-                online: true,
-                lastSeen: firebase.firestore.FieldValue.serverTimestamp()
-            });
-        }
+        window.addEventListener('load', () => {
+            setOnlineStatus(true);
+        });
+
+        // Cleanup
+        window.addEventListener('unload', () => {
+            if (unsubscribeChats) {
+                unsubscribeChats();
+            }
+        });
     </script>
 </body>
 </html>
