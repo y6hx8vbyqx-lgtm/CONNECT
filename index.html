@@ -14,6 +14,7 @@
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     
     <style>
         * {
@@ -488,6 +489,7 @@
         // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
+        const db = firebase.firestore();
 
         // DOM Elements
         const welcomeScreen = document.getElementById('welcomeScreen');
@@ -585,16 +587,31 @@
             try {
                 // Create user with email and password
                 const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                const user = userCredential.user;
                 
                 // Update profile with username
-                await userCredential.user.updateProfile({
+                await user.updateProfile({
                     displayName: username
+                });
+
+                // Создаем запись пользователя в Firestore
+                await db.collection('users').doc(user.uid).set({
+                    uid: user.uid,
+                    username: username,
+                    displayName: username,
+                    email: email,
+                    bio: 'Расскажите о себе...',
+                    isAdmin: false,
+                    blockedUsers: [],
+                    pinnedChats: [],
+                    createdAt: new Date()
                 });
 
                 showSuccess(registerError, 'Регистрация успешна! Перенаправление...');
                 
+                // *** ИСПРАВЛЕНО: правильный путь к файлу чатов ***
                 setTimeout(() => {
-                    window.location.href = '/chat.html';
+                    window.location.href = 'chats.html'; // Убрал слеш
                 }, 1500);
 
             } catch (error) {
@@ -610,9 +627,6 @@
                         break;
                     case 'auth/weak-password':
                         message = 'Слишком слабый пароль';
-                        break;
-                    case 'auth/configuration-not-found':
-                        message = 'Ошибка: Firebase Authentication не включен. Включи его в консоли Firebase';
                         break;
                     default:
                         message = error.message;
@@ -647,8 +661,9 @@
                 
                 showSuccess(loginError, 'Вход выполнен! Перенаправление...');
                 
+                // *** ИСПРАВЛЕНО: правильный путь к файлу чатов ***
                 setTimeout(() => {
-                    window.location.href = '/chat.html';
+                    window.location.href = 'chats.html'; // Убрал слеш
                 }, 1500);
 
             } catch (error) {
@@ -665,9 +680,6 @@
                     case 'auth/invalid-email':
                         message = 'Некорректный email';
                         break;
-                    case 'auth/configuration-not-found':
-                        message = 'Ошибка: Firebase Authentication не включен';
-                        break;
                 }
                 
                 showError(loginError, message);
@@ -681,8 +693,8 @@
         auth.onAuthStateChanged((user) => {
             if (user) {
                 console.log('User logged in:', user.email);
-                // Uncomment to auto-redirect
-                // window.location.href = '/chat.html';
+                // Если хочешь авто-редирект для уже залогиненных:
+                // window.location.href = 'chats.html';
             }
         });
 
@@ -700,4 +712,4 @@
         }
     </script>
 </body>
-</html></html>
+</html>
