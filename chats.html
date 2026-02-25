@@ -56,8 +56,7 @@
             --safe-area-top: env(safe-area-inset-top, 0px);
             --safe-area-bottom: env(safe-area-inset-bottom, 0px);
             --header-height: 56px;
-            --bottom-nav-height: 70px;
-            --bottom-nav-total: calc(70px + var(--safe-area-bottom));
+            --bottom-nav-height: 60px;
             --radius-bubble: 18px;
             --radius-card: 20px;
             --radius-input: 20px;
@@ -80,7 +79,7 @@
 
         /* ===== ОСНОВНОЙ КОНТЕЙНЕР ===== */
         .app-container {
-            height: 100dvh; /* ИСПРАВЛЕНО: используем dynamic viewport height */
+            height: 100vh;
             display: flex;
             flex-direction: column;
             background: var(--bg-primary);
@@ -148,8 +147,7 @@
             -webkit-overflow-scrolling: touch;
             position: relative;
             scrollbar-width: none;
-            /* ИСПРАВЛЕНО: отступ снизу равен высоте нижней навигации */
-            padding-bottom: var(--bottom-nav-total);
+            /* Убираем нижний отступ - он не нужен */
         }
         .main-content::-webkit-scrollbar { display: none; }
 
@@ -504,13 +502,9 @@
             background: var(--bg-hover);
         }
 
-        /* ===== НИЖНЯЯ НАВИГАЦИЯ (ВСЕГДА ВИДНА) ===== */
+        /* ===== НИЖНЯЯ НАВИГАЦИЯ (ВСЕГДА ВНИЗУ) ===== */
         .bottom-nav {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: var(--bottom-nav-total);
+            height: var(--bottom-nav-height);
             background: var(--nav-bg);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
@@ -519,7 +513,7 @@
             align-items: center;
             justify-content: space-around;
             padding: 0 12px;
-            padding-bottom: var(--safe-area-bottom);
+            flex-shrink: 0;
             z-index: 1000;
             box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.5);
         }
@@ -545,7 +539,7 @@
         /* Адаптация для маленьких экранов */
         @media (max-height: 600px) {
             .bottom-nav {
-                height: calc(60px + var(--safe-area-bottom));
+                height: 50px;
             }
             .nav-item i { font-size: 20px; }
             .nav-item span { font-size: 11px; }
@@ -563,7 +557,6 @@
             pointer-events: none;
             transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             padding-top: var(--safe-area-top);
-            padding-bottom: var(--safe-area-bottom);
         }
         .chat-overlay.show { opacity: 1; pointer-events: auto; }
         .chat-container { 
@@ -1183,7 +1176,7 @@
         </div>
     </div>
 
-    <!-- Основной контент (с отступом снизу под навигацию) -->
+    <!-- Основной контент -->
     <div class="main-content" id="mainContent">
         <!-- Вкладка ЧАТЫ -->
         <div class="tab-content active" id="tabChats">
@@ -1217,7 +1210,7 @@
         </div>
     </div>
 
-    <!-- НИЖНЯЯ НАВИГАЦИЯ (ВСЕГДА ВИДНА) -->
+    <!-- НИЖНЯЯ НАВИГАЦИЯ -->
     <div class="bottom-nav">
         <div class="nav-item active" id="navChats" onclick="switchTab('chats')">
             <i class="fas fa-comment"></i>
@@ -1280,7 +1273,7 @@
     </div>
 </div>
 
-<!-- Оверлей профиля пользователя (для просмотра чужого профиля) -->
+<!-- Оверлей профиля пользователя -->
 <div class="user-profile-overlay" id="userProfileOverlay">
     <div class="user-profile-card" id="userProfileCard">
         <!-- Динамически через JS -->
@@ -1632,7 +1625,6 @@ function switchTab(tab) {
         navChats.classList.add('active');
         navProfile.classList.remove('active');
         mainTitle.textContent = 'Contegg · Чаты';
-        // Прокручиваем вверх
         mainContent.scrollTop = 0;
     } else {
         tabProfile.classList.add('active');
@@ -1640,7 +1632,6 @@ function switchTab(tab) {
         navProfile.classList.add('active');
         navChats.classList.remove('active');
         mainTitle.textContent = 'Contegg · Профиль';
-        // Прокручиваем вверх
         mainContent.scrollTop = 0;
         
         if (profileContainer.innerHTML.includes('loader')) {
@@ -1845,7 +1836,7 @@ function formatMessageTime(date) {
     return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
-// ИСПРАВЛЕНО: Функция открытия чата с корректным отображением аватарки
+// Функция открытия чата
 async function openChat(userId, username, chatId = null) {
     currentChatUserId = userId;
     currentChatUsername = username;
@@ -1870,14 +1861,12 @@ async function openChat(userId, username, chatId = null) {
     chatUserAvatar.textContent = '';
     
     if (userInfo.avatarBase64) {
-        // Если есть аватарка - устанавливаем фон
         chatUserAvatar.style.backgroundImage = `url('${userInfo.avatarBase64}')`;
         chatUserAvatar.style.backgroundSize = 'cover';
         chatUserAvatar.style.backgroundPosition = 'center';
         chatUserAvatar.style.backgroundRepeat = 'no-repeat';
-        chatUserAvatar.textContent = ''; // Убираем текст
+        chatUserAvatar.textContent = '';
     } else {
-        // Если нет аватарки - показываем первую букву
         const firstLetter = (userInfo.displayName || username || 'U')[0].toUpperCase();
         chatUserAvatar.textContent = firstLetter;
         chatUserAvatar.style.background = 'linear-gradient(135deg, #3a6ea5, #6b4e71)';
@@ -1934,7 +1923,7 @@ function updateInputState(isBlocked) {
     }
 }
 
-// ИСПРАВЛЕНО: Функция загрузки сообщений с правильной прокруткой
+// Функция загрузки сообщений
 async function loadChatMessages() {
     chatMessages.innerHTML = '<div class="loader"><div class="loader-spinner"></div><div>Загрузка сообщений...</div></div>';
     if (!currentChatId) {
@@ -1963,7 +1952,6 @@ async function loadChatMessages() {
             addMessageToUI({ id: doc.id, ...msg });
         });
         
-        // Прокручиваем вниз с небольшой задержкой для корректного отображения
         setTimeout(() => {
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }, 100);
@@ -1984,7 +1972,7 @@ function formatDateDivider(date) {
     else return date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
 }
 
-// ИСПРАВЛЕНО: Функция добавления сообщения в UI
+// Функция добавления сообщения в UI
 function addMessageToUI(msg) {
     const isOutgoing = msg.senderId === currentUser.uid;
     const msgDate = msg.timestamp?.toDate ? msg.timestamp.toDate() : new Date();
