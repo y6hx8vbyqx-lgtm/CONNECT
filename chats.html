@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Contegg · Чаты и Профиль</title>
     
     <!-- PWA -->
@@ -53,8 +53,6 @@
             --nav-bg: rgba(37, 37, 37, 0.95);
             --input-bg: rgba(37, 37, 37, 0.9);
             --card-bg: rgba(37, 37, 37, 0.95);
-            --safe-area-top: env(safe-area-inset-top, 0px);
-            --safe-area-bottom: env(safe-area-inset-bottom, 0px);
             --header-height: 56px;
             --bottom-nav-height: 60px;
             --radius-bubble: 18px;
@@ -83,8 +81,6 @@
             display: flex;
             flex-direction: column;
             background: var(--bg-primary);
-            padding-top: var(--safe-area-top);
-            padding-bottom: var(--safe-area-bottom);
             position: relative;
         }
 
@@ -516,7 +512,6 @@
             padding: 0 12px;
             flex-shrink: 0;
             z-index: 1000;
-            width: 100%;
         }
 
         .nav-item {
@@ -537,19 +532,13 @@
         .nav-item.active { color: var(--accent-color); }
         .nav-item:hover { background: var(--bg-hover); }
 
-        /* Адаптация для маленьких экранов */
-        @media (max-height: 600px) {
-            .bottom-nav {
-                height: 50px;
-            }
-            .nav-item i { font-size: 20px; }
-            .nav-item span { font-size: 11px; }
-        }
-
         /* ===== ОВЕРЛЕЙ ЧАТА ===== */
         .chat-overlay {
             position: fixed;
-            inset: 0;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             background: var(--bg-primary);
             z-index: 5000;
             display: flex;
@@ -557,8 +546,6 @@
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            padding-top: var(--safe-area-top);
-            padding-bottom: 0;
         }
         .chat-overlay.show { 
             opacity: 1; 
@@ -566,12 +553,10 @@
         }
         
         .chat-container { 
-            flex: 1; 
-            display: flex; 
-            flex-direction: column; 
-            height: 100%; 
+            display: flex;
+            flex-direction: column;
+            height: 100%;
             background: var(--bg-primary);
-            overflow: hidden;
         }
         
         .chat-header {
@@ -664,6 +649,7 @@
         }
         .chat-close-btn:hover { background: var(--bg-hover); }
 
+        /* Сообщения - занимают всё свободное место */
         .chat-messages {
             flex: 1;
             overflow-y: auto;
@@ -671,7 +657,6 @@
             display: flex;
             flex-direction: column;
             gap: 4px;
-            position: relative;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
             background: var(--bg-primary);
@@ -777,18 +762,17 @@
             border: 1px solid var(--border-light);
         }
 
+        /* Поле ввода - всегда внизу */
         .chat-input-area {
             background: var(--nav-bg);
             backdrop-filter: blur(30px);
             -webkit-backdrop-filter: blur(30px);
             border-top: 1px solid var(--border-light);
             padding: 8px 12px;
-            padding-bottom: max(8px, var(--safe-area-bottom));
             display: flex;
             flex-direction: column;
             gap: 8px;
             flex-shrink: 0;
-            width: 100%;
         }
         
         .reply-container { width: 100%; }
@@ -890,7 +874,10 @@
         /* ===== ОВЕРЛЕЙ ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ ===== */
         .user-profile-overlay {
             position: fixed;
-            inset: 0;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             background: rgba(0, 0, 0, 0.8);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
@@ -979,7 +966,10 @@
         /* ===== МОДАЛКА ДЛЯ ОБРЕЗКИ АВАТАРКИ ===== */
         .crop-modal {
             position: fixed;
-            inset: 0;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             background: rgba(0, 0, 0, 0.9);
             z-index: 7000;
             display: flex;
@@ -1159,7 +1149,7 @@
 
         .notification {
             position: fixed;
-            top: calc(var(--safe-area-top) + 70px);
+            top: 70px;
             left: 50%;
             transform: translateX(-50%) translateY(-20px);
             background: var(--card-bg);
@@ -1892,7 +1882,6 @@ async function openChat(userId, username, chatId = null) {
     
     const userInfo = await getUserInfo(userId);
     
-    // Очищаем все стили и классы перед установкой новой аватарки
     chatUserAvatar.removeAttribute('style');
     chatUserAvatar.className = 'chat-header-avatar';
     chatUserAvatar.textContent = '';
@@ -2009,7 +1998,6 @@ function formatDateDivider(date) {
     else return date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
 }
 
-// Функция добавления сообщения в UI
 function addMessageToUI(msg) {
     const isOutgoing = msg.senderId === currentUser.uid;
     const msgDate = msg.timestamp?.toDate ? msg.timestamp.toDate() : new Date();
@@ -2481,26 +2469,15 @@ chatInput?.addEventListener('keydown', function(e) {
     } 
 });
 
-// Исправление для мобильных устройств
 document.addEventListener('touchstart', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
         e.target.style.fontSize = '16px';
     }
 }, { passive: true });
 
-// Закрытие поиска при клике вне
 document.addEventListener('click', (e) => {
     if (!searchResults.contains(e.target) && !searchInput.contains(e.target)) {
         searchResults.style.display = 'none';
-    }
-});
-
-// Проверка, что нижняя навигация видна при загрузке
-window.addEventListener('load', function() {
-    // Убедимся, что нижняя навигация отображается
-    const bottomNav = document.querySelector('.bottom-nav');
-    if (bottomNav) {
-        bottomNav.style.display = 'flex';
     }
 });
 </script>
