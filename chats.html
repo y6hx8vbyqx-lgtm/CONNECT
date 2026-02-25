@@ -15,13 +15,17 @@
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     
+    <!-- Cropper.js -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
+    
     <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
     
     <style>
-        /* ===== RESET & VARIABLES (без изменений, как в твоем файле) ===== */
+        /* ===== RESET & VARIABLES ===== */
         * {
             margin: 0;
             padding: 0;
@@ -81,7 +85,7 @@
             display: flex;
             flex-direction: column;
             padding-top: var(--safe-area-top);
-            padding-bottom: var(--safe-area-bottom);
+            padding-bottom: 0; /* Убрано, теперь нижняя навигация управляет своим отступом */
             background: var(--bg-primary);
         }
 
@@ -137,7 +141,7 @@
         .icon-btn:hover { background: var(--bg-hover); }
         .icon-btn:active { transform: scale(0.92); }
 
-        /* ===== ОСНОВНОЙ КОНТЕЙНЕР (переключение между чатами и профилем) ===== */
+        /* ===== ОСНОВНОЙ КОНТЕЙНЕР ===== */
         .main-content {
             flex: 1;
             overflow: hidden;
@@ -165,9 +169,11 @@
             visibility: visible;
         }
 
-        /* ===== СТИЛИ ДЛЯ ЧАТОВ (почти все из твоего файла) ===== */
+        /* ===== СТИЛИ ДЛЯ ЧАТОВ ===== */
         .chats-container {
             padding: 8px 12px;
+            /* Добавлен отступ снизу, чтобы контент не уходил под нижнюю панель */
+            padding-bottom: calc(12px + var(--bottom-nav-height));
             min-height: 100%;
             background: var(--bg-primary);
         }
@@ -183,6 +189,7 @@
             transition: var(--transition-default);
             border: 1px solid transparent;
             min-height: 82px;
+            position: relative;
         }
         .chat-item:hover { background: var(--bg-hover); border-color: var(--border-medium); }
         .chat-item.unread { background: rgba(58, 110, 165, 0.15); }
@@ -212,6 +219,9 @@
             flex-shrink: 0;
             position: relative;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
         }
         .online-indicator {
             position: absolute;
@@ -357,6 +367,8 @@
             font-size: 20px;
             font-weight: 600;
             color: white;
+            background-size: cover;
+            background-position: center;
         }
         .result-info { flex: 1; }
         .result-name {
@@ -371,7 +383,9 @@
         .profile-container {
             min-height: 100%;
             background: var(--bg-primary);
-            padding: 20px 16px calc(20px + var(--bottom-nav-height));
+            padding: 20px 16px;
+            /* Добавлен отступ снизу, чтобы контент не уходил под нижнюю панель */
+            padding-bottom: calc(20px + var(--bottom-nav-height));
             display: flex;
             flex-direction: column;
         }
@@ -383,6 +397,10 @@
             margin-bottom: 30px;
         }
 
+        .profile-avatar-wrapper {
+            position: relative;
+            margin-bottom: 16px;
+        }
         .profile-avatar {
             width: 100px;
             height: 100px;
@@ -394,9 +412,32 @@
             font-weight: 600;
             font-size: 44px;
             color: white;
-            margin-bottom: 16px;
             box-shadow: var(--shadow-card);
             border: 2px solid var(--border-medium);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        .avatar-upload-btn {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            border: 2px solid var(--bg-primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 14px;
+            transition: var(--transition-default);
+        }
+        .avatar-upload-btn:hover {
+            background: var(--accent-hover);
+            transform: scale(1.1);
         }
 
         .profile-name {
@@ -499,7 +540,7 @@
             background: var(--bg-hover);
         }
 
-        /* ===== НИЖНЯЯ НАВИГАЦИЯ (таб-бар) ===== */
+        /* ===== НИЖНЯЯ НАВИГАЦИЯ ===== */
         .bottom-nav {
             height: var(--bottom-nav-height);
             background: var(--nav-bg);
@@ -510,6 +551,8 @@
             align-items: center;
             justify-content: space-around;
             padding: 0 12px;
+            /* Добавлен отступ снизу для safe area */
+            padding-bottom: calc(10px + var(--safe-area-bottom));
             flex-shrink: 0;
             position: relative;
             z-index: 20;
@@ -533,7 +576,7 @@
         .nav-item.active { color: var(--accent-color); }
         .nav-item:hover { background: var(--bg-hover); }
 
-        /* ===== ОВЕРЛЕЙ ЧАТА (без изменений из твоего файла) ===== */
+        /* ===== ОВЕРЛЕЙ ЧАТА ===== */
         .chat-overlay {
             position: fixed;
             inset: 0;
@@ -594,6 +637,8 @@
             font-weight: 600;
             font-size: 18px;
             color: white;
+            background-size: cover;
+            background-position: center;
         }
         .chat-header-text { display: flex; flex-direction: column; }
         .chat-header-username {
@@ -897,6 +942,8 @@
             color: white;
             margin: 0 auto 16px;
             border: 2px solid var(--border-medium);
+            background-size: cover;
+            background-position: center;
         }
         .user-profile-field {
             background: var(--bg-tertiary);
@@ -916,7 +963,70 @@
             word-break: break-word;
         }
 
-        /* Пустые состояния, загрузчики, уведомления, контекстное меню (без изменений) */
+        /* ===== МОДАЛКА ДЛЯ ОБРЕЗКИ АВАТАРКИ ===== */
+        .crop-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 7000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            padding: 20px;
+        }
+        .crop-modal.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .crop-container {
+            background: var(--bg-secondary);
+            border-radius: 24px;
+            width: 100%;
+            max-width: 500px;
+            padding: 20px;
+            border: 1px solid var(--border-medium);
+        }
+        .crop-area {
+            max-height: 400px;
+            overflow: hidden;
+            border-radius: 16px;
+            background: #000;
+        }
+        .crop-area img {
+            max-width: 100%;
+            display: block;
+        }
+        .crop-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        .crop-btn {
+            flex: 1;
+            padding: 14px;
+            border-radius: 30px;
+            border: none;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            transition: var(--transition-default);
+        }
+        .crop-btn.save {
+            background: var(--accent-color);
+            color: white;
+        }
+        .crop-btn.save:hover { background: var(--accent-hover); }
+        .crop-btn.cancel {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-light);
+        }
+        .crop-btn.cancel:hover { background: var(--bg-hover); }
+
+        /* ===== ОСТАЛЬНОЕ ===== */
         .no-chats { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100%; padding: 0 20px; }
         .no-chats-card {
             background: var(--card-bg);
@@ -1055,7 +1165,7 @@
 <!-- Основной контейнер -->
 <div class="app-container">
     
-    <!-- Верхняя навигация (видна всегда) -->
+    <!-- Верхняя навигация -->
     <div class="nav-bar">
         <div class="nav-left">
             <h1 id="mainTitle">Contegg · Чаты</h1>
@@ -1068,11 +1178,11 @@
         </div>
     </div>
 
-    <!-- Основной контент (переключаемые вкладки) -->
+    <!-- Основной контент -->
     <div class="main-content">
         <!-- Вкладка ЧАТЫ -->
         <div class="tab-content active" id="tabChats">
-            <!-- Поиск (только в чатах) -->
+            <!-- Поиск -->
             <div class="search-container">
                 <div class="search-box">
                     <i class="fas fa-search"></i>
@@ -1173,6 +1283,19 @@
     </div>
 </div>
 
+<!-- Модалка для обрезки аватарки -->
+<div class="crop-modal" id="cropModal">
+    <div class="crop-container">
+        <div class="crop-area">
+            <img id="cropImage" src="" alt="Crop">
+        </div>
+        <div class="crop-actions">
+            <button class="crop-btn cancel" onclick="closeCropModal()">Отмена</button>
+            <button class="crop-btn save" onclick="saveCroppedAvatar()">Сохранить</button>
+        </div>
+    </div>
+</div>
+
 <!-- Контекстное меню сообщений -->
 <div class="message-context-menu" id="messageContextMenu" style="display:none">
     <div class="message-context-item" id="contextReplyBtn"><i class="fas fa-reply"></i><span>Ответить</span></div>
@@ -1190,6 +1313,9 @@
     <div class="reaction-emoji" onclick="addReaction('😢')">😢</div>
     <div class="reaction-emoji" onclick="addReaction('😡')">😡</div>
 </div>
+
+<!-- Скрытый input для выбора фото -->
+<input type="file" id="avatarUploadInput" accept="image/*" style="display: none;">
 
 <!-- Уведомления -->
 <div class="notification" id="notification"></div>
@@ -1226,6 +1352,10 @@ let replyingToMessage = null;
 let selectedMessageForReaction = null;
 let currentActiveTab = 'chats'; // 'chats' или 'profile'
 
+// Переменные для обрезки аватарки
+let cropper = null;
+let selectedAvatarFile = null;
+
 // ===== DOM ЭЛЕМЕНТЫ =====
 const mainTitle = document.getElementById('mainTitle');
 const headerUsernameSpan = document.getElementById('headerUsername');
@@ -1252,6 +1382,9 @@ const messageContextMenu = document.getElementById('messageContextMenu');
 const reactionsPanel = document.getElementById('reactionsPanel');
 const userProfileOverlay = document.getElementById('userProfileOverlay');
 const userProfileCard = document.getElementById('userProfileCard');
+const avatarUploadInput = document.getElementById('avatarUploadInput');
+const cropModal = document.getElementById('cropModal');
+const cropImage = document.getElementById('cropImage');
 
 // ===== ПРОВЕРКА АВТОРИЗАЦИИ =====
 auth.onAuthStateChanged(async (user) => {
@@ -1285,7 +1418,8 @@ async function loadUserData() {
                 email: currentUser.email || "email@example.com",
                 isAdmin: false,
                 blockedUsers: [],
-                pinnedChats: []
+                pinnedChats: [],
+                avatarBase64: null
             };
             await db.collection("users").doc(currentUser.uid).set(userData);
         } else {
@@ -1294,6 +1428,7 @@ async function loadUserData() {
             if (!userData.displayName) userData.displayName = "Пользователь";
             if (!userData.bio) userData.bio = "Расскажите о себе...";
             if (!userData.email) userData.email = currentUser.email || "email@example.com";
+            if (!userData.avatarBase64) userData.avatarBase64 = null;
             blockedUsers = userData.blockedUsers || [];
             pinnedChats = userData.pinnedChats || [];
         }
@@ -1324,7 +1459,8 @@ async function getUserInfo(userId) {
             displayName: "Пользователь",
             bio: "",
             email: "",
-            isAdmin: false
+            isAdmin: false,
+            avatarBase64: null
         };
         if (userDoc.exists) {
             const data = userDoc.data();
@@ -1333,14 +1469,15 @@ async function getUserInfo(userId) {
                 displayName: data.displayName || userInfo.displayName,
                 bio: data.bio || "",
                 email: data.email || "",
-                isAdmin: data.isAdmin || false
+                isAdmin: data.isAdmin || false,
+                avatarBase64: data.avatarBase64 || null
             };
         }
         usersCache.set(userId, userInfo);
         return userInfo;
     } catch (error) {
         console.error("Ошибка получения информации о пользователе:", error);
-        return { username: "user" + userId.slice(-6), displayName: "Пользователь", bio: "", email: "", isAdmin: false };
+        return { username: "user" + userId.slice(-6), displayName: "Пользователь", bio: "", email: "", isAdmin: false, avatarBase64: null };
     }
 }
 
@@ -1403,14 +1540,18 @@ async function loadChatsList() {
             if (preview.length > 60) preview = preview.substring(0, 57) + '...';
             const senderPrefix = chat.lastSender === currentUser.uid ? 'Вы: ' : '';
             
+            const avatarStyle = otherUser.avatarBase64 
+                ? `style="background-image: url('${otherUser.avatarBase64}'); background-size: cover; background-position: center; color: transparent; text-indent: -9999px;"` 
+                : '';
+            
             chatsHTML += `
                 <div class="chat-item fade ${chat.isUnread ? 'unread' : ''} ${chat.isPinned ? 'pinned' : ''}" 
                      onclick="openChat('${chat.otherUserId}', '${otherUser.username}', '${chat.id}')"
                      data-chat-id="${chat.id}"
                      oncontextmenu="showChatActions(event, '${chat.id}')">
-                    <div class="chat-avatar">
-                        ${otherUser.displayName?.[0]?.toUpperCase() || otherUser.username?.[0]?.toUpperCase() || 'U'}
-                        ${false ? '<span class="online-indicator"></span>' : ''}
+                    <div class="chat-avatar" ${avatarStyle}>
+                        ${otherUser.avatarBase64 ? '' : (otherUser.displayName?.[0]?.toUpperCase() || otherUser.username?.[0]?.toUpperCase() || 'U')}
+                        <span class="online-indicator"></span>
                     </div>
                     <div class="chat-info">
                         <div class="chat-header">
@@ -1440,10 +1581,16 @@ async function renderProfile() {
     if (!userData) return;
     
     const avatarLetter = (userData.displayName || userData.username || 'U')[0].toUpperCase();
+    const avatarStyle = userData.avatarBase64 
+        ? `style="background-image: url('${userData.avatarBase64}'); background-size: cover; background-position: center; color: transparent; text-indent: -9999px;"` 
+        : '';
     
     const profileHTML = `
         <div class="profile-header">
-            <div class="profile-avatar">${avatarLetter}</div>
+            <div class="profile-avatar-wrapper">
+                <div class="profile-avatar" ${avatarStyle}>${userData.avatarBase64 ? '' : avatarLetter}</div>
+                <button class="avatar-upload-btn" onclick="triggerAvatarUpload()"><i class="fas fa-camera"></i></button>
+            </div>
             <div class="profile-name">
                 <span id="profileDisplayNameValue">${escapeHtml(userData.displayName || 'Пользователь')}</span>
                 <button class="edit-btn" onclick="editField('displayName')"><i class="fas fa-pencil-alt"></i></button>
@@ -1478,6 +1625,96 @@ async function renderProfile() {
     `;
     
     profileContainer.innerHTML = profileHTML;
+}
+
+// ===== ЗАГРУЗКА АВАТАРКИ =====
+function triggerAvatarUpload() {
+    avatarUploadInput.click();
+}
+
+avatarUploadInput.addEventListener('change', handleAvatarSelect);
+
+function handleAvatarSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    selectedAvatarFile = file;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        cropImage.src = e.target.result;
+        cropModal.classList.add('show');
+        // Инициализируем Cropper после загрузки изображения
+        setTimeout(() => {
+            if (cropper) cropper.destroy();
+            cropper = new Cropper(cropImage, {
+                aspectRatio: 1,
+                viewMode: 1,
+                dragMode: 'move',
+                autoCropArea: 1,
+                cropBoxMovable: true,
+                cropBoxResizable: true,
+                background: false,
+                modal: true,
+                guides: true,
+                center: true,
+                highlight: false,
+                toggleDragModeOnDblclick: false,
+            });
+        }, 100);
+    };
+    reader.readAsDataURL(file);
+    avatarUploadInput.value = ''; // Сброс input
+}
+
+function closeCropModal() {
+    cropModal.classList.remove('show');
+    if (cropper) {
+        cropper.destroy();
+        cropper = null;
+    }
+}
+
+function saveCroppedAvatar() {
+    if (!cropper) return;
+    
+    const canvas = cropper.getCroppedCanvas({
+        width: 300,
+        height: 300,
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high',
+    });
+    
+    canvas.toBlob(async (blob) => {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const base64Data = e.target.result;
+            
+            // Сохраняем в Firestore
+            try {
+                await db.collection("users").doc(currentUser.uid).update({
+                    avatarBase64: base64Data
+                });
+                
+                userData.avatarBase64 = base64Data;
+                // Очищаем кэш для текущего пользователя
+                usersCache.delete(currentUser.uid);
+                
+                // Обновляем аватар в профиле
+                renderProfile();
+                
+                // Обновляем аватар в списке чатов
+                loadChatsList();
+                
+                showNotification('Аватар успешно обновлен');
+            } catch (error) {
+                console.error('Ошибка сохранения аватара:', error);
+                showNotification('Ошибка при сохранении аватара');
+            }
+            
+            closeCropModal();
+        };
+        reader.readAsDataURL(blob);
+    }, 'image/jpeg', 0.9);
 }
 
 // ===== РЕДАКТИРОВАНИЕ ПОЛЕЙ =====
@@ -1539,13 +1776,16 @@ async function openUserProfileFromChat() {
     
     const userInfo = await getUserInfo(currentChatUserId);
     const avatarLetter = (userInfo.displayName || userInfo.username || 'U')[0].toUpperCase();
+    const avatarStyle = userInfo.avatarBase64 
+        ? `style="background-image: url('${userInfo.avatarBase64}'); background-size: cover; background-position: center; color: transparent; text-indent: -9999px;"` 
+        : '';
     
     const cardHTML = `
         <div class="user-profile-header">
             <h3>Профиль</h3>
             <button class="close-profile-btn" onclick="closeUserProfile()"><i class="fas fa-times"></i></button>
         </div>
-        <div class="user-profile-avatar">${avatarLetter}</div>
+        <div class="user-profile-avatar" ${avatarStyle}>${userInfo.avatarBase64 ? '' : avatarLetter}</div>
         
         <div class="user-profile-field">
             <div class="user-field-label">Имя</div>
@@ -1602,7 +1842,7 @@ function switchTab(tab) {
     }
 }
 
-// ===== ФУНКЦИИ ЧАТОВ (без изменений из твоего файла, кроме открытия профиля) =====
+// ===== ФУНКЦИИ ЧАТОВ =====
 function showChatActions(event, chatId) {
     event.preventDefault();
     event.stopPropagation();
@@ -1715,7 +1955,12 @@ async function openChat(userId, username, chatId = null) {
     currentChatId = chatId;
     
     const userInfo = await getUserInfo(userId);
-    chatUserAvatar.textContent = (userInfo.displayName || username || 'U')[0].toUpperCase();
+    const avatarStyle = userInfo.avatarBase64 
+        ? `style="background-image: url('${userInfo.avatarBase64}'); background-size: cover; background-position: center; color: transparent; text-indent: -9999px;"` 
+        : '';
+    chatUserAvatar.setAttribute('style', avatarStyle);
+    chatUserAvatar.textContent = userInfo.avatarBase64 ? '' : (userInfo.displayName || username || 'U')[0].toUpperCase();
+    
     chatUserName.textContent = '@' + username;
     chatUserStatus.textContent = 'онлайн';
     
@@ -1767,8 +2012,6 @@ function updateInputState(isBlocked) {
         chatInput.placeholder = 'Сообщение';
     }
 }
-
-// openProfileFromChat заменен на openUserProfileFromChat
 
 async function loadChatMessages() {
     chatMessages.innerHTML = '<div class="loader"><div class="loader-spinner"></div><div>Загрузка...</div></div>';
@@ -2165,7 +2408,10 @@ async function searchUsers(query) {
         snapshot.forEach(doc => {
             const user = doc.data();
             if (user.uid === currentUser.uid) return;
-            html += `<div class="search-result-item" data-user-id="${user.uid}"><div class="result-avatar">${(user.displayName || user.username || 'U')[0].toUpperCase()}</div><div class="result-info"><div class="result-name">${escapeHtml(user.displayName || user.username || 'Пользователь')}</div><div class="result-username">@${escapeHtml(user.username || 'user')}</div></div></div>`;
+            const avatarStyle = user.avatarBase64 
+                ? `style="background-image: url('${user.avatarBase64}'); background-size: cover; background-position: center; color: transparent; text-indent: -9999px;"` 
+                : '';
+            html += `<div class="search-result-item" data-user-id="${user.uid}"><div class="result-avatar" ${avatarStyle}>${user.avatarBase64 ? '' : (user.displayName || user.username || 'U')[0].toUpperCase()}</div><div class="result-info"><div class="result-name">${escapeHtml(user.displayName || user.username || 'Пользователь')}</div><div class="result-username">@${escapeHtml(user.username || 'user')}</div></div></div>`;
         });
         if (!html) html = '<div class="search-result-item" style="justify-content: center;">Только вы</div>';
         searchResults.innerHTML = html;
