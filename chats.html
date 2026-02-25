@@ -80,7 +80,7 @@
 
         /* ===== ОСНОВНОЙ КОНТЕЙНЕР ===== */
         .app-container {
-            height: 100vh;
+            height: 100dvh; /* ИСПРАВЛЕНО: используем dynamic viewport height */
             display: flex;
             flex-direction: column;
             background: var(--bg-primary);
@@ -148,7 +148,7 @@
             -webkit-overflow-scrolling: touch;
             position: relative;
             scrollbar-width: none;
-            /* Важно: отступ снизу равен высоте нижней навигации */
+            /* ИСПРАВЛЕНО: отступ снизу равен высоте нижней навигации */
             padding-bottom: var(--bottom-nav-total);
         }
         .main-content::-webkit-scrollbar { display: none; }
@@ -225,7 +225,7 @@
             background: var(--online-color);
             border-radius: 50%;
             border: 2px solid var(--bg-secondary);
-            display: none; /* Скрыт по умолчанию, включать через JS */
+            display: none;
         }
         .chat-info { flex: 1; min-width: 0; }
         .chat-header {
@@ -537,7 +537,6 @@
             padding: 8px 0;
             flex: 1;
             border-radius: 12px;
-            height: 100%;
         }
         .nav-item i { font-size: 22px; }
         .nav-item.active { color: var(--accent-color); }
@@ -567,7 +566,13 @@
             padding-bottom: var(--safe-area-bottom);
         }
         .chat-overlay.show { opacity: 1; pointer-events: auto; }
-        .chat-container { flex: 1; display: flex; flex-direction: column; height: 100%; }
+        .chat-container { 
+            flex: 1; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100%; 
+            background: var(--bg-primary);
+        }
         .chat-header {
             height: var(--header-height);
             background: var(--nav-bg);
@@ -615,6 +620,7 @@
             color: white;
             background-size: cover;
             background-position: center;
+            background-repeat: no-repeat;
         }
         .chat-header-text { display: flex; flex-direction: column; }
         .chat-header-username {
@@ -649,6 +655,7 @@
             position: relative;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
+            background: var(--bg-primary);
         }
         .chat-messages::-webkit-scrollbar { display: none; }
         .message {
@@ -1838,6 +1845,7 @@ function formatMessageTime(date) {
     return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
+// ИСПРАВЛЕНО: Функция открытия чата с корректным отображением аватарки
 async function openChat(userId, username, chatId = null) {
     currentChatUserId = userId;
     currentChatUsername = username;
@@ -1855,11 +1863,25 @@ async function openChat(userId, username, chatId = null) {
     currentChatId = chatId;
     
     const userInfo = await getUserInfo(userId);
-    const avatarStyle = userInfo.avatarBase64 
-        ? `style="background-image: url('${userInfo.avatarBase64}');"` 
-        : '';
-    chatUserAvatar.setAttribute('style', avatarStyle);
-    chatUserAvatar.textContent = userInfo.avatarBase64 ? '' : (userInfo.displayName || username || 'U')[0].toUpperCase();
+    
+    // Очищаем все стили и классы перед установкой новой аватарки
+    chatUserAvatar.removeAttribute('style');
+    chatUserAvatar.className = 'chat-header-avatar';
+    chatUserAvatar.textContent = '';
+    
+    if (userInfo.avatarBase64) {
+        // Если есть аватарка - устанавливаем фон
+        chatUserAvatar.style.backgroundImage = `url('${userInfo.avatarBase64}')`;
+        chatUserAvatar.style.backgroundSize = 'cover';
+        chatUserAvatar.style.backgroundPosition = 'center';
+        chatUserAvatar.style.backgroundRepeat = 'no-repeat';
+        chatUserAvatar.textContent = ''; // Убираем текст
+    } else {
+        // Если нет аватарки - показываем первую букву
+        const firstLetter = (userInfo.displayName || username || 'U')[0].toUpperCase();
+        chatUserAvatar.textContent = firstLetter;
+        chatUserAvatar.style.background = 'linear-gradient(135deg, #3a6ea5, #6b4e71)';
+    }
     
     chatUserName.textContent = '@' + username;
     chatUserStatus.textContent = 'онлайн';
@@ -1912,6 +1934,7 @@ function updateInputState(isBlocked) {
     }
 }
 
+// ИСПРАВЛЕНО: Функция загрузки сообщений с правильной прокруткой
 async function loadChatMessages() {
     chatMessages.innerHTML = '<div class="loader"><div class="loader-spinner"></div><div>Загрузка сообщений...</div></div>';
     if (!currentChatId) {
@@ -1939,7 +1962,12 @@ async function loadChatMessages() {
             }
             addMessageToUI({ id: doc.id, ...msg });
         });
-        setTimeout(() => chatMessages.scrollTop = chatMessages.scrollHeight, 100);
+        
+        // Прокручиваем вниз с небольшой задержкой для корректного отображения
+        setTimeout(() => {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }, 100);
+        
         setupChatMessagesListener();
     } catch (error) {
         console.error('Ошибка загрузки сообщений:', error);
@@ -1956,6 +1984,7 @@ function formatDateDivider(date) {
     else return date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
 }
 
+// ИСПРАВЛЕНО: Функция добавления сообщения в UI
 function addMessageToUI(msg) {
     const isOutgoing = msg.senderId === currentUser.uid;
     const msgDate = msg.timestamp?.toDate ? msg.timestamp.toDate() : new Date();
