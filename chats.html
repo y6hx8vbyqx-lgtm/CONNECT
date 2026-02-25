@@ -21,7 +21,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
     
     <style>
-        /* ===== RESET & VARIABLES (без изменений, как в твоем файле) ===== */
+        /* ===== RESET & VARIABLES ===== */
         * {
             margin: 0;
             padding: 0;
@@ -52,7 +52,6 @@
             --safe-area-top: env(safe-area-inset-top, 0px);
             --safe-area-bottom: env(safe-area-inset-bottom, 0px);
             --header-height: 56px;
-            --input-height: 60px;
             --bottom-nav-height: 70px;
             --radius-bubble: 18px;
             --radius-card: 20px;
@@ -69,6 +68,7 @@
             background: var(--bg-primary);
             color: var(--text-primary);
             height: 100vh;
+            height: -webkit-fill-available;
             overflow: hidden;
             position: fixed;
             width: 100%;
@@ -78,11 +78,12 @@
 
         .app-container {
             height: 100vh;
+            height: -webkit-fill-available;
             display: flex;
             flex-direction: column;
-            padding-top: var(--safe-area-top);
-            padding-bottom: var(--safe-area-bottom);
             background: var(--bg-primary);
+            padding-top: var(--safe-area-top);
+            padding-bottom: 0; /* Убираем padding-bottom, так как bottom-nav уже имеет свой padding */
         }
 
         /* ===== НАВИГАЦИЯ (Верхняя) ===== */
@@ -137,11 +138,12 @@
         .icon-btn:hover { background: var(--bg-hover); }
         .icon-btn:active { transform: scale(0.92); }
 
-        /* ===== ОСНОВНОЙ КОНТЕЙНЕР (переключение между чатами и профилем) ===== */
+        /* ===== ОСНОВНОЙ КОНТЕЙНЕР ===== */
         .main-content {
             flex: 1;
             overflow: hidden;
             position: relative;
+            min-height: 0; /* Важно для Firefox */
         }
 
         .tab-content {
@@ -165,7 +167,7 @@
             visibility: visible;
         }
 
-        /* ===== СТИЛИ ДЛЯ ЧАТОВ (почти все из твоего файла) ===== */
+        /* ===== СТИЛИ ДЛЯ ЧАТОВ ===== */
         .chats-container {
             padding: 8px 12px;
             min-height: 100%;
@@ -183,6 +185,7 @@
             transition: var(--transition-default);
             border: 1px solid transparent;
             min-height: 82px;
+            position: relative;
         }
         .chat-item:hover { background: var(--bg-hover); border-color: var(--border-medium); }
         .chat-item.unread { background: rgba(58, 110, 165, 0.15); }
@@ -371,7 +374,7 @@
         .profile-container {
             min-height: 100%;
             background: var(--bg-primary);
-            padding: 20px 16px calc(20px + var(--bottom-nav-height));
+            padding: 20px 16px;
             display: flex;
             flex-direction: column;
         }
@@ -499,7 +502,7 @@
             background: var(--bg-hover);
         }
 
-        /* ===== НИЖНЯЯ НАВИГАЦИЯ (таб-бар) ===== */
+        /* ===== НИЖНЯЯ НАВИГАЦИЯ ===== */
         .bottom-nav {
             height: var(--bottom-nav-height);
             background: var(--nav-bg);
@@ -509,7 +512,7 @@
             display: flex;
             align-items: center;
             justify-content: space-around;
-            padding: 0 12px;
+            padding: 0 12px calc(env(safe-area-inset-bottom, 0px) / 2);
             flex-shrink: 0;
             position: relative;
             z-index: 20;
@@ -528,12 +531,13 @@
             padding: 8px 0;
             flex: 1;
             border-radius: 12px;
+            height: 100%;
         }
         .nav-item i { font-size: 22px; }
         .nav-item.active { color: var(--accent-color); }
         .nav-item:hover { background: var(--bg-hover); }
 
-        /* ===== ОВЕРЛЕЙ ЧАТА (без изменений из твоего файла) ===== */
+        /* ===== ОВЕРЛЕЙ ЧАТА ===== */
         .chat-overlay {
             position: fixed;
             inset: 0;
@@ -545,10 +549,18 @@
             pointer-events: none;
             transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             padding-top: var(--safe-area-top);
-            padding-bottom: var(--safe-area-bottom);
+            padding-bottom: 0; /* Убираем padding-bottom, так как input-area будет иметь свой padding */
         }
         .chat-overlay.show { opacity: 1; pointer-events: auto; }
-        .chat-container { flex: 1; display: flex; flex-direction: column; height: 100%; }
+        
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            min-height: 0; /* Важно для Firefox */
+        }
+        
         .chat-header {
             height: var(--header-height);
             background: var(--nav-bg);
@@ -628,6 +640,7 @@
             position: relative;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
+            min-height: 0; /* Важно для Firefox */
         }
         .chat-messages::-webkit-scrollbar { display: none; }
         .message {
@@ -734,11 +747,12 @@
             backdrop-filter: blur(30px);
             -webkit-backdrop-filter: blur(30px);
             border-top: 1px solid var(--border-light);
-            padding: 8px 12px;
+            padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
             display: flex;
             flex-direction: column;
             gap: 8px;
             flex-shrink: 0;
+            width: 100%;
         }
         .reply-container { width: 100%; }
         .reply-preview {
@@ -771,8 +785,9 @@
         .reply-close-btn:hover { background: var(--bg-hover); }
         .chat-input-wrapper {
             display: flex;
-            align-items: center;
+            align-items: flex-end;
             gap: 8px;
+            width: 100%;
         }
         .menu-btn {
             width: 40px;
@@ -788,6 +803,7 @@
             font-size: 20px;
             transition: var(--transition-default);
             backdrop-filter: blur(10px);
+            flex-shrink: 0;
         }
         .menu-btn:hover { background: var(--bg-hover); }
         .chat-input {
@@ -824,6 +840,7 @@
             cursor: pointer;
             font-size: 18px;
             transition: var(--transition-default);
+            flex-shrink: 0;
         }
         .chat-send-btn:hover:not(:disabled) { background: var(--accent-hover); transform: scale(1.05); }
         .chat-send-btn:active:not(:disabled) { transform: scale(0.95); }
@@ -916,8 +933,14 @@
             word-break: break-word;
         }
 
-        /* Пустые состояния, загрузчики, уведомления, контекстное меню (без изменений) */
-        .no-chats { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100%; padding: 0 20px; }
+        /* Пустые состояния, загрузчики, уведомления */
+        .no-chats { 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100%;
+            padding: 20px;
+        }
         .no-chats-card {
             background: var(--card-bg);
             backdrop-filter: blur(30px);
@@ -927,22 +950,20 @@
             text-align: center;
             border: 1px solid var(--border-light);
             box-shadow: var(--shadow-card);
-            margin: 0 auto;
         }
         .no-chats-icon { font-size: 52px; margin-bottom: 18px; opacity: 0.8; }
         .no-chats-title { font-size: 18px; font-weight: 600; margin-bottom: 8px; color: var(--text-primary); }
         .no-chats-description { font-size: 15px; color: var(--text-muted); line-height: 1.5; }
 
         .loader {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: center;
             gap: 12px;
             color: var(--text-muted);
+            height: 100%;
+            min-height: 200px;
         }
         .loader-spinner {
             width: 40px;
@@ -1048,6 +1069,21 @@
         }
         .fade { animation: fadeSlide 0.2s ease; }
         .hidden { display: none !important; }
+
+        /* Стили для сообщений "нет сообщений" */
+        .no-messages {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            padding: 20px;
+        }
+        .no-messages-card {
+            text-align: center;
+            color: var(--text-muted);
+        }
+        .no-messages-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+        .no-messages-text { font-size: 16px; }
     </style>
 </head>
 <body>
@@ -1055,7 +1091,7 @@
 <!-- Основной контейнер -->
 <div class="app-container">
     
-    <!-- Верхняя навигация (видна всегда) -->
+    <!-- Верхняя навигация -->
     <div class="nav-bar">
         <div class="nav-left">
             <h1 id="mainTitle">Contegg · Чаты</h1>
@@ -1068,11 +1104,10 @@
         </div>
     </div>
 
-    <!-- Основной контент (переключаемые вкладки) -->
+    <!-- Основной контент -->
     <div class="main-content">
         <!-- Вкладка ЧАТЫ -->
         <div class="tab-content active" id="tabChats">
-            <!-- Поиск (только в чатах) -->
             <div class="search-container">
                 <div class="search-box">
                     <i class="fas fa-search"></i>
@@ -1080,7 +1115,6 @@
                 </div>
                 <div id="searchResults" class="search-results" style="display:none"></div>
             </div>
-            <!-- Список чатов -->
             <div class="chats-container" id="chatsContainer">
                 <div class="chats-list" id="chatsList">
                     <div class="loader">
@@ -1098,7 +1132,6 @@
                     <div class="loader-spinner"></div>
                     <div>Загрузка профиля...</div>
                 </div>
-                <!-- Данные профиля будут вставлены сюда через JS -->
             </div>
         </div>
     </div>
@@ -1166,7 +1199,7 @@
     </div>
 </div>
 
-<!-- Оверлей профиля пользователя (для просмотра чужого профиля) -->
+<!-- Оверлей профиля пользователя -->
 <div class="user-profile-overlay" id="userProfileOverlay">
     <div class="user-profile-card" id="userProfileCard">
         <!-- Динамически через JS -->
@@ -1224,7 +1257,7 @@ let usersCache = new Map();
 let pinnedChats = [];
 let replyingToMessage = null;
 let selectedMessageForReaction = null;
-let currentActiveTab = 'chats'; // 'chats' или 'profile'
+let currentActiveTab = 'chats';
 
 // ===== DOM ЭЛЕМЕНТЫ =====
 const mainTitle = document.getElementById('mainTitle');
@@ -1264,11 +1297,10 @@ auth.onAuthStateChanged(async (user) => {
     await loadUserData();
     await loadAdminUsers();
     
-    // Обновляем заголовок с ником
     headerUsernameSpan.textContent = userData?.username || 'user';
     
     await loadChatsList();
-    await renderProfile(); // Загружаем данные профиля
+    await renderProfile();
     
     checkForAutoOpenChat();
 });
@@ -1290,7 +1322,6 @@ async function loadUserData() {
             await db.collection("users").doc(currentUser.uid).set(userData);
         } else {
             userData = snap.data();
-            // Заполняем недостающие поля, если их нет
             if (!userData.displayName) userData.displayName = "Пользователь";
             if (!userData.bio) userData.bio = "Расскажите о себе...";
             if (!userData.email) userData.email = currentUser.email || "email@example.com";
@@ -1314,7 +1345,7 @@ async function loadAdminUsers() {
     }
 }
 
-// ===== ПОЛУЧЕНИЕ ИНФОРМАЦИИ О ПОЛЬЗОВАТЕЛЕ (кеширование) =====
+// ===== ПОЛУЧЕНИЕ ИНФОРМАЦИИ О ПОЛЬЗОВАТЕЛЕ =====
 async function getUserInfo(userId) {
     if (usersCache.has(userId)) return usersCache.get(userId);
     try {
@@ -1509,13 +1540,11 @@ async function updateProfileField(field, value) {
         
         await db.collection("users").doc(currentUser.uid).update(updateData);
         
-        // Обновляем локальные данные
         userData[field] = value;
         if (field === 'username') {
             headerUsernameSpan.textContent = value;
         }
         
-        // Обновляем UI
         if (field === 'displayName') {
             document.getElementById('profileDisplayNameValue').textContent = value;
             document.getElementById('profileDisplayNameField').textContent = value;
@@ -1582,7 +1611,6 @@ function switchTab(tab) {
     
     currentActiveTab = tab;
     
-    // Обновляем классы вкладок
     if (tab === 'chats') {
         tabChats.classList.add('active');
         tabProfile.classList.remove('active');
@@ -1595,14 +1623,13 @@ function switchTab(tab) {
         navProfile.classList.add('active');
         navChats.classList.remove('active');
         mainTitle.textContent = 'Contegg · Профиль';
-        // Если данные профиля не загружены, загружаем
         if (profileContainer.innerHTML.includes('loader')) {
             renderProfile();
         }
     }
 }
 
-// ===== ФУНКЦИИ ЧАТОВ (без изменений из твоего файла, кроме открытия профиля) =====
+// ===== ФУНКЦИИ ЧАТОВ =====
 function showChatActions(event, chatId) {
     event.preventDefault();
     event.stopPropagation();
@@ -1767,8 +1794,6 @@ function updateInputState(isBlocked) {
         chatInput.placeholder = 'Сообщение';
     }
 }
-
-// openProfileFromChat заменен на openUserProfileFromChat
 
 async function loadChatMessages() {
     chatMessages.innerHTML = '<div class="loader"><div class="loader-spinner"></div><div>Загрузка...</div></div>';
