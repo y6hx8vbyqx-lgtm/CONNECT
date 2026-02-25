@@ -2,317 +2,160 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CZH Messenger - Вход</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-
-        body {
-            background: #000;
-            color: #fff;
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 400px;
-        }
-
-        .logo {
-            margin-bottom: 40px;
-            text-align: center;
-        }
-
-        .logo h1 {
-            font-size: 42px;
-            font-weight: 800;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .card {
-            background: rgba(28,28,30,0.9);
-            border-radius: 20px;
-            padding: 30px;
-            border: 1px solid rgba(255,255,255,0.1);
-        }
-
-        h2 {
-            margin-bottom: 25px;
-            font-size: 22px;
-            text-align: center;
-        }
-
-        input {
-            width: 100%;
-            padding: 16px;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 12px;
-            color: white;
-            font-size: 16px;
-            outline: none;
-            margin-bottom: 15px;
-        }
-
-        input:focus {
-            border-color: #667eea;
-        }
-
-        button {
-            width: 100%;
-            padding: 16px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-
-        .secondary-btn {
-            background: transparent;
-            border: 1px solid #667eea;
-            color: #667eea;
-        }
-
-        .message {
-            padding: 12px;
-            border-radius: 10px;
-            margin: 15px 0;
-        }
-
-        .success {
-            background: rgba(52,199,89,0.15);
-            color: #34c759;
-            border: 1px solid #34c759;
-        }
-
-        .error {
-            background: rgba(255,59,48,0.15);
-            color: #ff3b30;
-            border: 1px solid #ff3b30;
-        }
-
-        .info {
-            background: rgba(102,126,234,0.15);
-            color: #667eea;
-            border: 1px solid #667eea;
-        }
-
-        .switch-form {
-            text-align: center;
-            margin-top: 20px;
-            color: rgba(255,255,255,0.5);
-        }
-
-        .switch-form a {
-            color: #667eea;
-            text-decoration: none;
-            font-weight: 600;
-            cursor: pointer;
-        }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Contegg · Messenger</title>
+    
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1e1e1e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+    
+    <!-- Fonts & Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <div class="logo">
-            <h1>CZH</h1>
+    <div class="container" id="app">
+        <!-- Главный экран с логотипом -->
+        <div class="welcome-screen" id="welcomeScreen">
+            <div class="logo-animation">
+                <div class="logo-circle">
+                    <i class="fas fa-paper-plane paper-plane"></i>
+                    <span class="at-symbol">@</span>
+                </div>
+                <div class="wind-rose">
+                    <i class="fas fa-location-dot"></i>
+                </div>
+            </div>
+            
+            <h1 class="app-name">Contegg</h1>
+            <p class="app-tagline">connect & chat</p>
+            
+            <div class="button-group">
+                <button class="btn btn-primary" id="showRegister">
+                    <i class="fas fa-pen"></i>
+                    Создать аккаунт
+                </button>
+                <button class="btn btn-secondary" id="showLogin">
+                    <i class="fas fa-key"></i>
+                    Войти
+                </button>
+            </div>
         </div>
 
-        <div class="card">
-            <!-- Форма входа -->
-            <div id="loginForm">
-                <h2>Вход</h2>
-
-                <input type="text" id="loginUsername" placeholder="Username">
-                <input type="password" id="loginPassword" placeholder="Пароль">
-
-                <button onclick="login()">Войти</button>
-
-                <div class="switch-form">
-                    Нет аккаунта? <a onclick="showRegister()">Создать</a>
+        <!-- Форма регистрации -->
+        <div class="auth-form register-form hidden" id="registerForm">
+            <button class="back-btn" id="backFromRegister">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            
+            <div class="form-header">
+                <div class="mini-logo">
+                    <i class="fas fa-paper-plane"></i>
                 </div>
-            </div>
-
-            <!-- Форма регистрации (скрыта) -->
-            <div id="registerForm" style="display: none;">
                 <h2>Регистрация</h2>
-
-                <input type="text" id="regUsername" placeholder="Username">
-                <input type="password" id="regPassword" placeholder="Пароль">
-                <input type="password" id="regConfirmPassword" placeholder="Повторите пароль">
-
-                <button onclick="register()">Зарегистрироваться</button>
-
-                <div class="switch-form">
-                    Уже есть аккаунт? <a onclick="showLogin()">Войти</a>
-                </div>
             </div>
 
-            <div id="message" class="message"></div>
+            <form id="registerFormElement">
+                <div class="input-group">
+                    <i class="fas fa-user input-icon"></i>
+                    <input 
+                        type="text" 
+                        id="registerUsername" 
+                        placeholder="Имя пользователя"
+                        autocomplete="username"
+                        required
+                    >
+                </div>
+
+                <div class="input-group">
+                    <i class="fas fa-lock input-icon"></i>
+                    <input 
+                        type="password" 
+                        id="registerPassword" 
+                        placeholder="Пароль"
+                        autocomplete="new-password"
+                        required
+                    >
+                    <i class="fas fa-eye toggle-password" id="toggleRegisterPassword"></i>
+                </div>
+
+                <div class="input-group">
+                    <i class="fas fa-lock input-icon"></i>
+                    <input 
+                        type="password" 
+                        id="confirmPassword" 
+                        placeholder="Подтвердите пароль"
+                        autocomplete="new-password"
+                        required
+                    >
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">
+                    <span>Зарегистрироваться</span>
+                    <i class="fas fa-arrow-right"></i>
+                </button>
+            </form>
+
+            <div class="error-message" id="registerError"></div>
+        </div>
+
+        <!-- Форма входа -->
+        <div class="auth-form login-form hidden" id="loginForm">
+            <button class="back-btn" id="backFromLogin">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            
+            <div class="form-header">
+                <div class="mini-logo">
+                    <i class="fas fa-key"></i>
+                </div>
+                <h2>Вход</h2>
+            </div>
+
+            <form id="loginFormElement">
+                <div class="input-group">
+                    <i class="fas fa-user input-icon"></i>
+                    <input 
+                        type="text" 
+                        id="loginUsername" 
+                        placeholder="Имя пользователя"
+                        autocomplete="username"
+                        required
+                    >
+                </div>
+
+                <div class="input-group">
+                    <i class="fas fa-lock input-icon"></i>
+                    <input 
+                        type="password" 
+                        id="loginPassword" 
+                        placeholder="Пароль"
+                        autocomplete="current-password"
+                        required
+                    >
+                    <i class="fas fa-eye toggle-password" id="toggleLoginPassword"></i>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">
+                    <span>Войти</span>
+                    <i class="fas fa-arrow-right"></i>
+                </button>
+            </form>
+
+            <div class="error-message" id="loginError"></div>
         </div>
     </div>
 
-    <script>
-        // База пользователей
-        let users = [];
-
-        // Загружаем пользователей из localStorage
-        try {
-            const saved = localStorage.getItem('czh_users');
-            if (saved) {
-                users = JSON.parse(saved);
-            } else {
-                // Тестовые пользователи
-                users = [
-                    { username: 'admin', password: 'admin123', name: 'Admin' },
-                    { username: 'user', password: 'user123', name: 'User' }
-                ];
-                localStorage.setItem('czh_users', JSON.stringify(users));
-            }
-        } catch (e) {
-            console.log('Ошибка загрузки пользователей');
-        }
-
-        // Переключение на форму регистрации
-        function showRegister() {
-            document.getElementById('loginForm').style.display = 'none';
-            document.getElementById('registerForm').style.display = 'block';
-            clearMessage();
-        }
-
-        // Переключение на форму входа
-        function showLogin() {
-            document.getElementById('registerForm').style.display = 'none';
-            document.getElementById('loginForm').style.display = 'block';
-            clearMessage();
-        }
-
-        // Регистрация
-        function register() {
-            const username = document.getElementById('regUsername').value.trim();
-            const password = document.getElementById('regPassword').value.trim();
-            const confirm = document.getElementById('regConfirmPassword').value.trim();
-
-            if (!username || !password || !confirm) {
-                showMessage('Заполните все поля', 'error');
-                return;
-            }
-
-            if (username.length < 3) {
-                showMessage('Username должен быть минимум 3 символа', 'error');
-                return;
-            }
-
-            if (password.length < 3) {
-                showMessage('Пароль должен быть минимум 3 символа', 'error');
-                return;
-            }
-
-            if (password !== confirm) {
-                showMessage('Пароли не совпадают', 'error');
-                return;
-            }
-
-            if (users.find(u => u.username === username)) {
-                showMessage('Пользователь уже существует', 'error');
-                return;
-            }
-
-            const newUser = {
-                username: username,
-                password: password,
-                name: username,
-                created: new Date().toISOString()
-            };
-
-            users.push(newUser);
-            localStorage.setItem('czh_users', JSON.stringify(users));
-
-            showMessage('Аккаунт создан! Теперь войдите', 'success');
-
-            document.getElementById('regUsername').value = '';
-            document.getElementById('regPassword').value = '';
-            document.getElementById('regConfirmPassword').value = '';
-
-            setTimeout(() => {
-                showLogin();
-                document.getElementById('loginUsername').value = username;
-            }, 1500);
-        }
-
-        // Вход
-        function login() {
-            const username = document.getElementById('loginUsername').value.trim();
-            const password = document.getElementById('loginPassword').value.trim();
-
-            if (!username || !password) {
-                showMessage('Введите username и пароль', 'error');
-                return;
-            }
-
-            const user = users.find(u => u.username === username && u.password === password);
-
-            if (user) {
-                const session = {
-                    uid: username,
-                    username: username,
-                    displayName: user.name || username,
-                    loggedIn: true,
-                    timestamp: new Date().toISOString()
-                };
-
-                localStorage.setItem('czh_user', JSON.stringify(session));
-                
-                showMessage('Вход выполнен', 'success');
-                
-                // Переход в чаты
-                setTimeout(() => {
-                    window.location.href = 'Chats.html';
-                }, 1000);
-            } else {
-                showMessage('Неверный username или пароль', 'error');
-            }
-        }
-
-        // Показать сообщение
-        function showMessage(text, type) {
-            const msg = document.getElementById('message');
-            msg.textContent = text;
-            msg.className = 'message ' + type;
-            
-            setTimeout(() => {
-                msg.textContent = '';
-                msg.className = 'message';
-            }, 3000);
-        }
-
-        // Очистить сообщение
-        function clearMessage() {
-            const msg = document.getElementById('message');
-            msg.textContent = '';
-            msg.className = 'message';
-        }
-
-        // Очищаем старую сессию при загрузке
-        window.onload = function() {
-            // Удаляем старую сессию, чтобы не было автоматического перехода
-            localStorage.removeItem('czh_user');
-            console.log('Сессия очищена, страница входа загружена');
-        };
-    </script>
+    <!-- Скрипты -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="firebase.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
