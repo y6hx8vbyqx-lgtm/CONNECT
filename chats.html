@@ -1778,12 +1778,20 @@ let chatsListener = null; // Для автообновления чатов
 // Улучшенные ICE серверы для работы через интернет
 const iceServers = {
   iceServers: [
+    // Google STUN серверы
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
     { urls: 'stun:stun4.l.google.com:19302' },
+    
+    // Дополнительные STUN серверы
     { urls: 'stun:stun.services.mozilla.com' },
+    { urls: 'stun:stun.stunprotocol.org:3478' },
+    { urls: 'stun:stun.voiparound.com' },
+    { urls: 'stun:stun.voipbuster.com' },
+    
+    // Публичные TURN серверы (для соединения через интернет)
     { 
       urls: 'turn:openrelay.metered.ca:80',
       username: 'openrelayproject',
@@ -1798,9 +1806,21 @@ const iceServers = {
       urls: 'turn:openrelay.metered.ca:443?transport=tcp',
       username: 'openrelayproject',
       credential: 'openrelayproject'
+    },
+    
+    // Дополнительные TURN серверы
+    {
+      urls: 'turn:turn.voipmatrix.com:3478',
+      username: 'guest',
+      credential: 'guest'
+    },
+    {
+      urls: 'turn:turn.bistri.com:80',
+      username: 'homeo',
+      credential: 'homeo'
     }
   ],
-  iceCandidatePoolSize: 10
+  iceCandidatePoolSize: 20 // Увеличиваем пул кандидатов
 };
 
 // ===== DOM ЭЛЕМЕНТЫ =====
@@ -3171,7 +3191,9 @@ async function playRingtone() {
     }
     
     if (audioContext.state === 'running') {
-      stopRingtone();
+      stopRingtone(); // Останавливаем предыдущий звонок если был
+      
+      console.log('🔊 Запускаем рингтон');
       
       ringtoneInterval = setInterval(() => {
         if (!audioContext || audioContext.state !== 'running') {
@@ -3179,9 +3201,10 @@ async function playRingtone() {
           return;
         }
         
-        playBeep(440, 0.15);
-        setTimeout(() => playBeep(440, 0.15), 200);
-        
+        // Двойной сигнал для рингтона
+        playBeep(523.25, 0.2); // До
+        setTimeout(() => playBeep(659.25, 0.2), 250); // Ми
+        setTimeout(() => playBeep(783.99, 0.3), 500); // Соль
       }, 2000);
     }
     
@@ -3201,7 +3224,7 @@ function playBeep(frequency = 440, duration = 0.15) {
     oscillator.type = 'sine';
     oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
     
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
     
     oscillator.connect(gainNode);
@@ -3216,6 +3239,7 @@ function playBeep(frequency = 440, duration = 0.15) {
 }
 
 function stopRingtone() {
+  console.log('🛑 Останавливаем рингтон');
   if (ringtoneInterval) {
     clearInterval(ringtoneInterval);
     ringtoneInterval = null;
@@ -3552,8 +3576,9 @@ function listenForIncomingCalls() {
 }
 
 async function acceptIncomingCall() {
+  console.log('✅ Принимаем звонок');
+  stopRingtone(); // ОСТАНАВЛИВАЕМ РИНГТОН
   incomingCall.classList.remove('show');
-  stopRingtone();
   
   try {
     const callDoc = await db.collection('calls').doc(currentCall).get();
@@ -3638,8 +3663,9 @@ async function acceptIncomingCall() {
 }
 
 async function declineIncomingCall() {
+  console.log('❌ Отклоняем звонок');
+  stopRingtone(); // ОСТАНАВЛИВАЕМ РИНГТОН
   incomingCall.classList.remove('show');
-  stopRingtone();
   
   if (currentCall) {
     const callDoc = await db.collection('calls').doc(currentCall).get();
@@ -3651,6 +3677,9 @@ async function declineIncomingCall() {
 }
 
 async function endCall() {
+  console.log('📞 Завершаем звонок');
+  stopRingtone(); // ОСТАНАВЛИВАЕМ РИНГТОН НА ВСЯКИЙ СЛУЧАЙ
+  
   if (currentCall) {
     const callDoc = await db.collection('calls').doc(currentCall).get();
     const call = callDoc.data();
@@ -3662,7 +3691,7 @@ async function endCall() {
 }
 
 function cleanupCall() {
-  stopRingtone();
+  stopRingtone(); // ОСТАНАВЛИВАЕМ РИНГТОН
   
   if (localStream) {
     localStream.getTracks().forEach(track => track.stop());
