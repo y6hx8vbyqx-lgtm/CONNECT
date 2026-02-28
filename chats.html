@@ -772,7 +772,6 @@
             border: 1px solid var(--border-light);
         }
 
-        /* Стиль для сообщений о звонках */
         .call-message {
             background: rgba(58, 110, 165, 0.2);
             border: 1px solid var(--accent-color);
@@ -1458,10 +1457,7 @@
 </head>
 <body>
 
-<!-- Основной контейнер -->
 <div class="app-container">
-    
-    <!-- Верхняя навигация -->
     <div class="nav-bar">
         <div class="nav-left">
             <h1 id="mainTitle">Contegg · Чаты</h1>
@@ -1474,11 +1470,8 @@
         </div>
     </div>
 
-    <!-- Основной контент -->
     <div class="main-content" id="mainContent">
-        <!-- Вкладка ЧАТЫ -->
         <div class="tab-content active" id="tabChats">
-            <!-- Поиск -->
             <div class="search-container">
                 <div class="search-box">
                     <i class="fas fa-search"></i>
@@ -1486,7 +1479,6 @@
                 </div>
                 <div id="searchResults" class="search-results" style="display:none"></div>
             </div>
-            <!-- Список чатов -->
             <div class="chats-container">
                 <div class="chats-list" id="chatsList">
                     <div class="loader">
@@ -1497,7 +1489,6 @@
             </div>
         </div>
 
-        <!-- Вкладка ПРОФИЛЬ -->
         <div class="tab-content" id="tabProfile">
             <div class="profile-container" id="profileContainer">
                 <div class="loader" id="profileLoader">
@@ -1508,7 +1499,6 @@
         </div>
     </div>
 
-    <!-- НИЖНЯЯ НАВИГАЦИЯ -->
     <div class="bottom-nav">
         <div class="nav-item active" id="navChats" onclick="switchTab('chats')">
             <i class="fas fa-comment"></i>
@@ -1521,7 +1511,6 @@
     </div>
 </div>
 
-<!-- Оверлей чата -->
 <div class="chat-overlay" id="chatOverlay">
     <div class="chat-container">
         <div class="chat-header">
@@ -1579,7 +1568,6 @@
     </div>
 </div>
 
-<!-- Оверлей звонка -->
 <div class="call-overlay" id="callOverlay">
     <div class="call-container">
         <div class="call-videos">
@@ -1608,7 +1596,6 @@
     </div>
 </div>
 
-<!-- Входящий звонок -->
 <div class="incoming-call-bar" id="incomingCallBar">
     <div class="incoming-call-info">
         <div class="incoming-call-avatar" id="incomingCallAvatar"></div>
@@ -1627,14 +1614,10 @@
     </div>
 </div>
 
-<!-- Оверлей профиля пользователя -->
 <div class="user-profile-overlay" id="userProfileOverlay">
-    <div class="user-profile-card" id="userProfileCard">
-        <!-- Динамически через JS -->
-    </div>
+    <div class="user-profile-card" id="userProfileCard"></div>
 </div>
 
-<!-- Модалка для обрезки аватарки -->
 <div class="crop-modal" id="cropModal">
     <div class="crop-container">
         <div class="crop-area">
@@ -1647,20 +1630,17 @@
     </div>
 </div>
 
-<!-- Контекстное меню для сообщений -->
 <div class="message-context-menu" id="messageContextMenu" style="display:none">
     <div class="message-context-item" id="contextReplyBtn"><i class="fas fa-reply"></i><span>Ответить</span></div>
     <div class="message-context-item" id="contextReactionBtn"><i class="fas fa-heart"></i><span>Сердечко</span></div>
     <div class="message-context-item danger" id="contextDeleteMessageBtn"><i class="fas fa-trash"></i><span>Удалить</span></div>
 </div>
 
-<!-- Контекстное меню для чата -->
 <div class="message-context-menu" id="chatContextMenu" style="display:none">
     <div class="message-context-item" id="contextPinChatBtn"><i class="fas fa-thumbtack"></i><span>Закрепить</span></div>
     <div class="message-context-item danger" id="contextDeleteChatBtn"><i class="fas fa-trash"></i><span>Удалить чат</span></div>
 </div>
 
-<!-- Панель реакций -->
 <div class="reactions-panel" id="reactionsPanel">
     <div class="reaction-emoji" onclick="addReaction('❤️')">❤️</div>
     <div class="reaction-emoji" onclick="addReaction('👍')">👍</div>
@@ -1671,14 +1651,10 @@
     <div class="reaction-emoji" onclick="addReaction('😡')">😡</div>
 </div>
 
-<!-- Скрытый input для выбора фото -->
 <input type="file" id="avatarUploadInput" accept="image/*" style="display: none;">
-
-<!-- Уведомления -->
 <div class="notification" id="notification"></div>
 
 <script>
-// ===== FIREBASE CONFIG =====
 const firebaseConfig = {
     apiKey: "AIzaSyBKTPyHKC_Mp1ZO6NDiCaJVz3w1u_PWfUo",
     authDomain: "contegg-b3b4b.firebaseapp.com",
@@ -1694,7 +1670,6 @@ const db = firebase.firestore();
 const rtdb = firebase.database();
 const auth = firebase.auth();
 
-// ===== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =====
 let currentUser = null;
 let userData = null;
 let blockedUsers = [];
@@ -1708,13 +1683,11 @@ let pinnedChats = [];
 let replyingToMessage = null;
 let selectedMessageForReaction = null;
 let currentActiveTab = 'chats';
-
 let cropper = null;
-
 let chatContextMenu = document.getElementById('chatContextMenu');
 let currentChatContext = null;
 
-// Переменные для звонков - ИСПРАВЛЕНО
+// Переменные для звонков
 let peerConnection = null;
 let localStream = null;
 let remoteStream = null;
@@ -1727,8 +1700,8 @@ let incomingCallData = null;
 let callStatus = 'disconnected';
 let currentCallId = null;
 let pendingIceCandidates = [];
-let currentCallRef = null; // Добавляем ссылку на документ звонка
-let callListener = null;   // Добавляем функцию-слушатель
+let currentCallRef = null;
+let callListener = null;
 
 const iceServers = {
     iceServers: [
@@ -1740,7 +1713,6 @@ const iceServers = {
     ]
 };
 
-// ===== DOM ЭЛЕМЕНТЫ =====
 const mainTitle = document.getElementById('mainTitle');
 const headerUsernameSpan = document.getElementById('headerUsername');
 const tabChats = document.getElementById('tabChats');
@@ -1771,7 +1743,6 @@ const avatarUploadInput = document.getElementById('avatarUploadInput');
 const cropModal = document.getElementById('cropModal');
 const cropImage = document.getElementById('cropImage');
 
-// Элементы для звонков
 const callOverlay = document.getElementById('callOverlay');
 const remoteVideo = document.getElementById('remoteVideo');
 const localVideo = document.getElementById('localVideo');
@@ -1786,7 +1757,6 @@ const incomingCallAvatar = document.getElementById('incomingCallAvatar');
 const incomingCallName = document.getElementById('incomingCallName');
 const incomingCallType = document.getElementById('incomingCallType');
 
-// ===== АВТОРИЗАЦИЯ =====
 auth.onAuthStateChanged(async (user) => {
     if (!user) {
         location.href = 'index.html';
@@ -1806,7 +1776,6 @@ auth.onAuthStateChanged(async (user) => {
     listenForIncomingCalls();
 });
 
-// ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
 function formatTimeAgo(date) {
     if (!date) return "только что";
     const now = new Date();
@@ -1840,7 +1809,6 @@ function showNotification(message, duration = 3000) {
     if (duration > 0) setTimeout(() => notification.classList.remove('show'), duration);
 }
 
-// ===== ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ =====
 async function loadUserData() {
     try {
         const snap = await db.collection("users").doc(currentUser.uid).get();
@@ -1927,7 +1895,6 @@ async function getUserInfo(userId) {
     }
 }
 
-// ===== ЗАГРУЗКА СПИСКА ЧАТОВ =====
 async function loadChatsList() {
     try {
         const chatsSnap = await db.collection('chats').get();
@@ -2014,7 +1981,6 @@ async function loadChatsList() {
         }
         chatsList.innerHTML = chatsHTML;
 
-        // Добавляем обработчики контекстного меню для каждого чата
         document.querySelectorAll('.chat-item').forEach(item => {
             const chatId = item.dataset.chatId;
             const otherUserId = item.dataset.otherUserId;
@@ -2042,7 +2008,6 @@ async function loadChatsList() {
     }
 }
 
-// ===== ФУНКЦИЯ ПОКАЗА КОНТЕКСТНОГО МЕНЮ ЧАТА =====
 function showChatContextMenu(event, chatId, otherUserId, isPinned, element) {
     event.preventDefault();
     event.stopPropagation();
@@ -2150,7 +2115,6 @@ document.getElementById('contextDeleteChatBtn').addEventListener('click', () => 
     }
 });
 
-// ===== ФУНКЦИИ ДЛЯ СООБЩЕНИЙ =====
 async function openChat(userId, username, chatId = null) {
     currentChatUserId = userId;
     currentChatUsername = username;
@@ -2189,7 +2153,15 @@ async function openChat(userId, username, chatId = null) {
     chatUserStatus.textContent = 'онлайн';
     
     const isBlocked = blockedUsers.includes(userId);
-    updateInputState(isBlocked);
+    if (isBlocked) {
+        chatInput.disabled = true;
+        chatSendBtn.disabled = true;
+        chatInput.placeholder = 'Пользователь заблокирован';
+    } else {
+        chatInput.disabled = false;
+        chatSendBtn.disabled = false;
+        chatInput.placeholder = 'Сообщение';
+    }
     
     chatOverlay.classList.add('show');
     await loadChatMessages();
@@ -2221,18 +2193,6 @@ async function markChatAsRead(chatId) {
         }
     } catch (error) {
         console.error("Ошибка при отметке чата как прочитанного:", error);
-    }
-}
-
-function updateInputState(isBlocked) {
-    if (isBlocked) {
-        chatInput.disabled = true;
-        chatSendBtn.disabled = true;
-        chatInput.placeholder = 'Пользователь заблокирован';
-    } else {
-        chatInput.disabled = false;
-        chatSendBtn.disabled = false;
-        chatInput.placeholder = 'Сообщение';
     }
 }
 
@@ -2597,7 +2557,6 @@ async function deleteMessage(messageId) {
     }
 }
 
-// ===== ПОИСК ПОЛЬЗОВАТЕЛЕЙ =====
 let searchTimeout;
 searchInput.addEventListener('input', (e) => {
     clearTimeout(searchTimeout);
@@ -2678,7 +2637,6 @@ async function createOrOpenChat(otherUserId) {
     }
 }
 
-// ===== ОТРИСОВКА ПРОФИЛЯ =====
 async function renderProfile() {
     if (!userData) return;
     
@@ -2983,11 +2941,8 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// ===== ИСПРАВЛЕННЫЕ ФУНКЦИИ ДЛЯ ЗВОНКОВ =====
+// ===== ИСПРАВЛЕННЫЕ ФУНКЦИИ ЗВОНКОВ =====
 
-/**
- * Отправляет сообщение о звонке в чат
- */
 async function sendCallMessage(callType, duration = null) {
     if (!currentChatId || !currentChatUserId) return;
     try {
@@ -3056,20 +3011,23 @@ function startCallTimer() {
     }, 1000);
 }
 
-/**
- * ИСПРАВЛЕННАЯ функция очистки звонка
- */
+// ИСПРАВЛЕННАЯ функция очистки звонка
 function cleanupCall() {
+    console.log('Cleaning up call...');
+    
     if (peerConnection) {
         peerConnection.close();
         peerConnection = null;
     }
+    
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
     }
+    
     localVideo.srcObject = null;
     remoteVideo.srcObject = null;
+    
     if (callTimerInterval) {
         clearInterval(callTimerInterval);
         callTimerInterval = null;
@@ -3077,6 +3035,7 @@ function cleanupCall() {
     
     // ИСПРАВЛЕНО: правильное удаление слушателя
     if (currentCallRef && callListener) {
+        console.log('Removing call listener');
         currentCallRef.off('value', callListener);
         callListener = null;
         currentCallRef = null;
@@ -3084,51 +3043,62 @@ function cleanupCall() {
     
     callOverlay.classList.remove('show');
     incomingCallBar.classList.remove('show');
+    
     callStatus = 'disconnected';
     currentCallId = null;
     incomingCallData = null;
     callStartTime = null;
     pendingIceCandidates = [];
+    isMuted = false;
+    isVideoEnabled = true;
+    
+    toggleMuteBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+    toggleMuteBtn.classList.remove('muted');
+    toggleVideoBtn.innerHTML = '<i class="fas fa-video"></i>';
+    toggleVideoBtn.classList.remove('video-off');
+    
     callTimer.textContent = '00:00';
     updateCallStatus();
+    
+    console.log('Call cleaned up');
 }
 
-/**
- * ИСПРАВЛЕННАЯ функция слушателя документа звонка
- */
+// ИСПРАВЛЕННАЯ функция слушателя документа звонка
 function listenToCallDoc(callId) {
     if (!callId) return;
     
-    // Сохраняем ссылку на документ
+    console.log('Setting up call listener for:', callId);
+    
     currentCallRef = rtdb.ref(`calls/${callId}`);
     
-    // Создаем функцию-слушатель
     callListener = async (snapshot) => {
         const data = snapshot.val();
         if (!data) return;
         
         console.log('callDoc updated:', data);
         
-        // Если звонок завершён
         if (data.status === 'ended' || data.status === 'rejected') {
+            console.log('Call ended/rejected');
+            
             if (data.status === 'rejected' && data.calleeId === currentUser.uid) {
                 showNotification('Звонок отклонен');
                 await sendCallMessage(data.type);
             }
+            
             if (data.status === 'ended' && data.calleeId === currentUser.uid && callStartTime) {
                 const duration = Math.floor((Date.now() - callStartTime) / 1000);
                 await sendCallMessage(data.type, duration);
             }
+            
             cleanupCall();
             return;
         }
         
-        // Если пришёл answer (мы инициатор)
         if (data.answer && peerConnection && peerConnection.signalingState === 'have-local-offer') {
             try {
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
                 console.log('remoteDescription set from answer');
-                // Добавляем все отложенные ICE кандидаты
+                
                 for (const candidate of pendingIceCandidates) {
                     try {
                         await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
@@ -3142,28 +3112,24 @@ function listenToCallDoc(callId) {
             }
         }
         
-        // Если пришёл ICE кандидат
         if (data.iceCandidate) {
             if (peerConnection && peerConnection.remoteDescription) {
                 try {
                     await peerConnection.addIceCandidate(new RTCIceCandidate(data.iceCandidate));
+                    console.log('ICE candidate added');
                 } catch (e) {
                     console.error('Error adding ICE candidate:', e);
                 }
             } else {
-                // Сохраняем в буфер
+                console.log('Storing ICE candidate for later');
                 pendingIceCandidates.push(data.iceCandidate);
             }
         }
     };
     
-    // Устанавливаем слушатель
     currentCallRef.on('value', callListener);
 }
 
-/**
- * Начинает исходящий звонок
- */
 async function startCall(type) {
     if (!currentChatUserId) {
         showNotification('Сначала выберите чат');
@@ -3175,7 +3141,6 @@ async function startCall(type) {
         callStatus = 'ringing';
         updateCallStatus();
         
-        // Создаём документ звонка с уникальным ID
         const callId = `${currentUser.uid}_${currentChatUserId}_${Date.now()}`;
         currentCallId = callId;
         pendingIceCandidates = [];
@@ -3194,7 +3159,6 @@ async function startCall(type) {
         await rtdb.ref(`calls/${callId}`).set(callData);
         console.log('Call document created');
         
-        // Запрашиваем медиа
         const constraints = { audio: true, video: type === 'video' };
         localStream = await navigator.mediaDevices.getUserMedia(constraints);
         localVideo.srcObject = localStream;
@@ -3225,14 +3189,11 @@ async function startCall(type) {
             }
         };
         
-        // Создаём offer
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
         
-        // Сохраняем offer в документ
         await rtdb.ref(`calls/${callId}/offer`).set(offer);
         
-        // Показываем UI
         const userInfo = await getUserInfo(currentChatUserId);
         callName.textContent = userInfo.displayName || userInfo.username;
         if (userInfo.avatarBase64) {
@@ -3244,7 +3205,6 @@ async function startCall(type) {
         }
         updateCallUI();
         
-        // Начинаем слушать документ
         listenToCallDoc(callId);
         
     } catch (error) {
@@ -3254,9 +3214,6 @@ async function startCall(type) {
     }
 }
 
-/**
- * Показывает входящий звонок
- */
 async function showIncomingCall(callData) {
     if (callOverlay.classList.contains('show')) return;
     
@@ -3285,13 +3242,9 @@ async function showIncomingCall(callData) {
     incomingCallBar.classList.add('show');
     if (navigator.vibrate) navigator.vibrate([1000, 500, 1000]);
     
-    // Начинаем слушать документ этого звонка
     listenToCallDoc(incomingCallData.id);
 }
 
-/**
- * Ответить на звонок
- */
 async function answerCall() {
     if (!incomingCallData) return;
     
@@ -3306,15 +3259,6 @@ async function answerCall() {
         
         const myInfo = await getUserInfo(currentUser.uid);
         
-        // Обновляем статус и добавляем информацию о себе
-        await rtdb.ref(`calls/${callId}`).update({
-            status: 'answered',
-            calleeId: currentUser.uid,
-            calleeName: myInfo.displayName || myInfo.username,
-            calleeAvatar: myInfo.avatarBase64 || null
-        });
-        
-        // Запрашиваем медиа
         const constraints = { audio: true, video: incomingCallData.type === 'video' };
         localStream = await navigator.mediaDevices.getUserMedia(constraints);
         localVideo.srcObject = localStream;
@@ -3345,13 +3289,17 @@ async function answerCall() {
             }
         };
         
-        // Устанавливаем remote description из offer
+        await rtdb.ref(`calls/${callId}`).update({
+            status: 'answered',
+            calleeId: currentUser.uid,
+            calleeName: myInfo.displayName || myInfo.username,
+            calleeAvatar: myInfo.avatarBase64 || null
+        });
+        
         if (incomingCallData.offer) {
             await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingCallData.offer));
-            // Создаём answer
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
-            // Сохраняем answer в документ
             await rtdb.ref(`calls/${callId}/answer`).set(answer);
         } else {
             console.error('No offer in incomingCallData');
@@ -3363,8 +3311,6 @@ async function answerCall() {
         currentCallType = incomingCallData.type;
         updateCallUI();
         
-        // Слушатель уже установлен в showIncomingCall
-        
     } catch (error) {
         console.error('Error answering call:', error);
         showNotification('Ошибка: ' + error.message);
@@ -3372,9 +3318,6 @@ async function answerCall() {
     }
 }
 
-/**
- * Отклонить звонок
- */
 async function declineCall() {
     if (incomingCallData) {
         await rtdb.ref(`calls/${incomingCallData.id}`).update({ status: 'rejected' });
@@ -3383,10 +3326,8 @@ async function declineCall() {
     }
 }
 
-/**
- * Завершить звонок
- */
 async function endCall() {
+    console.log('Ending call...');
     if (currentCallId) {
         await rtdb.ref(`calls/${currentCallId}`).update({ status: 'ended' });
     }
@@ -3425,9 +3366,6 @@ function toggleVideo() {
     }
 }
 
-/**
- * ИСПРАВЛЕННАЯ функция слушателя входящих звонков
- */
 function listenForIncomingCalls() {
     if (!currentUser) return;
     
@@ -3438,7 +3376,6 @@ function listenForIncomingCalls() {
         const initialData = snapshot.val();
         const callId = snapshot.key;
         
-        // Проверяем, что звонок адресован нам, ещё не отвечен, и мы не инициатор
         if (initialData.calleeId === currentUser.uid && 
             initialData.status === 'ringing' && 
             initialData.callerId !== currentUser.uid &&
@@ -3447,42 +3384,49 @@ function listenForIncomingCalls() {
             
             console.log('Potential incoming call, fetching full data...');
             
-            // Получаем полные данные документа, включая offer (который мог прийти позже)
             const callRef = rtdb.ref(`calls/${callId}`);
-            callRef.once('value', async (snap) => {
-                const fullData = snap.val();
-                if (fullData && fullData.offer) {
-                    fullData.callId = callId;
-                    await showIncomingCall(fullData);
-                } else {
-                    // Если offer ещё не пришёл, подождём немного и проверим ещё раз
-                    setTimeout(async () => {
-                        const retrySnap = await callRef.once('value');
-                        const retryData = retrySnap.val();
-                        if (retryData && retryData.offer) {
-                            retryData.callId = callId;
-                            await showIncomingCall(retryData);
-                        } else {
-                            console.warn('Offer not received for incoming call after delay');
-                        }
-                    }, 1500);
+            
+            let attempts = 0;
+            const maxAttempts = 10;
+            
+            const checkForOffer = async () => {
+                const snap = await callRef.once('value');
+                const data = snap.val();
+                
+                if (data && data.offer) {
+                    data.callId = callId;
+                    await showIncomingCall(data);
+                    return true;
                 }
-            });
+                return false;
+            };
+            
+            const checkInterval = setInterval(async () => {
+                attempts++;
+                if (await checkForOffer() || attempts >= maxAttempts) {
+                    clearInterval(checkInterval);
+                }
+            }, 500);
+            
+            setTimeout(async () => {
+                if (await checkForOffer()) {
+                    clearInterval(checkInterval);
+                }
+            }, 100);
         }
     });
     
-    // Также слушаем изменения для возможных обновлений статуса
     callsRef.on('child_changed', (snapshot) => {
         const callData = snapshot.val();
         const callId = snapshot.key;
-        // Если звонок, на который мы ответили, изменил статус
+        
         if (callData.status === 'answered' && callData.calleeId === currentUser.uid) {
             if (callStatus === 'connecting' || callStatus === 'ringing') {
                 callStatus = 'connected';
                 updateCallStatus();
             }
         }
-        // Если звонок завершён, убираем уведомление
+        
         if ((callData.status === 'ended' || callData.status === 'rejected') && 
             incomingCallData && incomingCallData.id === callId) {
             incomingCallBar.classList.remove('show');
