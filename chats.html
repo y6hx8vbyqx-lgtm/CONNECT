@@ -5,13 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Contegg · Чаты и Звонки</title>
     
-    <!-- PWA -->
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#1a1a1a">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     
@@ -78,7 +71,6 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* ===== ОСНОВНОЙ КОНТЕЙНЕР ===== */
         .app-container {
             height: 100vh;
             display: flex;
@@ -87,7 +79,6 @@
             position: relative;
         }
 
-        /* ===== ВЕРХНЯЯ НАВИГАЦИЯ ===== */
         .nav-bar {
             height: var(--header-height);
             background: var(--nav-bg);
@@ -139,7 +130,6 @@
         .icon-btn:hover { background: var(--bg-hover); }
         .icon-btn:active { transform: scale(0.92); }
 
-        /* ===== ОСНОВНОЙ КОНТЕНТ ===== */
         .main-content {
             flex: 1;
             overflow-y: auto;
@@ -150,7 +140,6 @@
         }
         .main-content::-webkit-scrollbar { display: none; }
 
-        /* Вкладки */
         .tab-content {
             display: none;
             min-height: 100%;
@@ -161,7 +150,6 @@
             display: block;
         }
 
-        /* ===== СТИЛИ ДЛЯ ЧАТОВ ===== */
         .chats-container {
             padding: 8px 12px;
             min-height: 100%;
@@ -343,7 +331,6 @@
         }
         .result-username { font-size: 13px; color: var(--text-muted); }
 
-        /* ===== СТИЛИ ДЛЯ ПРОФИЛЯ ===== */
         .profile-container {
             min-height: 100%;
             background: var(--bg-primary);
@@ -502,7 +489,6 @@
             background: var(--bg-hover);
         }
 
-        /* ===== НИЖНЯЯ НАВИГАЦИЯ ===== */
         .bottom-nav {
             height: var(--bottom-nav-height);
             background: var(--nav-bg);
@@ -535,7 +521,6 @@
         .nav-item.active { color: var(--accent-color); }
         .nav-item:hover { background: var(--bg-hover); }
 
-        /* ===== ОВЕРЛЕЙ ЧАТА ===== */
         .chat-overlay {
             position: fixed;
             top: 0;
@@ -675,7 +660,6 @@
         }
         .chat-close-btn:hover { background: var(--bg-hover); }
 
-        /* Сообщения */
         .chat-messages {
             flex: 1;
             overflow-y: auto;
@@ -788,7 +772,6 @@
             border: 1px solid var(--border-light);
         }
 
-        /* Поле ввода */
         .chat-input-area {
             background: var(--nav-bg);
             backdrop-filter: blur(30px);
@@ -897,7 +880,6 @@
         .chat-send-btn:active:not(:disabled) { transform: scale(0.95); }
         .chat-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        /* ===== СТИЛИ ДЛЯ ЗВОНКОВ ===== */
         .call-overlay {
             position: fixed;
             top: 0;
@@ -1147,7 +1129,6 @@
             color: white;
         }
 
-        /* ===== ОВЕРЛЕЙ ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ ===== */
         .user-profile-overlay {
             position: fixed;
             top: 0;
@@ -1239,7 +1220,6 @@
             word-break: break-word;
         }
 
-        /* ===== МОДАЛКА ДЛЯ ОБРЕЗКИ АВАТАРКИ ===== */
         .crop-modal {
             position: fixed;
             top: 0;
@@ -1305,7 +1285,6 @@
         }
         .crop-btn.cancel:hover { background: var(--bg-hover); }
 
-        /* ===== ВСПОМОГАТЕЛЬНЫЕ ЭЛЕМЕНТЫ ===== */
         .no-chats { 
             display: flex;
             align-items: center;
@@ -1365,7 +1344,6 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* Контекстное меню для сообщений */
         .message-context-menu {
             position: fixed;
             background: var(--card-bg);
@@ -1394,36 +1372,6 @@
         .message-context-item.danger { color: var(--danger-color); }
         .message-context-item.danger i { color: var(--danger-color); }
 
-        /* Контекстное меню для чата */
-        .message-context-menu {
-            position: fixed;
-            background: var(--card-bg);
-            backdrop-filter: blur(30px);
-            border-radius: 14px;
-            padding: 6px;
-            box-shadow: var(--shadow-card);
-            border: 1px solid var(--border-light);
-            z-index: 10000;
-            min-width: 180px;
-            animation: fadeScale 0.15s ease;
-        }
-        .message-context-item {
-            padding: 12px 16px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            color: var(--text-primary);
-            border-radius: 10px;
-            cursor: pointer;
-            transition: var(--transition-default);
-            font-size: 15px;
-        }
-        .message-context-item:hover { background: var(--bg-hover); }
-        .message-context-item i { width: 20px; font-size: 16px; color: var(--accent-color); }
-        .message-context-item.danger { color: var(--danger-color); }
-        .message-context-item.danger i { color: var(--danger-color); }
-
-        /* Панель реакций */
         .reactions-panel {
             position: fixed;
             background: var(--card-bg);
@@ -1724,12 +1672,13 @@ const firebaseConfig = {
     storageBucket: "contegg-b3b4b.firebasestorage.app",
     messagingSenderId: "678323780149",
     appId: "1:678323780149:web:9717ac593a21d97a19cf7c",
-    databaseURL: "https://contegg-b3b4b-default-rtdb.firebaseio.com/" // URL вашей Realtime Database
+    databaseURL: "https://contegg-b3b4b-default-rtdb.europe-west1.firebasedatabase.app/"
 };
 
+// Инициализация Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const rtdb = firebase.database(); // Realtime Database для звонков
+const rtdb = firebase.database();
 const auth = firebase.auth();
 
 // ===== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =====
@@ -1768,7 +1717,7 @@ let callStatus = 'disconnected';
 let callListener = null;
 let currentCallId = null;
 
-// Конфигурация STUN/TURN серверов
+// Конфигурация STUN серверов
 const iceServers = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -1827,22 +1776,34 @@ const incomingCallType = document.getElementById('incomingCallType');
 
 // ===== АВТОРИЗАЦИЯ =====
 auth.onAuthStateChanged(async (user) => {
+    console.log('Auth state changed:', user?.uid);
+    
     if (!user) {
+        console.log('Пользователь не авторизован');
         location.href = 'index.html';
         return;
     }
+    
     currentUser = user;
     
-    await loadUserData();
-    await loadAdminUsers();
-    
-    headerUsernameSpan.textContent = userData?.username || 'user';
-    
-    await loadChatsList();
-    await renderProfile();
-    
-    checkForAutoOpenChat();
-    setupCallListener(); // Слушаем входящие звонки
+    try {
+        await loadUserData();
+        await loadAdminUsers();
+        
+        headerUsernameSpan.textContent = userData?.username || 'user';
+        
+        await loadChatsList();
+        await renderProfile();
+        
+        checkForAutoOpenChat();
+        setupCallListener();
+        
+        console.log('Инициализация завершена');
+        
+    } catch (error) {
+        console.error('Ошибка инициализации:', error);
+        showNotification('Ошибка инициализации: ' + error.message);
+    }
 });
 
 // ===== ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ =====
@@ -1851,6 +1812,7 @@ async function loadUserData() {
         const snap = await db.collection("users").doc(currentUser.uid).get();
         if (!snap.exists) {
             userData = {
+                uid: currentUser.uid,
                 username: "user" + currentUser.uid.slice(-6),
                 displayName: "Пользователь",
                 bio: "Расскажите о себе...",
@@ -1867,12 +1829,16 @@ async function loadUserData() {
             if (!userData.bio) userData.bio = "Расскажите о себе...";
             if (!userData.email) userData.email = currentUser.email || "email@example.com";
             if (!userData.avatarBase64) userData.avatarBase64 = null;
+            if (!userData.blockedUsers) userData.blockedUsers = [];
+            if (!userData.pinnedChats) userData.pinnedChats = [];
+            
             blockedUsers = userData.blockedUsers || [];
             pinnedChats = userData.pinnedChats || [];
         }
     } catch (error) {
         console.error("Ошибка загрузки данных:", error);
         showNotification("Ошибка загрузки данных");
+        throw error;
     }
 }
 
@@ -1893,6 +1859,7 @@ async function getUserInfo(userId) {
     try {
         const userDoc = await db.collection("users").doc(userId).get();
         let userInfo = {
+            uid: userId,
             username: "user" + userId.slice(-6),
             displayName: "Пользователь",
             bio: "",
@@ -1903,6 +1870,7 @@ async function getUserInfo(userId) {
         if (userDoc.exists) {
             const data = userDoc.data();
             userInfo = {
+                uid: userId,
                 username: data.username || userInfo.username,
                 displayName: data.displayName || userInfo.displayName,
                 bio: data.bio || "",
@@ -1915,7 +1883,15 @@ async function getUserInfo(userId) {
         return userInfo;
     } catch (error) {
         console.error("Ошибка получения информации о пользователе:", error);
-        return { username: "user" + userId.slice(-6), displayName: "Пользователь", bio: "", email: "", isAdmin: false, avatarBase64: null };
+        return { 
+            uid: userId,
+            username: "user" + userId.slice(-6), 
+            displayName: "Пользователь", 
+            bio: "", 
+            email: "", 
+            isAdmin: false, 
+            avatarBase64: null 
+        };
     }
 }
 
@@ -1942,7 +1918,8 @@ async function loadChatsList() {
                 const isUnread = chat.unreadFor && chat.unreadFor.includes(currentUser.uid);
                 
                 userChats.push({
-                    id: chatId, ...chat,
+                    id: chatId, 
+                    ...chat,
                     otherUserId: otherUserId,
                     otherUserInfo: otherUserInfo,
                     isPinned: isPinned,
@@ -2146,7 +2123,15 @@ document.getElementById('contextDeleteChatBtn').addEventListener('click', () => 
 
 // ===== НАСТРОЙКА СЛУШАТЕЛЯ ВХОДЯЩИХ ЗВОНКОВ =====
 function setupCallListener() {
+    console.log('Настройка слушателя звонков для пользователя:', currentUser?.uid);
+    
+    if (!currentUser) {
+        console.log('Пользователь не авторизован, слушатель не настроен');
+        return;
+    }
+    
     const userCallsRef = rtdb.ref(`calls/${currentUser.uid}`);
+    console.log('Слушаем путь:', userCallsRef.toString());
     
     if (callListener) {
         userCallsRef.off('value', callListener);
@@ -2154,8 +2139,13 @@ function setupCallListener() {
     
     callListener = userCallsRef.on('value', async (snapshot) => {
         const callData = snapshot.val();
+        console.log('Получены данные звонка:', callData);
         
-        if (!callData || callData.status === 'ended' || callData.status === 'rejected') {
+        if (!callData) {
+            return;
+        }
+        
+        if (callData.status === 'ended' || callData.status === 'rejected') {
             return;
         }
         
@@ -2164,10 +2154,12 @@ function setupCallListener() {
         }
         
         if (callData.status === 'ringing' && !callOverlay.classList.contains('show')) {
-            showIncomingCall(callData);
+            console.log('Обнаружен входящий звонок!');
+            await showIncomingCall(callData);
         }
         
         if (callData.status === 'answered' && callData.calleeId === currentUser.uid) {
+            console.log('Звонок принят другой стороной');
             if (callStatus === 'connecting') {
                 callStatus = 'connected';
                 updateCallStatus();
@@ -2175,16 +2167,19 @@ function setupCallListener() {
         }
         
         if (callData.iceCandidate && peerConnection) {
+            console.log('Получен ICE кандидат');
             try {
                 await peerConnection.addIceCandidate(new RTCIceCandidate(callData.iceCandidate));
             } catch (e) {
-                console.error('Error adding ICE candidate:', e);
+                console.error('Ошибка добавления ICE кандидата:', e);
             }
         }
         
         if (callData.sdp && peerConnection) {
+            console.log('Получен SDP типа:', callData.sdp.type);
             try {
                 if (callData.sdp.type === 'offer' && callData.callerId !== currentUser.uid) {
+                    console.log('Получен оффер, создаем ответ');
                     await peerConnection.setRemoteDescription(new RTCSessionDescription(callData.sdp));
                     const answer = await peerConnection.createAnswer();
                     await peerConnection.setLocalDescription(answer);
@@ -2193,26 +2188,43 @@ function setupCallListener() {
                         sdp: answer,
                         status: 'answered'
                     });
+                    console.log('Ответ отправлен');
+                    
                 } else if (callData.sdp.type === 'answer' && callData.calleeId === currentUser.uid) {
+                    console.log('Получен ответ, устанавливаем удаленное описание');
                     await peerConnection.setRemoteDescription(new RTCSessionDescription(callData.sdp));
                 }
             } catch (e) {
-                console.error('Error handling SDP:', e);
+                console.error('Ошибка обработки SDP:', e);
             }
         }
+    }, (error) => {
+        console.error('Ошибка слушателя звонков:', error);
     });
 }
 
 // ===== НАЧАТЬ ЗВОНОК =====
 async function startCall(type) {
-    if (!currentChatUserId) return;
+    console.log('startCall вызван с типом:', type);
+    console.log('currentChatUserId:', currentChatUserId);
+    
+    if (!currentChatUserId) {
+        console.error('Нет currentChatUserId');
+        showNotification('Сначала выберите чат');
+        return;
+    }
     
     try {
         currentCallType = type;
         callStatus = 'connecting';
+        updateCallStatus();
+        
+        console.log('Создаем запись о звонке в Realtime Database');
         
         const callRef = rtdb.ref(`calls/${currentChatUserId}`);
         currentCallId = callRef.key;
+        
+        console.log('CallRef path:', callRef.toString());
         
         await callRef.set({
             callerId: currentUser.uid,
@@ -2222,21 +2234,28 @@ async function startCall(type) {
             timestamp: Date.now()
         });
         
+        console.log('Запись о звонке создана успешно');
+        
+        console.log('Запрашиваем медиаразрешения...');
         const constraints = {
             audio: true,
             video: type === 'video'
         };
         
         localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('Медиапоток получен');
         localVideo.srcObject = localStream;
         
         peerConnection = new RTCPeerConnection(iceServers);
+        console.log('PeerConnection создан');
         
         localStream.getTracks().forEach(track => {
             peerConnection.addTrack(track, localStream);
+            console.log('Добавлен трек:', track.kind);
         });
         
         peerConnection.ontrack = (event) => {
+            console.log('Получен удаленный поток');
             remoteVideo.srcObject = event.streams[0];
             callStatus = 'connected';
             updateCallStatus();
@@ -2245,23 +2264,43 @@ async function startCall(type) {
         
         peerConnection.onicecandidate = async (event) => {
             if (event.candidate) {
-                await callRef.update({
-                    iceCandidate: event.candidate
-                });
+                console.log('Новый ICE кандидат');
+                try {
+                    await callRef.update({
+                        iceCandidate: event.candidate
+                    });
+                } catch (e) {
+                    console.error('Ошибка отправки ICE кандидата:', e);
+                }
             }
         };
         
+        peerConnection.oniceconnectionstatechange = () => {
+            console.log('ICE connection state:', peerConnection.iceConnectionState);
+            if (peerConnection.iceConnectionState === 'disconnected' || 
+                peerConnection.iceConnectionState === 'failed') {
+                endCall();
+                showNotification('Соединение потеряно');
+            }
+        };
+        
+        console.log('Создаем оффер...');
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
+        console.log('Локальное описание установлено');
         
         await callRef.update({
             sdp: offer
         });
+        console.log('Оффер отправлен');
         
         const userInfo = await getUserInfo(currentChatUserId);
+        console.log('Инфо о пользователе:', userInfo);
+        
         callName.textContent = userInfo.displayName || userInfo.username;
         if (userInfo.avatarBase64) {
             callAvatar.style.backgroundImage = `url('${userInfo.avatarBase64}')`;
+            callAvatar.style.backgroundSize = 'cover';
             callAvatar.innerHTML = '';
         } else {
             callAvatar.style.backgroundImage = '';
@@ -2269,21 +2308,28 @@ async function startCall(type) {
         }
         
         updateCallUI();
+        console.log('UI звонка обновлен');
         
     } catch (error) {
-        console.error('Error starting call:', error);
-        showNotification('Ошибка при начале звонка');
+        console.error('ОШИБКА при начале звонка:', error);
+        showNotification('Ошибка при начале звонка: ' + error.message);
         endCall();
     }
 }
 
 // ===== ОТВЕТИТЬ НА ЗВОНОК =====
 async function answerCall() {
-    if (!incomingCallData) return;
+    if (!incomingCallData) {
+        console.log('Нет данных о входящем звонке');
+        return;
+    }
+    
+    console.log('Отвечаем на звонок:', incomingCallData);
     
     try {
         incomingCallBar.classList.remove('show');
         callStatus = 'connecting';
+        updateCallStatus();
         
         const callRef = rtdb.ref(`calls/${incomingCallData.callerId}`);
         
@@ -2292,21 +2338,26 @@ async function answerCall() {
             calleeId: currentUser.uid
         });
         
+        console.log('Запрашиваем медиаразрешения...');
         const constraints = {
             audio: true,
             video: incomingCallData.type === 'video'
         };
         
         localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('Медиапоток получен');
         localVideo.srcObject = localStream;
         
         peerConnection = new RTCPeerConnection(iceServers);
+        console.log('PeerConnection создан');
         
         localStream.getTracks().forEach(track => {
             peerConnection.addTrack(track, localStream);
+            console.log('Добавлен трек:', track.kind);
         });
         
         peerConnection.ontrack = (event) => {
+            console.log('Получен удаленный поток');
             remoteVideo.srcObject = event.streams[0];
             callStatus = 'connected';
             updateCallStatus();
@@ -2315,13 +2366,19 @@ async function answerCall() {
         
         peerConnection.onicecandidate = async (event) => {
             if (event.candidate) {
-                await callRef.update({
-                    iceCandidate: event.candidate
-                });
+                console.log('Новый ICE кандидат');
+                try {
+                    await callRef.update({
+                        iceCandidate: event.candidate
+                    });
+                } catch (e) {
+                    console.error('Ошибка отправки ICE кандидата:', e);
+                }
             }
         };
         
         if (incomingCallData.sdp) {
+            console.log('Устанавливаем удаленное описание');
             await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingCallData.sdp));
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
@@ -2329,51 +2386,72 @@ async function answerCall() {
             await callRef.update({
                 sdp: answer
             });
+            console.log('Ответ отправлен');
         }
         
         currentCallId = incomingCallData.callerId;
         callName.textContent = incomingCallData.name;
+        currentCallType = incomingCallData.type;
+        
         updateCallUI();
         
     } catch (error) {
-        console.error('Error answering call:', error);
-        showNotification('Ошибка при ответе на звонок');
+        console.error('Ошибка при ответе на звонок:', error);
+        showNotification('Ошибка при ответе на звонок: ' + error.message);
         endCall();
     }
 }
 
 // ===== ПОКАЗАТЬ ВХОДЯЩИЙ ЗВОНОК =====
 async function showIncomingCall(callData) {
-    const callerInfo = await getUserInfo(callData.callerId);
+    console.log('Показываем входящий звонок:', callData);
     
-    incomingCallData = {
-        ...callData,
-        name: callerInfo.displayName || callerInfo.username,
-        avatar: callerInfo.avatarBase64
-    };
-    
-    incomingCallName.textContent = incomingCallData.name;
-    incomingCallType.textContent = callData.type === 'video' ? 'Входящий видеозвонок...' : 'Входящий аудиозвонок...';
-    
-    if (incomingCallData.avatar) {
-        incomingCallAvatar.style.backgroundImage = `url('${incomingCallData.avatar}')`;
-    } else {
-        incomingCallAvatar.style.backgroundImage = 'linear-gradient(135deg, #3a6ea5, #6b4e71)';
-    }
-    
-    incomingCallBar.classList.add('show');
-    
-    if (navigator.vibrate) {
-        navigator.vibrate([1000, 500, 1000]);
+    try {
+        const callerInfo = await getUserInfo(callData.callerId);
+        console.log('Инфо о звонящем:', callerInfo);
+        
+        incomingCallData = {
+            ...callData,
+            name: callerInfo.displayName || callerInfo.username,
+            avatar: callerInfo.avatarBase64
+        };
+        
+        incomingCallName.textContent = incomingCallData.name;
+        incomingCallType.textContent = callData.type === 'video' ? '📹 Входящий видеозвонок...' : '🎧 Входящий аудиозвонок...';
+        
+        if (incomingCallData.avatar) {
+            incomingCallAvatar.style.backgroundImage = `url('${incomingCallData.avatar}')`;
+            incomingCallAvatar.style.backgroundSize = 'cover';
+            incomingCallAvatar.innerHTML = '';
+        } else {
+            incomingCallAvatar.style.backgroundImage = '';
+            incomingCallAvatar.style.background = 'linear-gradient(135deg, #3a6ea5, #6b4e71)';
+            incomingCallAvatar.innerHTML = incomingCallData.name[0].toUpperCase();
+        }
+        
+        incomingCallBar.classList.add('show');
+        
+        if (navigator.vibrate) {
+            navigator.vibrate([1000, 500, 1000]);
+        }
+        
+    } catch (error) {
+        console.error('Ошибка при показе входящего звонка:', error);
     }
 }
 
 // ===== ОТКЛОНИТЬ ЗВОНОК =====
 async function declineCall() {
+    console.log('Отклоняем звонок');
+    
     if (incomingCallData) {
-        await rtdb.ref(`calls/${incomingCallData.callerId}`).update({
-            status: 'rejected'
-        });
+        try {
+            await rtdb.ref(`calls/${incomingCallData.callerId}`).update({
+                status: 'rejected'
+            });
+        } catch (error) {
+            console.error('Ошибка при отклонении звонка:', error);
+        }
     }
     
     incomingCallBar.classList.remove('show');
@@ -2383,10 +2461,16 @@ async function declineCall() {
 
 // ===== ЗАВЕРШИТЬ ЗВОНОК =====
 async function endCall() {
+    console.log('Завершаем звонок');
+    
     if (currentCallId) {
-        await rtdb.ref(`calls/${currentCallId}`).update({
-            status: 'ended'
-        });
+        try {
+            await rtdb.ref(`calls/${currentCallId}`).update({
+                status: 'ended'
+            });
+        } catch (error) {
+            console.error('Ошибка при завершении звонка:', error);
+        }
     }
     
     if (peerConnection) {
@@ -2413,6 +2497,9 @@ async function endCall() {
     callStatus = 'disconnected';
     currentCallId = null;
     incomingCallData = null;
+    
+    callTimer.textContent = '00:00';
+    updateCallStatus();
     
     showNotification('Звонок завершен');
 }
@@ -2557,6 +2644,8 @@ function escapeHtml(text) {
 
 // Функция открытия чата
 async function openChat(userId, username, chatId = null) {
+    console.log('Открываем чат с:', userId, username);
+    
     currentChatUserId = userId;
     currentChatUsername = username;
     
@@ -2603,6 +2692,7 @@ async function openChat(userId, username, chatId = null) {
 }
 
 function closeChat() {
+    console.log('Закрываем чат');
     chatOverlay.classList.remove('show');
     if (chatMessagesListener) {
         chatMessagesListener();
@@ -3392,23 +3482,26 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// Закрытие звонка при нажатии Escape
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && callOverlay.classList.contains('show')) {
         endCall();
     }
 });
 
-// Обработка разрыва соединения
-if (peerConnection) {
-    peerConnection.onconnectionstatechange = () => {
-        if (peerConnection.connectionState === 'disconnected' || 
-            peerConnection.connectionState === 'failed') {
-            endCall();
-            showNotification('Соединение потеряно');
-        }
-    };
+// Тестовая функция
+function testCallSystem() {
+    console.log('=== ТЕСТ СИСТЕМЫ ЗВОНКОВ ===');
+    console.log('Firebase App:', firebase.app().name);
+    console.log('Auth currentUser:', currentUser?.uid);
+    console.log('RTDB ref:', rtdb.ref().toString());
+    console.log('currentChatUserId:', currentChatUserId);
+    console.log('callOverlay:', callOverlay);
+    console.log('localVideo:', localVideo);
+    console.log('remoteVideo:', remoteVideo);
+    console.log('============================');
 }
+
+setTimeout(testCallSystem, 3000);
 </script>
 </body>
 </html>
