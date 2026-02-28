@@ -1096,6 +1096,11 @@
             height: 50px;
             border-radius: 50%;
             background: linear-gradient(135deg, #3a6ea5, #6b4e71);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            color: white;
             background-size: cover;
             background-position: center;
         }
@@ -1632,7 +1637,7 @@
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <div id="activeCallControls" style="display: none;">
+            <div id="activeCallControls" style="display: flex; display: none;">
                 <button class="call-control-btn" id="muteBtn" onclick="toggleMute()" title="Выключить микрофон">
                     <i class="fas fa-microphone"></i>
                 </button>
@@ -1648,11 +1653,11 @@
 </div>
 
 <!-- Входящий звонок -->
-<div class="incoming-call-bar" id="incomingCall" style="display: none;">
+<div class="incoming-call-bar" id="incomingCall">
     <div class="incoming-call-info">
-        <div class="incoming-call-avatar" id="incomingAvatar"></div>
+        <div class="incoming-call-avatar" id="incomingAvatar">U</div>
         <div class="incoming-call-text">
-            <div class="incoming-call-name" id="incomingName"></div>
+            <div class="incoming-call-name" id="incomingName">@username</div>
             <div class="incoming-call-type" id="incomingType">Входящий видеозвонок...</div>
         </div>
     </div>
@@ -1752,6 +1757,7 @@ let cropper = null;
 let chatContextMenu = document.getElementById('chatContextMenu');
 let currentChatContext = null;
 let currentMessageContextId = null;
+let currentMessageContextData = null;
 
 // Переменные для звонков
 let currentCall = null;
@@ -2516,7 +2522,7 @@ function showMessageContextMenu(event, messageId, messageData) {
     }
     
     currentMessageContextId = messageId;
-    window.currentContextMessageData = messageData;
+    currentMessageContextData = messageData;
     
     messageContextMenu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
     messageContextMenu.style.top = Math.min(y, window.innerHeight - 150) + 'px';
@@ -2538,10 +2544,10 @@ function showMessageContextMenu(event, messageId, messageData) {
 function contextMenuAction(action) {
     messageContextMenu.style.display = 'none';
     
-    if (!currentMessageContextId || !window.currentContextMessageData) return;
+    if (!currentMessageContextId || !currentMessageContextData) return;
     
     if (action === 'reply') {
-        replyToMessage(currentMessageContextId, window.currentContextMessageData);
+        replyToMessage(currentMessageContextId, currentMessageContextData);
     } else if (action === 'reactions') {
         showReactionsPanelFromMenu();
     } else if (action === 'delete') {
@@ -2584,11 +2590,11 @@ function showReactionsPanel(event, messageId, messageData) {
 }
 
 function showReactionsPanelFromMenu() {
-    if (!currentMessageContextId || !window.currentContextMessageData) return;
+    if (!currentMessageContextId || !currentMessageContextData) return;
     
     selectedMessageForReaction = { 
         id: currentMessageContextId, 
-        ...window.currentContextMessageData 
+        ...currentMessageContextData 
     };
     
     reactionsPanel.style.left = '50%';
@@ -3487,8 +3493,15 @@ function listenForIncomingCalls() {
           const callerInfo = await getUserInfo(call.callerId);
           
           incomingName.textContent = '@' + callerInfo.username;
-          incomingAvatar.style.backgroundImage = callerInfo.avatarBase64 ? `url('${callerInfo.avatarBase64}')` : '';
-          incomingAvatar.textContent = callerInfo.avatarBase64 ? '' : (callerInfo.username?.[0]?.toUpperCase() || 'U');
+          
+          if (callerInfo.avatarBase64) {
+            incomingAvatar.style.backgroundImage = `url('${callerInfo.avatarBase64}')`;
+            incomingAvatar.textContent = '';
+          } else {
+            incomingAvatar.style.backgroundImage = '';
+            incomingAvatar.textContent = (callerInfo.username?.[0]?.toUpperCase() || 'U');
+          }
+          
           incomingType.textContent = 
             call.type === 'video' ? 'Входящий видеозвонок...' : 'Входящий аудиозвонок...';
           
