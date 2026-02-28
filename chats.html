@@ -1773,15 +1773,34 @@ let ringtoneInterval = null;
 let audioContext = null;
 let iceCandidateListener = null;
 let pendingIceCandidates = [];
+let chatsListener = null; // Для автообновления чатов
 
+// Улучшенные ICE серверы для работы через интернет
 const iceServers = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' }
-  ]
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:stun.services.mozilla.com' },
+    { 
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    },
+    { 
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    },
+    { 
+      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    }
+  ],
+  iceCandidatePoolSize: 10
 };
 
 // ===== DOM ЭЛЕМЕНТЫ =====
@@ -1851,6 +1870,9 @@ auth.onAuthStateChanged(async (user) => {
     await loadChatsList();
     await renderProfile();
     
+    // Запускаем автоматическое обновление чатов
+    startChatsListener();
+    
     checkForAutoOpenChat();
     listenForIncomingCalls();
     
@@ -1890,6 +1912,16 @@ function showNotification(message, duration = 3000) {
     notification.textContent = message;
     notification.classList.add('show');
     setTimeout(() => notification.classList.remove('show'), duration);
+}
+
+// ===== АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ ЧАТОВ =====
+function startChatsListener() {
+    if (chatsListener) return;
+    
+    chatsListener = db.collection('chats').onSnapshot(() => {
+        console.log('🔄 Обновление списка чатов...');
+        loadChatsList();
+    });
 }
 
 // ===== РАЗБЛОКИРОВКА ЗВУКА =====
@@ -3084,6 +3116,7 @@ function checkForAutoOpenChat() {
 
 function logout() {
     if (confirm("Выйти из аккаунта?")) {
+        if (chatsListener) chatsListener();
         auth.signOut().then(() => {
             location.href = "index.html";
         });
