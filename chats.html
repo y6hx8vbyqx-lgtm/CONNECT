@@ -1686,15 +1686,15 @@
 
 <!-- Контекстное меню для сообщений -->
 <div class="message-context-menu" id="messageContextMenu" style="display:none">
-    <div class="message-context-item" id="contextReplyBtn"><i class="fas fa-reply"></i><span>Ответить</span></div>
-    <div class="message-context-item" id="contextReactionBtn"><i class="fas fa-heart"></i><span>Сердечко</span></div>
-    <div class="message-context-item danger" id="contextDeleteMessageBtn"><i class="fas fa-trash"></i><span>Удалить</span></div>
+    <div class="message-context-item" onclick="contextMenuAction('reply')"><i class="fas fa-reply"></i><span>Ответить</span></div>
+    <div class="message-context-item" onclick="contextMenuAction('reactions')"><i class="fas fa-heart"></i><span>Реакции</span></div>
+    <div class="message-context-item danger" onclick="contextMenuAction('delete')"><i class="fas fa-trash"></i><span>Удалить</span></div>
 </div>
 
 <!-- Контекстное меню для чата -->
 <div class="message-context-menu" id="chatContextMenu" style="display:none">
-    <div class="message-context-item" id="contextPinChatBtn"><i class="fas fa-thumbtack"></i><span>Закрепить</span></div>
-    <div class="message-context-item danger" id="contextDeleteChatBtn"><i class="fas fa-trash"></i><span>Удалить чат</span></div>
+    <div class="message-context-item" onclick="contextChatAction('pin')"><i class="fas fa-thumbtack"></i><span id="pinChatText">Закрепить</span></div>
+    <div class="message-context-item danger" onclick="contextChatAction('delete')"><i class="fas fa-trash"></i><span>Удалить чат</span></div>
 </div>
 
 <!-- Панель реакций -->
@@ -1713,6 +1713,9 @@
 
 <!-- Уведомления -->
 <div class="notification" id="notification"></div>
+
+<!-- Кнопка разблокировки звука -->
+<button id="unlock-audio-btn" style="display: none;" onclick="unlockAudio()">🔊 Разрешить звук звонка</button>
 
 <script>
 // ===== FIREBASE CONFIG =====
@@ -1748,6 +1751,7 @@ let cropper = null;
 
 let chatContextMenu = document.getElementById('chatContextMenu');
 let currentChatContext = null;
+let currentMessageContextId = null;
 
 // Переменные для звонков
 let currentCall = null;
@@ -1804,6 +1808,7 @@ const userProfileCard = document.getElementById('userProfileCard');
 const avatarUploadInput = document.getElementById('avatarUploadInput');
 const cropModal = document.getElementById('cropModal');
 const cropImage = document.getElementById('cropImage');
+const unlockAudioBtn = document.getElementById('unlock-audio-btn');
 
 // Элементы для звонков
 const callModal = document.getElementById('callModal');
@@ -1842,6 +1847,9 @@ auth.onAuthStateChanged(async (user) => {
     
     checkForAutoOpenChat();
     listenForIncomingCalls();
+    
+    // Показываем кнопку разблокировки звука
+    unlockAudioBtn.style.display = 'block';
 });
 
 // ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
@@ -1876,6 +1884,20 @@ function showNotification(message, duration = 3000) {
     notification.textContent = message;
     notification.classList.add('show');
     setTimeout(() => notification.classList.remove('show'), duration);
+}
+
+// ===== РАЗБЛОКИРОВКА ЗВУКА =====
+function unlockAudio() {
+    if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    audioContext.resume().then(() => {
+        console.log('🔊 Аудио контекст разблокирован');
+        unlockAudioBtn.style.display = 'none';
+        showNotification('Звук звонка активирован');
+    }).catch(e => {
+        console.error('Ошибка разблокировки аудио:', e);
+    });
 }
 
 // ===== ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ =====
@@ -2096,8 +2118,7 @@ function showChatContextMenu(event, chatId, otherUserId, isPinned, element) {
 
     currentChatContext = { chatId, otherUserId, isPinned, element };
 
-    const pinBtn = document.getElementById('contextPinChatBtn');
-    pinBtn.innerHTML = isPinned ? '<i class="fas fa-thumbtack"></i><span>Открепить</span>' : '<i class="fas fa-thumbtack"></i><span>Закрепить</span>';
+    document.getElementById('pinChatText').textContent = isPinned ? 'Открепить' : 'Закрепить';
 
     chatContextMenu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
     chatContextMenu.style.top = Math.min(y, window.innerHeight - 150) + 'px';
@@ -2114,6 +2135,18 @@ function showChatContextMenu(event, chatId, otherUserId, isPinned, element) {
         document.addEventListener('click', closeMenu);
         document.addEventListener('touchstart', closeMenu);
     }, 10);
+}
+
+function contextChatAction(action) {
+    chatContextMenu.style.display = 'none';
+    
+    if (!currentChatContext) return;
+    
+    if (action === 'pin') {
+        pinChat(currentChatContext.chatId, !currentChatContext.isPinned);
+    } else if (action === 'delete') {
+        deleteChat(currentChatContext.chatId);
+    }
 }
 
 async function pinChat(chatId, shouldPin) {
@@ -2172,20 +2205,6 @@ async function deleteChat(chatId) {
         showNotification('Ошибка удаления: ' + error.message);
     }
 }
-
-document.getElementById('contextPinChatBtn').addEventListener('click', () => {
-    chatContextMenu.style.display = 'none';
-    if (currentChatContext) {
-        pinChat(currentChatContext.chatId, !currentChatContext.isPinned);
-    }
-});
-
-document.getElementById('contextDeleteChatBtn').addEventListener('click', () => {
-    chatContextMenu.style.display = 'none';
-    if (currentChatContext) {
-        deleteChat(currentChatContext.chatId);
-    }
-});
 
 // ===== ФУНКЦИИ ДЛЯ СООБЩЕНИЙ =====
 async function openChat(userId, username, chatId = null) {
@@ -2330,7 +2349,6 @@ function addMessageToUI(msg) {
     messageDiv.setAttribute('data-message-id', msg.id);
     messageDiv.setAttribute('data-sender-id', msg.senderId);
     
-    // Исправляем обработчик клика
     setupMessageClickHandler(messageDiv, msg);
     
     const readStatus = msg.read === true ? '✓✓' : '✓';
@@ -2363,44 +2381,40 @@ function addMessageToUI(msg) {
 }
 
 function setupMessageClickHandler(messageDiv, msg) {
-    if ('ontouchstart' in window) {
-        let longPressTimer;
-        let isLongPress = false;
-        
-        messageDiv.addEventListener('touchstart', (e) => {
-            isLongPress = false;
-            longPressTimer = setTimeout(() => {
-                isLongPress = true;
-                if (msg.type !== 'call' && msg.type !== 'game') {
-                    showMessageContextMenu(e, msg.id, msg);
-                }
-            }, 500);
-        });
-        
-        messageDiv.addEventListener('touchend', (e) => {
-            clearTimeout(longPressTimer);
-            if (!isLongPress && msg.type !== 'call' && msg.type !== 'game') {
-                showReactionsPanel(e, msg.id, msg);
-            }
-        });
-        
-        messageDiv.addEventListener('touchmove', () => {
-            clearTimeout(longPressTimer);
-        });
-    } else {
-        messageDiv.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            if (msg.type !== 'call' && msg.type !== 'game') {
-                showMessageContextMenu(e, msg.id, msg);
-            }
-        });
-        
-        messageDiv.addEventListener('click', (e) => {
-            if (e.button === 0 && msg.type !== 'call' && msg.type !== 'game') {
-                showReactionsPanel(e, msg.id, msg);
-            }
-        });
-    }
+    let longPressTimer;
+    let isLongPress = false;
+    
+    messageDiv.addEventListener('touchstart', (e) => {
+        isLongPress = false;
+        longPressTimer = setTimeout(() => {
+            isLongPress = true;
+            showMessageContextMenu(e, msg.id, msg);
+        }, 500);
+    });
+    
+    messageDiv.addEventListener('touchend', (e) => {
+        clearTimeout(longPressTimer);
+        if (!isLongPress && !msg.isCallMessage) {
+            showReactionsPanel(e, msg.id, msg);
+        }
+    });
+    
+    messageDiv.addEventListener('touchmove', () => {
+        clearTimeout(longPressTimer);
+    });
+    
+    messageDiv.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        if (!msg.isCallMessage) {
+            showMessageContextMenu(e, msg.id, msg);
+        }
+    });
+    
+    messageDiv.addEventListener('click', (e) => {
+        if (!msg.isCallMessage) {
+            showReactionsPanel(e, msg.id, msg);
+        }
+    });
 }
 
 function setupChatMessagesListener() {
@@ -2487,13 +2501,125 @@ async function sendMessage() {
     }
 }
 
+function showMessageContextMenu(event, messageId, messageData) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    let x, y;
+    if (event.type.includes('touch')) {
+        const touch = event.touches[0] || event.changedTouches[0];
+        x = touch.clientX;
+        y = touch.clientY;
+    } else {
+        x = event.clientX;
+        y = event.clientY;
+    }
+    
+    currentMessageContextId = messageId;
+    window.currentContextMessageData = messageData;
+    
+    messageContextMenu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
+    messageContextMenu.style.top = Math.min(y, window.innerHeight - 150) + 'px';
+    messageContextMenu.style.display = 'block';
+    
+    setTimeout(() => {
+        const closeMenu = (e) => {
+            if (!messageContextMenu.contains(e.target)) {
+                messageContextMenu.style.display = 'none';
+                document.removeEventListener('click', closeMenu);
+                document.removeEventListener('touchstart', closeMenu);
+            }
+        };
+        document.addEventListener('click', closeMenu);
+        document.addEventListener('touchstart', closeMenu);
+    }, 10);
+}
+
+function contextMenuAction(action) {
+    messageContextMenu.style.display = 'none';
+    
+    if (!currentMessageContextId || !window.currentContextMessageData) return;
+    
+    if (action === 'reply') {
+        replyToMessage(currentMessageContextId, window.currentContextMessageData);
+    } else if (action === 'reactions') {
+        showReactionsPanelFromMenu();
+    } else if (action === 'delete') {
+        if (confirm("Удалить сообщение?")) {
+            deleteMessage(currentMessageContextId);
+        }
+    }
+}
+
+function showReactionsPanel(event, messageId, messageData) {
+    if (messageData.isCallMessage) return;
+    
+    selectedMessageForReaction = { id: messageId, ...messageData };
+    
+    let x, y;
+    if (event.type.includes('touch')) {
+        const touch = event.touches[0] || event.changedTouches[0];
+        x = touch.clientX;
+        y = touch.clientY;
+    } else {
+        x = event.clientX;
+        y = event.clientY;
+    }
+    
+    reactionsPanel.style.left = Math.min(x - 140, window.innerWidth - 300) + 'px';
+    reactionsPanel.style.top = Math.min(y - 60, window.innerHeight - 100) + 'px';
+    reactionsPanel.classList.add('show');
+    
+    setTimeout(() => {
+        const closePanel = (e) => {
+            if (!reactionsPanel.contains(e.target)) {
+                reactionsPanel.classList.remove('show');
+                document.removeEventListener('click', closePanel);
+                document.removeEventListener('touchstart', closePanel);
+            }
+        };
+        document.addEventListener('click', closePanel);
+        document.addEventListener('touchstart', closePanel);
+    }, 10);
+}
+
+function showReactionsPanelFromMenu() {
+    if (!currentMessageContextId || !window.currentContextMessageData) return;
+    
+    selectedMessageForReaction = { 
+        id: currentMessageContextId, 
+        ...window.currentContextMessageData 
+    };
+    
+    reactionsPanel.style.left = '50%';
+    reactionsPanel.style.top = '50%';
+    reactionsPanel.style.transform = 'translate(-50%, -50%)';
+    reactionsPanel.classList.add('show');
+    
+    setTimeout(() => {
+        const closePanel = (e) => {
+            if (!reactionsPanel.contains(e.target)) {
+                reactionsPanel.classList.remove('show');
+                document.removeEventListener('click', closePanel);
+                document.removeEventListener('touchstart', closePanel);
+            }
+        };
+        document.addEventListener('click', closePanel);
+        document.addEventListener('touchstart', closePanel);
+    }, 10);
+}
+
 async function addReaction(emoji) {
+    reactionsPanel.classList.remove('show');
+    
     if (!selectedMessageForReaction || !currentChatId) return;
+    
     try {
         const messageRef = db.collection('chats').doc(currentChatId).collection('messages').doc(selectedMessageForReaction.id);
         const messageDoc = await messageRef.get();
         const currentReactions = messageDoc.data()?.reactions || {};
         const userReaction = currentReactions[currentUser.uid];
+        
         if (userReaction === emoji) {
             delete currentReactions[currentUser.uid];
             showNotification("Реакция убрана");
@@ -2501,9 +2627,9 @@ async function addReaction(emoji) {
             currentReactions[currentUser.uid] = emoji;
             showNotification(`+${emoji}`);
         }
+        
         await messageRef.update({ reactions: currentReactions });
         updateMessageReactions(selectedMessageForReaction.id, currentReactions);
-        reactionsPanel.classList.remove('show');
     } catch (error) {
         console.error("Ошибка при добавлении реакции:", error);
         showNotification("Ошибка: " + error.message);
@@ -2512,11 +2638,13 @@ async function addReaction(emoji) {
 
 async function addReactionToMessage(messageId, emoji) {
     if (!currentChatId) return;
+    
     try {
         const messageRef = db.collection('chats').doc(currentChatId).collection('messages').doc(messageId);
         const messageDoc = await messageRef.get();
         const currentReactions = messageDoc.data()?.reactions || {};
         const userReaction = currentReactions[currentUser.uid];
+        
         if (userReaction === emoji) {
             delete currentReactions[currentUser.uid];
             showNotification("Реакция убрана");
@@ -2524,6 +2652,7 @@ async function addReactionToMessage(messageId, emoji) {
             currentReactions[currentUser.uid] = emoji;
             showNotification(`+${emoji}`);
         }
+        
         await messageRef.update({ reactions: currentReactions });
         updateMessageReactions(messageId, currentReactions);
     } catch (error) {
@@ -2535,6 +2664,7 @@ async function addReactionToMessage(messageId, emoji) {
 function updateMessageReactions(messageId, reactions) {
     const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
     if (!messageElement) return;
+    
     let reactionsContainer = messageElement.querySelector('.message-reactions');
     if (!reactionsContainer) {
         reactionsContainer = document.createElement('div');
@@ -2543,16 +2673,20 @@ function updateMessageReactions(messageId, reactions) {
         if (timeElement) messageElement.insertBefore(reactionsContainer, timeElement);
         else messageElement.appendChild(reactionsContainer);
     }
+    
     reactionsContainer.innerHTML = '';
+    
     if (Object.keys(reactions).length === 0) {
         reactionsContainer.remove();
         return;
     }
+    
     const reactionGroups = {};
     Object.entries(reactions).forEach(([userId, emoji]) => {
         if (!reactionGroups[emoji]) reactionGroups[emoji] = [];
         reactionGroups[emoji].push(userId);
     });
+    
     Object.entries(reactionGroups).forEach(([emoji, users]) => {
         const isLikedByMe = users.includes(currentUser.uid);
         const reactionElement = document.createElement('div');
@@ -2580,57 +2714,6 @@ function cancelReply() {
     replyingToMessage = null;
     replyContainer.style.display = 'none';
 }
-
-function showMessageContextMenu(event, messageId, messageData) {
-    event.preventDefault();
-    event.stopPropagation();
-    let x, y;
-    if (event.type.includes('touch')) {
-        const touch = event.touches[0] || event.changedTouches[0];
-        x = touch.clientX;
-        y = touch.clientY;
-    } else {
-        x = event.clientX;
-        y = event.clientY;
-    }
-    messageContextMenu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
-    messageContextMenu.style.top = Math.min(y, window.innerHeight - 150) + 'px';
-    messageContextMenu.style.display = 'block';
-    window.currentContextMessageId = messageId;
-    window.currentContextMessageData = messageData;
-    setTimeout(() => {
-        const closeMenu = (e) => {
-            if (!messageContextMenu.contains(e.target)) {
-                messageContextMenu.style.display = 'none';
-                document.removeEventListener('click', closeMenu);
-                document.removeEventListener('touchstart', closeMenu);
-            }
-        };
-        document.addEventListener('click', closeMenu);
-        document.addEventListener('touchstart', closeMenu);
-    }, 10);
-}
-
-document.getElementById('contextReplyBtn').addEventListener('click', () => {
-    messageContextMenu.style.display = 'none';
-    if (window.currentContextMessageId && window.currentContextMessageData) {
-        replyToMessage(window.currentContextMessageId, window.currentContextMessageData);
-    }
-});
-
-document.getElementById('contextReactionBtn').addEventListener('click', () => {
-    messageContextMenu.style.display = 'none';
-    if (window.currentContextMessageId && window.currentContextMessageData) {
-        addReactionToMessage(window.currentContextMessageId, '❤️');
-    }
-});
-
-document.getElementById('contextDeleteMessageBtn').addEventListener('click', () => {
-    messageContextMenu.style.display = 'none';
-    if (window.currentContextMessageId) {
-        if (confirm("Удалить сообщение?")) deleteMessage(window.currentContextMessageId);
-    }
-});
 
 async function deleteMessage(messageId) {
     try {
@@ -3031,7 +3114,7 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// ===== ИСПРАВЛЕННЫЕ ФУНКЦИИ ЗВОНКОВ =====
+// ===== ФУНКЦИИ ЗВОНКОВ =====
 
 async function playRingtone() {
   console.log('🔔 Попытка воспроизвести рингтон...');
@@ -3043,7 +3126,8 @@ async function playRingtone() {
     
     if (audioContext.state === 'suspended') {
       console.log('🔇 Аудио контекст заблокирован');
-      showNotification('🔔 Входящий звонок!');
+      unlockAudioBtn.style.display = 'block';
+      showNotification('🔔 Входящий звонок! Нажмите кнопку "Разрешить звук"');
       return;
     }
     
@@ -3394,21 +3478,21 @@ function listenForIncomingCalls() {
   
   incomingCallListener = db.collection('calls')
     .where('targetId', '==', currentUser.uid)
+    .where('status', '==', 'ringing')
     .onSnapshot((snapshot) => {
       snapshot.docChanges().forEach(async (change) => {
         if (change.type === 'added') {
           const call = change.doc.data();
           
-          if (call.status !== 'ringing') return;
-          
           const callerInfo = await getUserInfo(call.callerId);
           
           incomingName.textContent = '@' + callerInfo.username;
-          incomingAvatar.textContent = callerInfo.username?.[0]?.toUpperCase() || 'U';
+          incomingAvatar.style.backgroundImage = callerInfo.avatarBase64 ? `url('${callerInfo.avatarBase64}')` : '';
+          incomingAvatar.textContent = callerInfo.avatarBase64 ? '' : (callerInfo.username?.[0]?.toUpperCase() || 'U');
           incomingType.textContent = 
-            call.type === 'video' ? 'Входящий видеозвонок' : 'Входящий аудиозвонок';
+            call.type === 'video' ? 'Входящий видеозвонок...' : 'Входящий аудиозвонок...';
           
-          incomingCall.style.display = 'flex';
+          incomingCall.classList.add('show');
           
           playRingtone();
           
@@ -3422,7 +3506,7 @@ function listenForIncomingCalls() {
 }
 
 async function acceptIncomingCall() {
-  incomingCall.style.display = 'none';
+  incomingCall.classList.remove('show');
   stopRingtone();
   
   try {
@@ -3508,7 +3592,7 @@ async function acceptIncomingCall() {
 }
 
 async function declineIncomingCall() {
-  incomingCall.style.display = 'none';
+  incomingCall.classList.remove('show');
   stopRingtone();
   
   if (currentCall) {
@@ -3545,7 +3629,7 @@ function cleanupCall() {
   }
   
   callModal.classList.remove('show');
-  incomingCall.style.display = 'none';
+  incomingCall.classList.remove('show');
   videoContainer.style.display = 'none';
   
   localVideo.srcObject = null;
