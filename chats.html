@@ -1442,7 +1442,6 @@
             transform: translateX(-50%) translateY(0);
         }
 
-        /* Стили для разблокировки звука */
         #unlock-audio-btn {
             position: fixed;
             bottom: 20px;
@@ -1669,9 +1668,7 @@
 
 <!-- Оверлей профиля пользователя -->
 <div class="user-profile-overlay" id="userProfileOverlay">
-    <div class="user-profile-card" id="userProfileCard">
-        <!-- Динамически через JS -->
-    </div>
+    <div class="user-profile-card" id="userProfileCard"></div>
 </div>
 
 <!-- Модалка для обрезки аватарки -->
@@ -1762,7 +1759,7 @@ let callTimerInterval = null;
 let callStartTime = null;
 let incomingCallListener = null;
 let callStatusListener = null;
-let ringtoneAudio = null;
+let ringtoneInterval = null;
 let audioContext = null;
 let iceCandidateListener = null;
 let pendingIceCandidates = [];
@@ -1878,7 +1875,7 @@ function escapeHtml(text) {
 function showNotification(message, duration = 3000) {
     notification.textContent = message;
     notification.classList.add('show');
-    if (duration > 0) setTimeout(() => notification.classList.remove('show'), duration);
+    setTimeout(() => notification.classList.remove('show'), duration);
 }
 
 // ===== ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ =====
@@ -2333,6 +2330,7 @@ function addMessageToUI(msg) {
     messageDiv.setAttribute('data-message-id', msg.id);
     messageDiv.setAttribute('data-sender-id', msg.senderId);
     
+    // Исправляем обработчик клика
     setupMessageClickHandler(messageDiv, msg);
     
     const readStatus = msg.read === true ? '✓✓' : '✓';
@@ -2368,25 +2366,39 @@ function setupMessageClickHandler(messageDiv, msg) {
     if ('ontouchstart' in window) {
         let longPressTimer;
         let isLongPress = false;
+        
         messageDiv.addEventListener('touchstart', (e) => {
             isLongPress = false;
             longPressTimer = setTimeout(() => {
                 isLongPress = true;
-                showMessageContextMenu(e, msg.id, msg);
+                if (msg.type !== 'call' && msg.type !== 'game') {
+                    showMessageContextMenu(e, msg.id, msg);
+                }
             }, 500);
         });
+        
         messageDiv.addEventListener('touchend', (e) => {
             clearTimeout(longPressTimer);
-            if (!isLongPress) showReactionsPanel(e, msg.id, msg);
+            if (!isLongPress && msg.type !== 'call' && msg.type !== 'game') {
+                showReactionsPanel(e, msg.id, msg);
+            }
         });
-        messageDiv.addEventListener('touchmove', () => clearTimeout(longPressTimer));
+        
+        messageDiv.addEventListener('touchmove', () => {
+            clearTimeout(longPressTimer);
+        });
     } else {
         messageDiv.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            showMessageContextMenu(e, msg.id, msg);
+            if (msg.type !== 'call' && msg.type !== 'game') {
+                showMessageContextMenu(e, msg.id, msg);
+            }
         });
+        
         messageDiv.addEventListener('click', (e) => {
-            if (e.button === 0) showReactionsPanel(e, msg.id, msg);
+            if (e.button === 0 && msg.type !== 'call' && msg.type !== 'game') {
+                showReactionsPanel(e, msg.id, msg);
+            }
         });
     }
 }
@@ -3030,50 +3042,30 @@ async function playRingtone() {
     }
     
     if (audioContext.state === 'suspended') {
-      console.log('🔇 Аудио контекст заблокирован, нужно взаимодействие');
-      showNotification('🔔 Входящий звонок! Нажмите для ответа');
-      
-      const unlockBtn = document.createElement('button');
-      unlockBtn.innerHTML = '🔔 Входящий звонок! Нажмите для звука';
-      unlockBtn.id = 'unlock-audio-btn';
-      
-      unlockBtn.onclick = async () => {
-        await audioContext.resume();
-        playRingtonePattern();
-        setTimeout(() => {
-          if (unlockBtn.parentNode) unlockBtn.remove();
-        }, 1000);
-      };
-      
-      document.body.appendChild(unlockBtn);
+      console.log('🔇 Аудио контекст заблокирован');
+      showNotification('🔔 Входящий звонок!');
       return;
     }
     
     if (audioContext.state === 'running') {
-      playRingtonePattern();
+      stopRingtone();
+      
+      ringtoneInterval = setInterval(() => {
+        if (!audioContext || audioContext.state !== 'running') {
+          stopRingtone();
+          return;
+        }
+        
+        playBeep(440, 0.15);
+        setTimeout(() => playBeep(440, 0.15), 200);
+        
+      }, 2000);
     }
     
   } catch (e) {
     console.error('Ошибка воспроизведения:', e);
     showNotification('🔔 Входящий звонок!');
   }
-}
-
-function playRingtonePattern() {
-  if (!audioContext || audioContext.state !== 'running') return;
-  
-  stopRingtone();
-  
-  ringtoneAudio = setInterval(() => {
-    if (!audioContext || audioContext.state !== 'running') {
-      stopRingtone();
-      return;
-    }
-    
-    playBeep(440, 0.15);
-    setTimeout(() => playBeep(440, 0.15), 200);
-    
-  }, 2000);
 }
 
 function playBeep(frequency = 440, duration = 0.15) {
@@ -3101,13 +3093,10 @@ function playBeep(frequency = 440, duration = 0.15) {
 }
 
 function stopRingtone() {
-  if (ringtoneAudio) {
-    clearInterval(ringtoneAudio);
-    ringtoneAudio = null;
+  if (ringtoneInterval) {
+    clearInterval(ringtoneInterval);
+    ringtoneInterval = null;
   }
-  
-  const unlockBtn = document.getElementById('unlock-audio-btn');
-  if (unlockBtn) unlockBtn.remove();
 }
 
 async function sendIceCandidate(candidate) {
@@ -3231,7 +3220,7 @@ async function saveCallHistory(call) {
     const duration = callStartTime ? Math.floor((Date.now() - callStartTime) / 1000) : 0;
     const minutes = Math.floor(duration / 60);
     const seconds = duration % 60;
-    const durationStr = duration > 0 ? `${minutes}:${seconds.toString().padStart(2, '0')}` : null;
+    const durationStr = duration > 0 ? `${minutes}:${seconds.toString().padStart(2, '0')}` : '';
     
     let statusText = '';
     if (call.status === 'ended') statusText = 'состоялся';
@@ -3543,6 +3532,8 @@ async function endCall() {
 }
 
 function cleanupCall() {
+  stopRingtone();
+  
   if (localStream) {
     localStream.getTracks().forEach(track => track.stop());
     localStream = null;
@@ -3565,8 +3556,6 @@ function cleanupCall() {
     callTimerInterval = null;
   }
   
-  stopRingtone();
-  
   if (callStatusListener) {
     callStatusListener();
     callStatusListener = null;
@@ -3582,6 +3571,7 @@ function cleanupCall() {
   currentCall = null;
   callStartTime = null;
   callTimerEl.textContent = '00:00';
+  callType = null;
 }
 
 function startCallTimer() {
