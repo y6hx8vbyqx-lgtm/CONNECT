@@ -1729,6 +1729,7 @@ let incomingCallData = null;
 let callStatus = 'disconnected';
 let callListener = null;
 let currentCallId = null;
+let pendingIceCandidates = [];
 
 // Конфигурация STUN серверов
 const iceServers = {
@@ -1789,35 +1790,57 @@ const incomingCallType = document.getElementById('incomingCallType');
 
 // ===== АВТОРИЗАЦИЯ =====
 auth.onAuthStateChanged(async (user) => {
-    console.log('Auth state changed:', user?.uid);
-    
     if (!user) {
-        console.log('Пользователь не авторизован');
         location.href = 'index.html';
         return;
     }
-    
     currentUser = user;
     
-    try {
-        await loadUserData();
-        await loadAdminUsers();
-        
-        headerUsernameSpan.textContent = userData?.username || 'user';
-        
-        await loadChatsList();
-        await renderProfile();
-        
-        checkForAutoOpenChat();
-        setupIncomingCallsListener(); // слушаем входящие звонки
-        
-        console.log('Инициализация завершена');
-        
-    } catch (error) {
-        console.error('Ошибка инициализации:', error);
-        showNotification('Ошибка инициализации: ' + error.message);
-    }
+    await loadUserData();
+    await loadAdminUsers();
+    
+    headerUsernameSpan.textContent = userData?.username || 'user';
+    
+    await loadChatsList();
+    await renderProfile();
+    
+    checkForAutoOpenChat();
+    setupIncomingCallsListener(); // слушаем входящие звонки
 });
+
+// ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+function formatTimeAgo(date) {
+    if (!date) return "только что";
+    const now = new Date();
+    const diff = now - date;
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    if (days > 7) return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
+    else if (days > 0) return `${days}д`;
+    else if (hours > 0) return `${hours}ч`;
+    else if (minutes > 0) return `${minutes}м`;
+    else return "только что";
+}
+
+function formatMessageTime(date) {
+    if (!date) return "";
+    return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showNotification(message, duration = 3000) {
+    notification.textContent = message;
+    notification.classList.add('show');
+    if (duration > 0) setTimeout(() => notification.classList.remove('show'), duration);
+}
 
 // ===== ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ =====
 async function loadUserData() {
@@ -1855,7 +1878,6 @@ async function loadUserData() {
     }
 }
 
-// ===== ЗАГРУЗКА АДМИНОВ =====
 async function loadAdminUsers() {
     try {
         const adminSnap = await db.collection("users").where("isAdmin", "==", true).get();
@@ -1866,7 +1888,6 @@ async function loadAdminUsers() {
     }
 }
 
-// ===== ПОЛУЧЕНИЕ ИНФОРМАЦИИ О ПОЛЬЗОВАТЕЛЕ =====
 async function getUserInfo(userId) {
     if (usersCache.has(userId)) return usersCache.get(userId);
     try {
@@ -2060,7 +2081,6 @@ function showChatContextMenu(event, chatId, otherUserId, isPinned, element) {
     }, 10);
 }
 
-// ===== ЗАКРЕПИТЬ / ОТКРЕПИТЬ ЧАТ =====
 async function pinChat(chatId, shouldPin) {
     if (shouldPin && pinnedChats.length >= 5) {
         showNotification('Максимум 5 закреплённых чатов');
@@ -2088,7 +2108,6 @@ async function pinChat(chatId, shouldPin) {
     }
 }
 
-// ===== УДАЛИТЬ ЧАТ =====
 async function deleteChat(chatId) {
     if (!confirm('Удалить чат? Это действие нельзя отменить.')) return;
 
@@ -2119,7 +2138,6 @@ async function deleteChat(chatId) {
     }
 }
 
-// ===== ОБРАБОТЧИКИ ДЛЯ ПУНКТОВ МЕНЮ ЧАТА =====
 document.getElementById('contextPinChatBtn').addEventListener('click', () => {
     chatContextMenu.style.display = 'none';
     if (currentChatContext) {
@@ -2134,641 +2152,8 @@ document.getElementById('contextDeleteChatBtn').addEventListener('click', () => 
     }
 });
 
-// ===== ФУНКЦИИ ДЛЯ ЗВОНКОВ =====
-
-/**
- * Отправляет сообщение о звонке в чат
- */
-async function sendCallMessage(callType, duration = null) {
-    if (!currentChatId || !currentChatUserId) return;
-    
-    try {
-        let messageText = '';
-        if (duration) {
-            const minutes = Math.floor(duration / 60);
-            const seconds = duration % 60;
-            const durationStr = minutes > 0 
-                ? `${minutes} мин ${seconds} сек` 
-                : `${seconds} сек`;
-            messageText = `🔊 ${callType === 'video' ? 'Видеозвонок' : 'Аудиозвонок'}, длительность ${durationStr}`;
-        } else {
-            messageText = `🔊 ${callType === 'video' ? 'Видеозвонок' : 'Аудиозвонок'} (нет ответа)`;
-        }
-        
-        const messageData = {
-            text: messageText,
-            senderId: currentUser.uid,
-            timestamp: new Date(),
-            read: false,
-            isCallMessage: true,
-            callType: callType,
-            callDuration: duration
-        };
-        
-        await db.collection('chats').doc(currentChatId).collection('messages').add(messageData);
-        
-        // Обновляем последнее сообщение в чате
-        await db.collection('chats').doc(currentChatId).update({
-            lastMessage: messageText,
-            lastSender: currentUser.uid,
-            lastMessageTime: new Date(),
-            updatedAt: new Date()
-        });
-        
-        console.log('Сообщение о звонке отправлено');
-        
-    } catch (error) {
-        console.error('Ошибка при отправке сообщения о звонке:', error);
-    }
-}
-
-/**
- * Обновляет UI звонка
- */
-function updateCallUI() {
-    if (currentCallType === 'audio') {
-        localVideo.style.display = 'none';
-        toggleVideoBtn.style.display = 'none';
-        callAvatar.style.display = 'flex';
-    } else {
-        localVideo.style.display = 'block';
-        toggleVideoBtn.style.display = 'flex';
-        callAvatar.style.display = 'none';
-    }
-    
-    callOverlay.classList.add('show');
-}
-
-/**
- * Обновляет статус звонка
- */
-function updateCallStatus() {
-    const statusMap = {
-        'disconnected': 'Звонок завершен',
-        'connecting': 'Соединение...',
-        'connected': 'Разговор',
-        'ringing': 'Звонок...'
-    };
-    callStatusEl.textContent = statusMap[callStatus] || 'Звонок';
-}
-
-/**
- * Запускает таймер звонка
- */
-function startCallTimer() {
-    callStartTime = Date.now();
-    callTimerInterval = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
-        const minutes = Math.floor(elapsed / 60);
-        const seconds = elapsed % 60;
-        callTimer.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    }, 1000);
-}
-
-/**
- * Начинает звонок (исходящий)
- */
-async function startCall(type) {
-    console.log('startCall вызван с типом:', type);
-    
-    if (!currentChatUserId) {
-        showNotification('Сначала выберите чат');
-        return;
-    }
-    
-    if (!currentUser) {
-        showNotification('Ошибка авторизации');
-        return;
-    }
-    
-    try {
-        currentCallType = type;
-        callStatus = 'ringing';
-        updateCallStatus();
-        
-        // Генерируем уникальный ID для звонка
-        const callId = `${currentUser.uid}_${currentChatUserId}_${Date.now()}`;
-        const callRef = rtdb.ref(`calls/${callId}`);
-        currentCallId = callId;
-        
-        console.log('Создаем звонок с ID:', callId);
-        
-        // Получаем информацию о себе
-        const callerInfo = await getUserInfo(currentUser.uid);
-        
-        const callData = {
-            callerId: currentUser.uid,
-            calleeId: currentChatUserId,
-            type: type,
-            status: 'ringing',
-            timestamp: Date.now(),
-            callerName: callerInfo.displayName || callerInfo.username,
-            callerAvatar: callerInfo.avatarBase64 || null,
-            callId: callId
-        };
-        
-        await callRef.set(callData);
-        console.log('✅ Звонок создан в базе');
-        
-        // Запрашиваем медиа
-        const constraints = {
-            audio: true,
-            video: type === 'video'
-        };
-        
-        localStream = await navigator.mediaDevices.getUserMedia(constraints);
-        localVideo.srcObject = localStream;
-        
-        peerConnection = new RTCPeerConnection(iceServers);
-        
-        localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-        });
-        
-        // Обработка удаленного потока
-        peerConnection.ontrack = (event) => {
-            console.log('Получен удаленный поток');
-            remoteVideo.srcObject = event.streams[0];
-            callStatus = 'connected';
-            updateCallStatus();
-            startCallTimer();
-        };
-        
-        // Обработка ICE кандидатов
-        peerConnection.onicecandidate = async (event) => {
-            if (event.candidate) {
-                await callRef.update({
-                    iceCandidate: event.candidate
-                });
-            }
-        };
-        
-        // Обработка изменения состояния ICE
-        peerConnection.oniceconnectionstatechange = () => {
-            console.log('ICE состояние:', peerConnection.iceConnectionState);
-            if (peerConnection.iceConnectionState === 'disconnected' || 
-                peerConnection.iceConnectionState === 'failed') {
-                if (callStatus === 'connected') {
-                    endCall();
-                    showNotification('Соединение потеряно');
-                }
-            }
-        };
-        
-        // Создаем оффер
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-        
-        await callRef.update({
-            sdp: offer
-        });
-        
-        const userInfo = await getUserInfo(currentChatUserId);
-        callName.textContent = userInfo.displayName || userInfo.username;
-        
-        if (userInfo.avatarBase64) {
-            callAvatar.style.backgroundImage = `url('${userInfo.avatarBase64}')`;
-            callAvatar.innerHTML = '';
-        } else {
-            callAvatar.style.backgroundImage = '';
-            callAvatar.innerHTML = (userInfo.displayName || userInfo.username || 'U')[0].toUpperCase();
-        }
-        
-        updateCallUI();
-        
-        // Слушаем изменения звонка
-        setupCallListener(callId);
-        
-    } catch (error) {
-        console.error('Ошибка при начале звонка:', error);
-        showNotification('Ошибка: ' + error.message);
-        endCall();
-    }
-}
-
-/**
- * Слушает изменения конкретного звонка
- */
-function setupCallListener(callId) {
-    if (!callId) return;
-    
-    const callRef = rtdb.ref(`calls/${callId}`);
-    
-    callRef.on('value', async (snapshot) => {
-        const data = snapshot.val();
-        console.log('Статус звонка обновлен:', data);
-        
-        if (!data) return;
-        
-        // Если звонок принят другой стороной
-        if (data.status === 'answered' && data.calleeId === currentUser.uid) {
-            console.log('Звонок принят!');
-            if (callStatus === 'ringing' || callStatus === 'connecting') {
-                callStatus = 'connected';
-                updateCallStatus();
-            }
-        }
-        
-        // Если звонок отклонен
-        if (data.status === 'rejected' && data.calleeId === currentUser.uid) {
-            console.log('Звонок отклонен');
-            showNotification('Звонок отклонен');
-            // Отправляем сообщение о пропущенном звонке
-            await sendCallMessage(data.type);
-            endCall();
-        }
-        
-        // Если звонок завершен другой стороной
-        if (data.status === 'ended' && data.calleeId === currentUser.uid) {
-            console.log('Звонок завершен другой стороной');
-            if (callTimerInterval) {
-                const duration = Math.floor((Date.now() - callStartTime) / 1000);
-                // Отправляем сообщение о завершенном звонке
-                await sendCallMessage(data.type, duration);
-            }
-            endCall();
-        }
-        
-        // Получение ICE кандидатов
-        if (data.iceCandidate && peerConnection) {
-            // Добавляем кандидат только если remote description уже установлен
-            if (peerConnection.remoteDescription) {
-                try {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.iceCandidate));
-                } catch (e) {
-                    console.error('Ошибка добавления ICE:', e);
-                }
-            } else {
-                console.log('remoteDescription еще не установлен, ICE кандидат будет обработан позже');
-                // Можно сохранить кандидат во временный массив, но в простом варианте пропускаем
-            }
-        }
-        
-        // Получение SDP ответа
-        if (data.sdp && peerConnection) {
-            if (data.sdp.type === 'answer') {
-                try {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
-                    console.log('remoteDescription установлен');
-                } catch (e) {
-                    console.error('Ошибка установки remote description:', e);
-                }
-            }
-        }
-    });
-    
-    window.currentCallListener = callRef;
-}
-
-/**
- * Показывает входящий звонок
- */
-async function showIncomingCall(callData) {
-    console.log('Показываем входящий звонок:', callData);
-    
-    // Проверяем, не заняты ли мы другим звонком
-    if (callOverlay.classList.contains('show')) {
-        console.log('Уже в звонке, игнорируем');
-        return;
-    }
-    
-    const callerInfo = await getUserInfo(callData.callerId);
-    
-    incomingCallData = {
-        id: callData.callId,
-        callerId: callData.callerId,
-        type: callData.type,
-        status: callData.status,
-        sdp: callData.sdp,
-        name: callerInfo.displayName || callerInfo.username,
-        avatar: callerInfo.avatarBase64
-    };
-    
-    incomingCallName.textContent = incomingCallData.name;
-    incomingCallType.textContent = callData.type === 'video' ? '📹 Входящий видеозвонок...' : '🎧 Входящий аудиозвонок...';
-    
-    if (incomingCallData.avatar) {
-        incomingCallAvatar.style.backgroundImage = `url('${incomingCallData.avatar}')`;
-        incomingCallAvatar.innerHTML = '';
-    } else {
-        incomingCallAvatar.style.backgroundImage = '';
-        incomingCallAvatar.style.background = 'linear-gradient(135deg, #3a6ea5, #6b4e71)';
-        incomingCallAvatar.innerHTML = incomingCallData.name[0].toUpperCase();
-    }
-    
-    incomingCallBar.classList.add('show');
-    
-    if (navigator.vibrate) {
-        navigator.vibrate([1000, 500, 1000]);
-    }
-}
-
-/**
- * Ответить на звонок
- */
-async function answerCall() {
-    if (!incomingCallData) return;
-    
-    try {
-        incomingCallBar.classList.remove('show');
-        callStatus = 'connecting';
-        updateCallStatus();
-        
-        const callRef = rtdb.ref(`calls/${incomingCallData.id}`);
-        
-        // Получаем информацию о себе для отправки
-        const myInfo = await getUserInfo(currentUser.uid);
-        
-        await callRef.update({
-            status: 'answered',
-            calleeId: currentUser.uid,
-            calleeName: myInfo.displayName || myInfo.username,
-            calleeAvatar: myInfo.avatarBase64 || null
-        });
-        
-        const constraints = {
-            audio: true,
-            video: incomingCallData.type === 'video'
-        };
-        
-        localStream = await navigator.mediaDevices.getUserMedia(constraints);
-        localVideo.srcObject = localStream;
-        
-        peerConnection = new RTCPeerConnection(iceServers);
-        
-        localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-        });
-        
-        peerConnection.ontrack = (event) => {
-            console.log('Получен удаленный поток');
-            remoteVideo.srcObject = event.streams[0];
-            callStatus = 'connected';
-            updateCallStatus();
-            startCallTimer();
-        };
-        
-        peerConnection.onicecandidate = async (event) => {
-            if (event.candidate) {
-                await callRef.update({
-                    iceCandidate: event.candidate
-                });
-            }
-        };
-        
-        peerConnection.oniceconnectionstatechange = () => {
-            console.log('ICE состояние:', peerConnection.iceConnectionState);
-            if (peerConnection.iceConnectionState === 'disconnected' || 
-                peerConnection.iceConnectionState === 'failed') {
-                if (callStatus === 'connected') {
-                    endCall();
-                    showNotification('Соединение потеряно');
-                }
-            }
-        };
-        
-        if (incomingCallData.sdp) {
-            try {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingCallData.sdp));
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-                
-                await callRef.update({
-                    sdp: answer
-                });
-            } catch (e) {
-                console.error('Ошибка при создании ответа:', e);
-            }
-        }
-        
-        currentCallId = incomingCallData.id;
-        callName.textContent = incomingCallData.name;
-        currentCallType = incomingCallData.type;
-        
-        updateCallUI();
-        
-        setupCallListener(currentCallId);
-        
-    } catch (error) {
-        console.error('Ошибка при ответе на звонок:', error);
-        showNotification('Ошибка: ' + error.message);
-        endCall();
-    }
-}
-
-/**
- * Отклонить звонок
- */
-async function declineCall() {
-    console.log('Отклоняем звонок');
-    
-    if (incomingCallData) {
-        try {
-            await rtdb.ref(`calls/${incomingCallData.id}`).update({
-                status: 'rejected'
-            });
-        } catch (error) {
-            console.error('Ошибка при отклонении звонка:', error);
-        }
-    }
-    
-    incomingCallBar.classList.remove('show');
-    incomingCallData = null;
-    showNotification('Звонок отклонен');
-}
-
-/**
- * Завершить звонок
- */
-async function endCall() {
-    console.log('Завершаем звонок');
-    
-    // Сохраняем длительность перед завершением
-    let duration = null;
-    if (callStartTime && callStatus === 'connected') {
-        duration = Math.floor((Date.now() - callStartTime) / 1000);
-    }
-    
-    if (currentCallId) {
-        try {
-            await rtdb.ref(`calls/${currentCallId}`).update({
-                status: 'ended'
-            });
-            
-            // Отправляем сообщение о звонке, если мы были на связи
-            if (duration && currentCallType) {
-                await sendCallMessage(currentCallType, duration);
-            } else if (currentCallType && callStatus === 'ringing') {
-                // Если звонок был, но не ответили (исходящий неотвеченный)
-                await sendCallMessage(currentCallType);
-            }
-            
-        } catch (error) {
-            console.log('Не удалось обновить статус звонка:', error.message);
-        }
-        
-        // Очищаем слушатель
-        if (window.currentCallListener) {
-            window.currentCallListener.off();
-            window.currentCallListener = null;
-        }
-    }
-    
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-    }
-    
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-    }
-    
-    localVideo.srcObject = null;
-    remoteVideo.srcObject = null;
-    
-    callOverlay.classList.remove('show');
-    incomingCallBar.classList.remove('show');
-    
-    if (callTimerInterval) {
-        clearInterval(callTimerInterval);
-        callTimerInterval = null;
-    }
-    
-    callStatus = 'disconnected';
-    currentCallId = null;
-    incomingCallData = null;
-    callStartTime = null;
-    
-    callTimer.textContent = '00:00';
-    updateCallStatus();
-}
-
-/**
- * Переключить микрофон
- */
-function toggleMute() {
-    if (localStream) {
-        const audioTrack = localStream.getAudioTracks()[0];
-        if (audioTrack) {
-            isMuted = !isMuted;
-            audioTrack.enabled = !isMuted;
-            toggleMuteBtn.innerHTML = isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
-            toggleMuteBtn.classList.toggle('muted', isMuted);
-        }
-    }
-}
-
-/**
- * Переключить видео
- */
-function toggleVideo() {
-    if (localStream) {
-        const videoTrack = localStream.getVideoTracks()[0];
-        if (videoTrack) {
-            isVideoEnabled = !isVideoEnabled;
-            videoTrack.enabled = isVideoEnabled;
-            toggleVideoBtn.innerHTML = isVideoEnabled ? '<i class="fas fa-video"></i>' : '<i class="fas fa-video-slash"></i>';
-            toggleVideoBtn.classList.toggle('video-off', !isVideoEnabled);
-            
-            if (!isVideoEnabled) {
-                localVideo.style.display = 'none';
-                callAvatar.style.display = 'flex';
-            } else {
-                localVideo.style.display = 'block';
-                callAvatar.style.display = 'none';
-            }
-        }
-    }
-}
-
-/**
- * Слушает все входящие звонки
- */
-function setupIncomingCallsListener() {
-    if (!currentUser) return;
-    
-    console.log('Настройка слушателя входящих звонков');
-    
-    const callsRef = rtdb.ref('calls');
-    
-    // Слушаем новые звонки
-    callsRef.on('child_added', async (snapshot) => {
-        const callData = snapshot.val();
-        const callId = snapshot.key;
-        
-        console.log('Новый звонок:', callId, callData);
-        
-        // Проверяем, что звонок адресован нам, мы не в звонке и не автор
-        if (callData.calleeId === currentUser.uid && 
-            callData.status === 'ringing' && 
-            callData.callerId !== currentUser.uid &&
-            !callOverlay.classList.contains('show') &&
-            !incomingCallBar.classList.contains('show')) {
-            
-            await showIncomingCall({
-                callId: callId,
-                ...callData
-            });
-        }
-    });
-    
-    // Слушаем изменения звонков
-    callsRef.on('child_changed', (snapshot) => {
-        const callData = snapshot.val();
-        const callId = snapshot.key;
-        
-        console.log('Звонок изменен:', callId, callData);
-        
-        // Если звонок, на который мы ответили, изменил статус
-        if (callData.status === 'answered' && callData.calleeId === currentUser.uid) {
-            if (callStatus === 'connecting' || callStatus === 'ringing') {
-                callStatus = 'connected';
-                updateCallStatus();
-            }
-        }
-        
-        // Если звонок завершен, убираем уведомление
-        if ((callData.status === 'ended' || callData.status === 'rejected') && 
-            incomingCallData && incomingCallData.id === callId) {
-            incomingCallBar.classList.remove('show');
-            incomingCallData = null;
-        }
-    });
-}
-
 // ===== ФУНКЦИИ ДЛЯ СООБЩЕНИЙ =====
-function formatTimeAgo(date) {
-    if (!date) return "только что";
-    const now = new Date();
-    const diff = now - date;
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-    if (days > 7) return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
-    else if (days > 0) return `${days}д`;
-    else if (hours > 0) return `${hours}ч`;
-    else if (minutes > 0) return `${minutes}м`;
-    else return "только что";
-}
-
-function formatMessageTime(date) {
-    if (!date) return "";
-    return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-}
-
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// Функция открытия чата
 async function openChat(userId, username, chatId = null) {
-    console.log('Открываем чат с:', userId, username);
-    
     currentChatUserId = userId;
     currentChatUsername = username;
     
@@ -2815,7 +2200,6 @@ async function openChat(userId, username, chatId = null) {
 }
 
 function closeChat() {
-    console.log('Закрываем чат');
     chatOverlay.classList.remove('show');
     if (chatMessagesListener) {
         chatMessagesListener();
@@ -2854,7 +2238,6 @@ function updateInputState(isBlocked) {
     }
 }
 
-// Функция загрузки сообщений
 async function loadChatMessages() {
     chatMessages.innerHTML = '<div class="loader"><div class="loader-spinner"></div><div>Загрузка сообщений...</div></div>';
     if (!currentChatId) {
@@ -3348,7 +2731,6 @@ async function renderProfile() {
     profileContainer.innerHTML = profileHTML;
 }
 
-// ===== РЕДАКТИРОВАНИЕ ПОЛЕЙ =====
 function editField(field) {
     let currentValue = '';
     let promptMessage = '';
@@ -3399,7 +2781,6 @@ async function updateProfileField(field, value) {
     }
 }
 
-// ===== ОТКРЫТИЕ ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ =====
 async function openUserProfileFromChat() {
     if (!currentChatUserId) return;
     
@@ -3440,7 +2821,6 @@ function closeUserProfile() {
     userProfileOverlay.classList.remove('show');
 }
 
-// ===== ФУНКЦИИ ДЛЯ АВАТАРКИ =====
 function triggerAvatarUpload() {
     avatarUploadInput.click();
 }
@@ -3523,7 +2903,6 @@ function saveCroppedAvatar() {
     }, 'image/jpeg', 0.9);
 }
 
-// ===== ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК =====
 function switchTab(tab) {
     if (tab === currentActiveTab) return;
     
@@ -3550,7 +2929,6 @@ function switchTab(tab) {
     }
 }
 
-// ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
 function showMenuModal() {
     showNotification('Дополнительные функции будут позже');
 }
@@ -3569,12 +2947,6 @@ function checkForAutoOpenChat() {
     }
 }
 
-function showNotification(message, duration = 3000) {
-    notification.textContent = message;
-    notification.classList.add('show');
-    if (duration > 0) setTimeout(() => notification.classList.remove('show'), duration);
-}
-
 function logout() {
     if (confirm("Выйти из аккаунта?")) {
         auth.signOut().then(() => {
@@ -3583,7 +2955,6 @@ function logout() {
     }
 }
 
-// ===== ОБРАБОТЧИКИ СОБЫТИЙ =====
 chatInput?.addEventListener('input', function() { 
     this.style.height = 'auto'; 
     this.style.height = (this.scrollHeight) + 'px'; 
@@ -3613,6 +2984,574 @@ document.addEventListener('keydown', (e) => {
         endCall();
     }
 });
+
+// ===== ФУНКЦИИ ДЛЯ ЗВОНКОВ =====
+
+async function sendCallMessage(callType, duration = null) {
+    if (!currentChatId || !currentChatUserId) return;
+    
+    try {
+        let messageText = '';
+        if (duration) {
+            const minutes = Math.floor(duration / 60);
+            const seconds = duration % 60;
+            const durationStr = minutes > 0 
+                ? `${minutes} мин ${seconds} сек` 
+                : `${seconds} сек`;
+            messageText = `🔊 ${callType === 'video' ? 'Видеозвонок' : 'Аудиозвонок'}, длительность ${durationStr}`;
+        } else {
+            messageText = `🔊 ${callType === 'video' ? 'Видеозвонок' : 'Аудиозвонок'} (нет ответа)`;
+        }
+        
+        const messageData = {
+            text: messageText,
+            senderId: currentUser.uid,
+            timestamp: new Date(),
+            read: false,
+            isCallMessage: true,
+            callType: callType,
+            callDuration: duration
+        };
+        
+        await db.collection('chats').doc(currentChatId).collection('messages').add(messageData);
+        
+        await db.collection('chats').doc(currentChatId).update({
+            lastMessage: messageText,
+            lastSender: currentUser.uid,
+            lastMessageTime: new Date(),
+            updatedAt: new Date()
+        });
+        
+        console.log('Сообщение о звонке отправлено');
+        
+    } catch (error) {
+        console.error('Ошибка при отправке сообщения о звонке:', error);
+    }
+}
+
+function updateCallUI() {
+    if (currentCallType === 'audio') {
+        localVideo.style.display = 'none';
+        toggleVideoBtn.style.display = 'none';
+        callAvatar.style.display = 'flex';
+    } else {
+        localVideo.style.display = 'block';
+        toggleVideoBtn.style.display = 'flex';
+        callAvatar.style.display = 'none';
+    }
+    
+    callOverlay.classList.add('show');
+}
+
+function updateCallStatus() {
+    const statusMap = {
+        'disconnected': 'Звонок завершен',
+        'connecting': 'Соединение...',
+        'connected': 'Разговор',
+        'ringing': 'Звонок...'
+    };
+    callStatusEl.textContent = statusMap[callStatus] || 'Звонок';
+}
+
+function startCallTimer() {
+    callStartTime = Date.now();
+    callTimerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        callTimer.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }, 1000);
+}
+
+async function startCall(type) {
+    console.log('startCall вызван с типом:', type);
+    
+    if (!currentChatUserId) {
+        showNotification('Сначала выберите чат');
+        return;
+    }
+    
+    if (!currentUser) {
+        showNotification('Ошибка авторизации');
+        return;
+    }
+    
+    try {
+        currentCallType = type;
+        callStatus = 'ringing';
+        updateCallStatus();
+        
+        const callId = `${currentUser.uid}_${currentChatUserId}_${Date.now()}`;
+        const callRef = rtdb.ref(`calls/${callId}`);
+        currentCallId = callId;
+        pendingIceCandidates = [];
+        
+        console.log('Создаем звонок с ID:', callId);
+        
+        const callerInfo = await getUserInfo(currentUser.uid);
+        
+        const callData = {
+            callerId: currentUser.uid,
+            calleeId: currentChatUserId,
+            type: type,
+            status: 'ringing',
+            timestamp: Date.now(),
+            callerName: callerInfo.displayName || callerInfo.username,
+            callerAvatar: callerInfo.avatarBase64 || null,
+            callId: callId
+        };
+        
+        await callRef.set(callData);
+        console.log('✅ Звонок создан в базе');
+        
+        const constraints = {
+            audio: true,
+            video: type === 'video'
+        };
+        
+        localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        localVideo.srcObject = localStream;
+        
+        peerConnection = new RTCPeerConnection(iceServers);
+        
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+        
+        peerConnection.ontrack = (event) => {
+            console.log('Получен удаленный поток');
+            remoteVideo.srcObject = event.streams[0];
+            callStatus = 'connected';
+            updateCallStatus();
+            startCallTimer();
+        };
+        
+        peerConnection.onicecandidate = async (event) => {
+            if (event.candidate) {
+                await callRef.update({
+                    iceCandidate: event.candidate
+                });
+            }
+        };
+        
+        peerConnection.oniceconnectionstatechange = () => {
+            console.log('ICE состояние:', peerConnection.iceConnectionState);
+            if (peerConnection.iceConnectionState === 'disconnected' || 
+                peerConnection.iceConnectionState === 'failed') {
+                if (callStatus === 'connected') {
+                    endCall();
+                    showNotification('Соединение потеряно');
+                }
+            }
+        };
+        
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        
+        await callRef.update({
+            sdp: offer
+        });
+        
+        const userInfo = await getUserInfo(currentChatUserId);
+        callName.textContent = userInfo.displayName || userInfo.username;
+        
+        if (userInfo.avatarBase64) {
+            callAvatar.style.backgroundImage = `url('${userInfo.avatarBase64}')`;
+            callAvatar.innerHTML = '';
+        } else {
+            callAvatar.style.backgroundImage = '';
+            callAvatar.innerHTML = (userInfo.displayName || userInfo.username || 'U')[0].toUpperCase();
+        }
+        
+        updateCallUI();
+        
+        setupCallListener(callId);
+        
+    } catch (error) {
+        console.error('Ошибка при начале звонка:', error);
+        showNotification('Ошибка: ' + error.message);
+        endCall();
+    }
+}
+
+function setupCallListener(callId) {
+    if (!callId) return;
+    
+    const callRef = rtdb.ref(`calls/${callId}`);
+    
+    callRef.on('value', async (snapshot) => {
+        const data = snapshot.val();
+        console.log('Статус звонка обновлен:', data);
+        
+        if (!data) return;
+        
+        if (data.status === 'answered' && data.calleeId === currentUser.uid) {
+            console.log('Звонок принят!');
+            if (callStatus === 'ringing' || callStatus === 'connecting') {
+                callStatus = 'connected';
+                updateCallStatus();
+            }
+        }
+        
+        if (data.status === 'rejected' && data.calleeId === currentUser.uid) {
+            console.log('Звонок отклонен');
+            showNotification('Звонок отклонен');
+            await sendCallMessage(data.type);
+            endCall();
+        }
+        
+        if (data.status === 'ended' && data.calleeId === currentUser.uid) {
+            console.log('Звонок завершен другой стороной');
+            if (callTimerInterval) {
+                const duration = Math.floor((Date.now() - callStartTime) / 1000);
+                await sendCallMessage(data.type, duration);
+            }
+            endCall();
+        }
+        
+        if (data.sdp && peerConnection) {
+            if (data.sdp.type === 'answer') {
+                if (peerConnection.signalingState === 'have-local-offer') {
+                    try {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                        console.log('remoteDescription установлен');
+                        if (pendingIceCandidates.length > 0) {
+                            console.log(`Добавляем ${pendingIceCandidates.length} отложенных ICE кандидатов`);
+                            for (const candidate of pendingIceCandidates) {
+                                try {
+                                    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                                } catch (e) {
+                                    console.error('Ошибка добавления отложенного ICE кандидата:', e);
+                                }
+                            }
+                            pendingIceCandidates = [];
+                        }
+                    } catch (e) {
+                        console.error('Ошибка установки remote description:', e);
+                    }
+                } else {
+                    console.log('SDP answer получен, но состояние не "have-local-offer", игнорируем');
+                }
+            }
+        }
+        
+        if (data.iceCandidate && peerConnection) {
+            if (peerConnection.remoteDescription) {
+                try {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.iceCandidate));
+                } catch (e) {
+                    console.error('Ошибка добавления ICE кандидата:', e);
+                }
+            } else {
+                console.log('remoteDescription еще не установлен, сохраняем ICE кандидат в буфер');
+                pendingIceCandidates.push(data.iceCandidate);
+            }
+        }
+    });
+    
+    window.currentCallListener = callRef;
+}
+
+async function showIncomingCall(callData) {
+    console.log('Показываем входящий звонок:', callData);
+    
+    if (callOverlay.classList.contains('show')) {
+        console.log('Уже в звонке, игнорируем');
+        return;
+    }
+    
+    const callerInfo = await getUserInfo(callData.callerId);
+    
+    incomingCallData = {
+        id: callData.callId,
+        callerId: callData.callerId,
+        type: callData.type,
+        status: callData.status,
+        sdp: callData.sdp,
+        name: callerInfo.displayName || callerInfo.username,
+        avatar: callerInfo.avatarBase64
+    };
+    
+    incomingCallName.textContent = incomingCallData.name;
+    incomingCallType.textContent = callData.type === 'video' ? '📹 Входящий видеозвонок...' : '🎧 Входящий аудиозвонок...';
+    
+    if (incomingCallData.avatar) {
+        incomingCallAvatar.style.backgroundImage = `url('${incomingCallData.avatar}')`;
+        incomingCallAvatar.innerHTML = '';
+    } else {
+        incomingCallAvatar.style.backgroundImage = '';
+        incomingCallAvatar.style.background = 'linear-gradient(135deg, #3a6ea5, #6b4e71)';
+        incomingCallAvatar.innerHTML = incomingCallData.name[0].toUpperCase();
+    }
+    
+    incomingCallBar.classList.add('show');
+    
+    if (navigator.vibrate) {
+        navigator.vibrate([1000, 500, 1000]);
+    }
+}
+
+async function answerCall() {
+    if (!incomingCallData) return;
+    
+    try {
+        incomingCallBar.classList.remove('show');
+        callStatus = 'connecting';
+        updateCallStatus();
+        pendingIceCandidates = [];
+        
+        const callRef = rtdb.ref(`calls/${incomingCallData.id}`);
+        
+        const myInfo = await getUserInfo(currentUser.uid);
+        
+        await callRef.update({
+            status: 'answered',
+            calleeId: currentUser.uid,
+            calleeName: myInfo.displayName || myInfo.username,
+            calleeAvatar: myInfo.avatarBase64 || null
+        });
+        
+        const constraints = {
+            audio: true,
+            video: incomingCallData.type === 'video'
+        };
+        
+        localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        localVideo.srcObject = localStream;
+        
+        peerConnection = new RTCPeerConnection(iceServers);
+        
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+        
+        peerConnection.ontrack = (event) => {
+            console.log('Получен удаленный поток');
+            remoteVideo.srcObject = event.streams[0];
+            callStatus = 'connected';
+            updateCallStatus();
+            startCallTimer();
+        };
+        
+        peerConnection.onicecandidate = async (event) => {
+            if (event.candidate) {
+                await callRef.update({
+                    iceCandidate: event.candidate
+                });
+            }
+        };
+        
+        peerConnection.oniceconnectionstatechange = () => {
+            console.log('ICE состояние:', peerConnection.iceConnectionState);
+            if (peerConnection.iceConnectionState === 'disconnected' || 
+                peerConnection.iceConnectionState === 'failed') {
+                if (callStatus === 'connected') {
+                    endCall();
+                    showNotification('Соединение потеряно');
+                }
+            }
+        };
+        
+        if (incomingCallData.sdp) {
+            try {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingCallData.sdp));
+                console.log('remoteDescription установлен из оффера');
+                
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                await callRef.update({
+                    sdp: answer
+                });
+                
+                if (pendingIceCandidates.length > 0) {
+                    console.log(`Добавляем ${pendingIceCandidates.length} отложенных ICE кандидатов`);
+                    for (const candidate of pendingIceCandidates) {
+                        try {
+                            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                        } catch (e) {
+                            console.error('Ошибка добавления отложенного ICE кандидата:', e);
+                        }
+                    }
+                    pendingIceCandidates = [];
+                }
+            } catch (e) {
+                console.error('Ошибка при установке remote description из оффера:', e);
+            }
+        }
+        
+        currentCallId = incomingCallData.id;
+        callName.textContent = incomingCallData.name;
+        currentCallType = incomingCallData.type;
+        
+        updateCallUI();
+        
+        setupCallListener(currentCallId);
+        
+    } catch (error) {
+        console.error('Ошибка при ответе на звонок:', error);
+        showNotification('Ошибка: ' + error.message);
+        endCall();
+    }
+}
+
+async function declineCall() {
+    console.log('Отклоняем звонок');
+    
+    if (incomingCallData) {
+        try {
+            await rtdb.ref(`calls/${incomingCallData.id}`).update({
+                status: 'rejected'
+            });
+        } catch (error) {
+            console.error('Ошибка при отклонении звонка:', error);
+        }
+    }
+    
+    incomingCallBar.classList.remove('show');
+    incomingCallData = null;
+    showNotification('Звонок отклонен');
+}
+
+async function endCall() {
+    console.log('Завершаем звонок');
+    
+    let duration = null;
+    if (callStartTime && callStatus === 'connected') {
+        duration = Math.floor((Date.now() - callStartTime) / 1000);
+    }
+    
+    if (currentCallId) {
+        try {
+            await rtdb.ref(`calls/${currentCallId}`).update({
+                status: 'ended'
+            });
+            
+            if (duration && currentCallType) {
+                await sendCallMessage(currentCallType, duration);
+            } else if (currentCallType && callStatus === 'ringing') {
+                await sendCallMessage(currentCallType);
+            }
+            
+        } catch (error) {
+            console.log('Не удалось обновить статус звонка:', error.message);
+        }
+        
+        if (window.currentCallListener) {
+            window.currentCallListener.off();
+            window.currentCallListener = null;
+        }
+    }
+    
+    if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+    }
+    
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+    }
+    
+    localVideo.srcObject = null;
+    remoteVideo.srcObject = null;
+    
+    callOverlay.classList.remove('show');
+    incomingCallBar.classList.remove('show');
+    
+    if (callTimerInterval) {
+        clearInterval(callTimerInterval);
+        callTimerInterval = null;
+    }
+    
+    callStatus = 'disconnected';
+    currentCallId = null;
+    incomingCallData = null;
+    callStartTime = null;
+    pendingIceCandidates = [];
+    
+    callTimer.textContent = '00:00';
+    updateCallStatus();
+}
+
+function toggleMute() {
+    if (localStream) {
+        const audioTrack = localStream.getAudioTracks()[0];
+        if (audioTrack) {
+            isMuted = !isMuted;
+            audioTrack.enabled = !isMuted;
+            toggleMuteBtn.innerHTML = isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
+            toggleMuteBtn.classList.toggle('muted', isMuted);
+        }
+    }
+}
+
+function toggleVideo() {
+    if (localStream) {
+        const videoTrack = localStream.getVideoTracks()[0];
+        if (videoTrack) {
+            isVideoEnabled = !isVideoEnabled;
+            videoTrack.enabled = isVideoEnabled;
+            toggleVideoBtn.innerHTML = isVideoEnabled ? '<i class="fas fa-video"></i>' : '<i class="fas fa-video-slash"></i>';
+            toggleVideoBtn.classList.toggle('video-off', !isVideoEnabled);
+            
+            if (!isVideoEnabled) {
+                localVideo.style.display = 'none';
+                callAvatar.style.display = 'flex';
+            } else {
+                localVideo.style.display = 'block';
+                callAvatar.style.display = 'none';
+            }
+        }
+    }
+}
+
+function setupIncomingCallsListener() {
+    if (!currentUser) return;
+    
+    console.log('Настройка слушателя входящих звонков');
+    
+    const callsRef = rtdb.ref('calls');
+    
+    callsRef.on('child_added', async (snapshot) => {
+        const callData = snapshot.val();
+        const callId = snapshot.key;
+        
+        console.log('Новый звонок:', callId, callData);
+        
+        if (callData.calleeId === currentUser.uid && 
+            callData.status === 'ringing' && 
+            callData.callerId !== currentUser.uid &&
+            !callOverlay.classList.contains('show') &&
+            !incomingCallBar.classList.contains('show')) {
+            
+            await showIncomingCall({
+                callId: callId,
+                ...callData
+            });
+        }
+    });
+    
+    callsRef.on('child_changed', (snapshot) => {
+        const callData = snapshot.val();
+        const callId = snapshot.key;
+        
+        console.log('Звонок изменен:', callId, callData);
+        
+        if (callData.status === 'answered' && callData.calleeId === currentUser.uid) {
+            if (callStatus === 'connecting' || callStatus === 'ringing') {
+                callStatus = 'connected';
+                updateCallStatus();
+            }
+        }
+        
+        if ((callData.status === 'ended' || callData.status === 'rejected') && 
+            incomingCallData && incomingCallData.id === callId) {
+            incomingCallBar.classList.remove('show');
+            incomingCallData = null;
+        }
+    });
+}
 
 // Тестовая функция
 function testCallSystem() {
