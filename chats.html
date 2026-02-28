@@ -1714,7 +1714,7 @@ let cropper = null;
 let chatContextMenu = document.getElementById('chatContextMenu');
 let currentChatContext = null;
 
-// Переменные для звонков
+// Переменные для звонков - ИСПРАВЛЕНО
 let peerConnection = null;
 let localStream = null;
 let remoteStream = null;
@@ -1726,8 +1726,9 @@ let isVideoEnabled = true;
 let incomingCallData = null;
 let callStatus = 'disconnected';
 let currentCallId = null;
-let pendingIceCandidates = []; // буфер ICE кандидатов, пришедших до установки remoteDescription
-let callDocListener = null;     // слушатель документа звонка
+let pendingIceCandidates = [];
+let currentCallRef = null; // Добавляем ссылку на документ звонка
+let callListener = null;   // Добавляем функцию-слушатель
 
 const iceServers = {
     iceServers: [
@@ -1802,7 +1803,7 @@ auth.onAuthStateChanged(async (user) => {
     await renderProfile();
     
     checkForAutoOpenChat();
-    listenForIncomingCalls(); // исправленная функция
+    listenForIncomingCalls();
 });
 
 // ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
@@ -3055,6 +3056,9 @@ function startCallTimer() {
     }, 1000);
 }
 
+/**
+ * ИСПРАВЛЕННАЯ функция очистки звонка
+ */
 function cleanupCall() {
     if (peerConnection) {
         peerConnection.close();
@@ -3070,10 +3074,14 @@ function cleanupCall() {
         clearInterval(callTimerInterval);
         callTimerInterval = null;
     }
-    if (callDocListener) {
-        callDocListener.off();
-        callDocListener = null;
+    
+    // ИСПРАВЛЕНО: правильное удаление слушателя
+    if (currentCallRef && callListener) {
+        currentCallRef.off('value', callListener);
+        callListener = null;
+        currentCallRef = null;
     }
+    
     callOverlay.classList.remove('show');
     incomingCallBar.classList.remove('show');
     callStatus = 'disconnected';
@@ -3086,14 +3094,16 @@ function cleanupCall() {
 }
 
 /**
- * Слушает изменения документа звонка (для активного звонка)
+ * ИСПРАВЛЕННАЯ функция слушателя документа звонка
  */
 function listenToCallDoc(callId) {
     if (!callId) return;
-    const callRef = rtdb.ref(`calls/${callId}`);
-    if (callDocListener) callDocListener.off();
     
-    callDocListener = callRef.on('value', async (snapshot) => {
+    // Сохраняем ссылку на документ
+    currentCallRef = rtdb.ref(`calls/${callId}`);
+    
+    // Создаем функцию-слушатель
+    callListener = async (snapshot) => {
         const data = snapshot.val();
         if (!data) return;
         
@@ -3145,7 +3155,10 @@ function listenToCallDoc(callId) {
                 pendingIceCandidates.push(data.iceCandidate);
             }
         }
-    });
+    };
+    
+    // Устанавливаем слушатель
+    currentCallRef.on('value', callListener);
 }
 
 /**
@@ -3242,7 +3255,7 @@ async function startCall(type) {
 }
 
 /**
- * Показывает входящий звонок (полные данные)
+ * Показывает входящий звонок
  */
 async function showIncomingCall(callData) {
     if (callOverlay.classList.contains('show')) return;
@@ -3350,8 +3363,7 @@ async function answerCall() {
         currentCallType = incomingCallData.type;
         updateCallUI();
         
-        // Слушатель уже установлен в showIncomingCall, но переустановим на всякий случай
-        listenToCallDoc(callId);
+        // Слушатель уже установлен в showIncomingCall
         
     } catch (error) {
         console.error('Error answering call:', error);
@@ -3414,9 +3426,7 @@ function toggleVideo() {
 }
 
 /**
- * ИСПРАВЛЕННАЯ функция слушателя входящих звонков.
- * Теперь после обнаружения нового документа звонка мы запрашиваем его полные данные через once,
- * чтобы получить offer.
+ * ИСПРАВЛЕННАЯ функция слушателя входящих звонков
  */
 function listenForIncomingCalls() {
     if (!currentUser) return;
@@ -3465,7 +3475,7 @@ function listenForIncomingCalls() {
     callsRef.on('child_changed', (snapshot) => {
         const callData = snapshot.val();
         const callId = snapshot.key;
-        // Если звонок, на который мы ответили, изменил статус (не обязательно)
+        // Если звонок, на который мы ответили, изменил статус
         if (callData.status === 'answered' && callData.calleeId === currentUser.uid) {
             if (callStatus === 'connecting' || callStatus === 'ringing') {
                 callStatus = 'connected';
@@ -3481,7 +3491,6 @@ function listenForIncomingCalls() {
     });
 }
 
-// Небольшой тест
 console.log('Call system initialized with improved signaling');
 </script>
 </body>
