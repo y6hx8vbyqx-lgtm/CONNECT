@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -1802,8 +1802,7 @@ auth.onAuthStateChanged(async (user) => {
     await renderProfile();
     
     checkForAutoOpenChat();
-    // Слушаем только новые документы звонков, где мы callee
-    listenForIncomingCalls();
+    listenForIncomingCalls(); // исправленная функция
 });
 
 // ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
@@ -2983,22 +2982,19 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// ===== ФУНКЦИИ ДЛЯ ЗВОНКОВ (исправленные) =====
+// ===== ИСПРАВЛЕННЫЕ ФУНКЦИИ ДЛЯ ЗВОНКОВ =====
 
 /**
  * Отправляет сообщение о звонке в чат
  */
 async function sendCallMessage(callType, duration = null) {
     if (!currentChatId || !currentChatUserId) return;
-    
     try {
         let messageText = '';
         if (duration) {
             const minutes = Math.floor(duration / 60);
             const seconds = duration % 60;
-            const durationStr = minutes > 0 
-                ? `${minutes} мин ${seconds} сек` 
-                : `${seconds} сек`;
+            const durationStr = minutes > 0 ? `${minutes} мин ${seconds} сек` : `${seconds} сек`;
             messageText = `🔊 ${callType === 'video' ? 'Видеозвонок' : 'Аудиозвонок'}, длительность ${durationStr}`;
         } else {
             messageText = `🔊 ${callType === 'video' ? 'Видеозвонок' : 'Аудиозвонок'} (нет ответа)`;
@@ -3015,16 +3011,12 @@ async function sendCallMessage(callType, duration = null) {
         };
         
         await db.collection('chats').doc(currentChatId).collection('messages').add(messageData);
-        
         await db.collection('chats').doc(currentChatId).update({
             lastMessage: messageText,
             lastSender: currentUser.uid,
             lastMessageTime: new Date(),
             updatedAt: new Date()
         });
-        
-        console.log('Сообщение о звонке отправлено');
-        
     } catch (error) {
         console.error('Ошибка при отправке сообщения о звонке:', error);
     }
@@ -3094,7 +3086,7 @@ function cleanupCall() {
 }
 
 /**
- * Слушает изменения документа звонка
+ * Слушает изменения документа звонка (для активного звонка)
  */
 function listenToCallDoc(callId) {
     if (!callId) return;
@@ -3206,7 +3198,6 @@ async function startCall(type) {
         
         peerConnection.onicecandidate = async (event) => {
             if (event.candidate) {
-                // Добавляем кандидат в документ (перезаписываем, для простоты)
                 await rtdb.ref(`calls/${callId}/iceCandidate`).set(event.candidate);
             }
         };
@@ -3251,14 +3242,14 @@ async function startCall(type) {
 }
 
 /**
- * Показывает входящий звонок
+ * Показывает входящий звонок (полные данные)
  */
 async function showIncomingCall(callData) {
     if (callOverlay.classList.contains('show')) return;
     
     const callerInfo = await getUserInfo(callData.callerId);
     incomingCallData = {
-        id: callData.callId || callData._key,
+        id: callData.callId,
         callerId: callData.callerId,
         type: callData.type,
         name: callerInfo.displayName || callerInfo.username,
@@ -3349,13 +3340,17 @@ async function answerCall() {
             await peerConnection.setLocalDescription(answer);
             // Сохраняем answer в документ
             await rtdb.ref(`calls/${callId}/answer`).set(answer);
+        } else {
+            console.error('No offer in incomingCallData');
+            endCall();
+            return;
         }
         
         callName.textContent = incomingCallData.name;
         currentCallType = incomingCallData.type;
         updateCallUI();
         
-        // Слушатель уже установлен в showIncomingCall, но на всякий случай переустановим
+        // Слушатель уже установлен в showIncomingCall, но переустановим на всякий случай
         listenToCallDoc(callId);
         
     } catch (error) {
@@ -3419,26 +3414,69 @@ function toggleVideo() {
 }
 
 /**
- * Слушает новые документы звонков, где мы callee
+ * ИСПРАВЛЕННАЯ функция слушателя входящих звонков.
+ * Теперь после обнаружения нового документа звонка мы запрашиваем его полные данные через once,
+ * чтобы получить offer.
  */
 function listenForIncomingCalls() {
     if (!currentUser) return;
     
+    console.log('Настройка слушателя входящих звонков');
+    
     const callsRef = rtdb.ref('calls');
     callsRef.on('child_added', async (snapshot) => {
-        const callData = snapshot.val();
+        const initialData = snapshot.val();
         const callId = snapshot.key;
         
         // Проверяем, что звонок адресован нам, ещё не отвечен, и мы не инициатор
-        if (callData.calleeId === currentUser.uid && 
-            callData.status === 'ringing' && 
-            callData.callerId !== currentUser.uid &&
+        if (initialData.calleeId === currentUser.uid && 
+            initialData.status === 'ringing' && 
+            initialData.callerId !== currentUser.uid &&
             !callOverlay.classList.contains('show') &&
             !incomingCallBar.classList.contains('show')) {
             
-            // Добавляем ID в данные
-            callData.callId = callId;
-            await showIncomingCall(callData);
+            console.log('Potential incoming call, fetching full data...');
+            
+            // Получаем полные данные документа, включая offer (который мог прийти позже)
+            const callRef = rtdb.ref(`calls/${callId}`);
+            callRef.once('value', async (snap) => {
+                const fullData = snap.val();
+                if (fullData && fullData.offer) {
+                    fullData.callId = callId;
+                    await showIncomingCall(fullData);
+                } else {
+                    // Если offer ещё не пришёл, подождём немного и проверим ещё раз
+                    setTimeout(async () => {
+                        const retrySnap = await callRef.once('value');
+                        const retryData = retrySnap.val();
+                        if (retryData && retryData.offer) {
+                            retryData.callId = callId;
+                            await showIncomingCall(retryData);
+                        } else {
+                            console.warn('Offer not received for incoming call after delay');
+                        }
+                    }, 1500);
+                }
+            });
+        }
+    });
+    
+    // Также слушаем изменения для возможных обновлений статуса
+    callsRef.on('child_changed', (snapshot) => {
+        const callData = snapshot.val();
+        const callId = snapshot.key;
+        // Если звонок, на который мы ответили, изменил статус (не обязательно)
+        if (callData.status === 'answered' && callData.calleeId === currentUser.uid) {
+            if (callStatus === 'connecting' || callStatus === 'ringing') {
+                callStatus = 'connected';
+                updateCallStatus();
+            }
+        }
+        // Если звонок завершён, убираем уведомление
+        if ((callData.status === 'ended' || callData.status === 'rejected') && 
+            incomingCallData && incomingCallData.id === callId) {
+            incomingCallBar.classList.remove('show');
+            incomingCallData = null;
         }
     });
 }
