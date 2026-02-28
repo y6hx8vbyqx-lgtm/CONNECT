@@ -1463,24 +1463,6 @@
         #unlock-audio-btn:hover {
             transform: translateX(-50%) scale(1.05);
         }
-        #test-audio-btn {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 10002;
-            background: var(--accent-color);
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 20px;
-            cursor: pointer;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-            animation: pulse 2s infinite;
-            font-size: 13px;
-        }
-        #test-audio-btn:hover {
-            transform: scale(1.05);
-        }
 
         @keyframes fadeSlide {
             from { opacity: 0; transform: translateY(8px); }
@@ -1625,25 +1607,25 @@
 <!-- Оверлей звонка -->
 <div class="call-overlay" id="callModal">
     <div class="call-container">
-        <div class="call-videos">
+        <div class="call-videos" id="videoContainer" style="display: none;">
             <video id="remoteVideo" class="remote-video" autoplay playsinline></video>
             <video id="localVideo" class="local-video" autoplay playsinline muted></video>
-            
-            <div class="call-info" id="callInfo">
-                <div class="call-avatar" id="callAvatar"></div>
-                <div class="call-name" id="callName"></div>
-                <div class="call-status" id="callType"></div>
-                <div class="call-timer" id="callTimer">00:00</div>
-            </div>
+        </div>
+        
+        <div class="call-info" id="callInfo">
+            <div class="call-avatar" id="callAvatar"></div>
+            <div class="call-name" id="callName"></div>
+            <div class="call-status" id="callType"></div>
+            <div class="call-timer" id="callTimer">00:00</div>
         </div>
         
         <div class="call-controls" id="callControls">
-            <div id="outgoingControls" style="display:none;">
+            <div id="outgoingControls" style="display: none;">
                 <button class="call-control-btn decline" onclick="endCall()">
                     <i class="fas fa-phone-slash"></i>
                 </button>
             </div>
-            <div id="incomingControls" style="display:none;">
+            <div id="incomingControls" style="display: none;">
                 <button class="call-control-btn accept" onclick="acceptIncomingCall()">
                     <i class="fas fa-phone"></i>
                 </button>
@@ -1651,11 +1633,11 @@
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <div id="activeCallControls" style="display:none;">
+            <div id="activeCallControls" style="display: none;">
                 <button class="call-control-btn" id="muteBtn" onclick="toggleMute()" title="Выключить микрофон">
                     <i class="fas fa-microphone"></i>
                 </button>
-                <button class="call-control-btn" id="videoToggleBtn" onclick="toggleVideo()" title="Выключить камеру" style="display:none;">
+                <button class="call-control-btn" id="videoToggleBtn" onclick="toggleVideo()" title="Выключить камеру" style="display: none;">
                     <i class="fas fa-video"></i>
                 </button>
                 <button class="call-control-btn decline" onclick="endCall()" title="Завершить звонок">
@@ -1667,7 +1649,7 @@
 </div>
 
 <!-- Входящий звонок -->
-<div class="incoming-call-bar" id="incomingCall" style="display:none;">
+<div class="incoming-call-bar" id="incomingCall" style="display: none;">
     <div class="incoming-call-info">
         <div class="incoming-call-avatar" id="incomingAvatar"></div>
         <div class="incoming-call-text">
@@ -1828,6 +1810,7 @@ const cropImage = document.getElementById('cropImage');
 
 // Элементы для звонков
 const callModal = document.getElementById('callModal');
+const videoContainer = document.getElementById('videoContainer');
 const remoteVideo = document.getElementById('remoteVideo');
 const localVideo = document.getElementById('localVideo');
 const callAvatar = document.getElementById('callAvatar');
@@ -3119,9 +3102,7 @@ function playBeep(frequency = 440, duration = 0.15) {
 
 function stopRingtone() {
   if (ringtoneAudio) {
-    if (typeof ringtoneAudio === 'number') {
-      clearInterval(ringtoneAudio);
-    }
+    clearInterval(ringtoneAudio);
     ringtoneAudio = null;
   }
   
@@ -3196,13 +3177,6 @@ function watchCallStatus(callId) {
       }
       startCallTimer();
       
-      if (localStream) {
-        const audioTracks = localStream.getAudioTracks();
-        if (audioTracks.length > 0) {
-          audioTracks[0].enabled = true;
-        }
-      }
-      
     } else if (call.status === 'ended') {
       console.log('Звонок завершен');
       await saveCallHistory(call);
@@ -3259,20 +3233,34 @@ async function saveCallHistory(call) {
     const seconds = duration % 60;
     const durationStr = duration > 0 ? `${minutes}:${seconds.toString().padStart(2, '0')}` : null;
     
+    let statusText = '';
+    if (call.status === 'ended') statusText = 'состоялся';
+    else if (call.status === 'declined') statusText = 'отклонен';
+    else statusText = 'пропущен';
+    
+    const messageText = `🔊 ${call.type === 'video' ? 'Видеозвонок' : 'Аудиозвонок'} ${statusText}${durationStr ? ` (${durationStr})` : ''}`;
+    
     const callMessage = {
-      type: 'call',
+      text: messageText,
+      senderId: currentUser.uid,
+      timestamp: new Date(),
+      read: false,
+      isCallMessage: true,
       callType: call.type || callType,
       callStatus: call.status,
-      callerId: call.callerId,
-      duration: durationStr,
-      timestamp: new Date(),
-      senderId: currentUser.uid,
-      isCallMessage: true
+      callDuration: durationStr
     };
     
     await db.collection('chats').doc(currentChatId)
       .collection('messages')
       .add(callMessage);
+    
+    await db.collection('chats').doc(currentChatId).update({
+      lastMessage: messageText,
+      lastSender: currentUser.uid,
+      lastMessageTime: new Date(),
+      updatedAt: new Date()
+    });
     
     console.log('✅ История звонка сохранена');
     
@@ -3299,15 +3287,10 @@ async function initializeCall() {
     };
     
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
-    
-    const audioTracks = localStream.getAudioTracks();
-    if (audioTracks.length > 0) {
-      audioTracks[0].enabled = true;
-      console.log('🎤 Аудио трек получен:', audioTracks[0].label);
-    }
+    console.log('🎤 Аудио трек получен');
     
     if (callType === 'video') {
-      document.querySelector('.call-videos').style.display = 'block';
+      videoContainer.style.display = 'block';
       localVideo.srcObject = localStream;
       await localVideo.play().catch(e => console.warn('Ошибка воспроизведения локального видео:', e));
     }
@@ -3316,18 +3299,10 @@ async function initializeCall() {
     
     localStream.getTracks().forEach(track => {
       peerConnection.addTrack(track, localStream);
-      console.log('📡 Трек добавлен в PeerConnection:', track.kind);
     });
     
     peerConnection.ontrack = (event) => {
       remoteStream = event.streams[0];
-      
-      const remoteAudioTracks = remoteStream.getAudioTracks();
-      if (remoteAudioTracks.length > 0) {
-        remoteAudioTracks[0].enabled = true;
-        console.log('🔊 Удаленный аудио трек получен');
-      }
-      
       remoteVideo.srcObject = remoteStream;
       remoteVideo.play().catch(e => console.warn('Ошибка воспроизведения удаленного видео:', e));
     };
@@ -3336,10 +3311,6 @@ async function initializeCall() {
       if (event.candidate) {
         sendIceCandidate(event.candidate);
       }
-    };
-    
-    peerConnection.oniceconnectionstatechange = () => {
-      console.log('❄️ ICE состояние:', peerConnection.iceConnectionState);
     };
     
     const offer = await peerConnection.createOffer({
@@ -3484,11 +3455,6 @@ async function acceptIncomingCall() {
     
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
     
-    const audioTracks = localStream.getAudioTracks();
-    if (audioTracks.length > 0) {
-      audioTracks[0].enabled = true;
-    }
-    
     callAvatar.textContent = currentChatUsername?.[0]?.toUpperCase() || 'U';
     callName.textContent = '@' + currentChatUsername;
     callTypeEl.textContent = call.type === 'video' ? 'Видеозвонок' : 'Аудиозвонок';
@@ -3500,7 +3466,7 @@ async function acceptIncomingCall() {
     callModal.classList.add('show');
     
     if (call.type === 'video') {
-      document.querySelector('.call-videos').style.display = 'block';
+      videoContainer.style.display = 'block';
       localVideo.srcObject = localStream;
       await localVideo.play().catch(e => console.warn('Ошибка воспроизведения локального видео:', e));
     }
@@ -3513,12 +3479,6 @@ async function acceptIncomingCall() {
     
     peerConnection.ontrack = (event) => {
       remoteStream = event.streams[0];
-      
-      const remoteAudioTracks = remoteStream.getAudioTracks();
-      if (remoteAudioTracks.length > 0) {
-        remoteAudioTracks[0].enabled = true;
-      }
-      
       remoteVideo.srcObject = remoteStream;
       remoteVideo.play().catch(e => console.warn('Ошибка воспроизведения удаленного видео:', e));
     };
@@ -3595,7 +3555,7 @@ function cleanupCall() {
   
   callModal.classList.remove('show');
   incomingCall.style.display = 'none';
-  document.querySelector('.call-videos').style.display = 'none';
+  videoContainer.style.display = 'none';
   
   localVideo.srcObject = null;
   remoteVideo.srcObject = null;
@@ -3657,15 +3617,7 @@ function toggleVideo() {
   }
 }
 
-function acceptCall() {
-  acceptIncomingCall();
-}
-
-function declineCall() {
-  declineIncomingCall();
-}
-
-console.log('Call system initialized with improved signaling');
+console.log('Call system initialized');
 </script>
 </body>
 </html>
