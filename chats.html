@@ -1776,7 +1776,7 @@ let callType = null;
 let localStream = null;
 let remoteStream = null;
 let peerConnection = null;
-let callTimer = null;
+let callTimerInterval = null;
 let callStartTime = null;
 let incomingCallListener = null;
 let callStatusListener = null;
@@ -1833,7 +1833,7 @@ const localVideo = document.getElementById('localVideo');
 const callAvatar = document.getElementById('callAvatar');
 const callName = document.getElementById('callName');
 const callTypeEl = document.getElementById('callType');
-const callTimer = document.getElementById('callTimer');
+const callTimerEl = document.getElementById('callTimer');
 const muteBtn = document.getElementById('muteBtn');
 const videoToggleBtn = document.getElementById('videoToggleBtn');
 const incomingCall = document.getElementById('incomingCall');
@@ -3432,7 +3432,6 @@ async function startVideoCall() {
 function listenForIncomingCalls() {
   if (incomingCallListener) return;
   
-  // Упрощенный запрос без составного where
   incomingCallListener = db.collection('calls')
     .where('targetId', '==', currentUser.uid)
     .onSnapshot((snapshot) => {
@@ -3440,7 +3439,6 @@ function listenForIncomingCalls() {
         if (change.type === 'added') {
           const call = change.doc.data();
           
-          // Проверяем статус в коде, а не в запросе
           if (call.status !== 'ringing') return;
           
           const callerInfo = await getUserInfo(call.callerId);
@@ -3602,9 +3600,9 @@ function cleanupCall() {
   localVideo.srcObject = null;
   remoteVideo.srcObject = null;
   
-  if (callTimer) {
-    clearInterval(callTimer);
-    callTimer = null;
+  if (callTimerInterval) {
+    clearInterval(callTimerInterval);
+    callTimerInterval = null;
   }
   
   stopRingtone();
@@ -3623,16 +3621,16 @@ function cleanupCall() {
   remoteStream = null;
   currentCall = null;
   callStartTime = null;
-  callTimer.textContent = '00:00';
+  callTimerEl.textContent = '00:00';
 }
 
 function startCallTimer() {
   callStartTime = Date.now();
-  callTimer = setInterval(() => {
+  callTimerInterval = setInterval(() => {
     const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
     const minutes = Math.floor(elapsed / 60);
     const seconds = elapsed % 60;
-    callTimer.textContent = 
+    callTimerEl.textContent = 
       `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   }, 1000);
 }
