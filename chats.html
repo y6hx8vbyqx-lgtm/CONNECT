@@ -16,7 +16,6 @@
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
     
     <style>
         /* ===== RESET & VARIABLES ===== */
@@ -1640,7 +1639,7 @@
         
         <div class="call-controls" id="callControls">
             <div id="outgoingControls" style="display:none;">
-                <button class="call-control-btn end-call" onclick="endCall()">
+                <button class="call-control-btn decline" onclick="endCall()">
                     <i class="fas fa-phone-slash"></i>
                 </button>
             </div>
@@ -1744,8 +1743,7 @@ const firebaseConfig = {
     projectId: "contegg-b3b4b",
     storageBucket: "contegg-b3b4b.firebasestorage.app",
     messagingSenderId: "678323780149",
-    appId: "1:678323780149:web:9717ac593a21d97a19cf7c",
-    databaseURL: "https://contegg-b3b4b-default-rtdb.europe-west1.firebasedatabase.app"
+    appId: "1:678323780149:web:9717ac593a21d97a19cf7c"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -3309,7 +3307,7 @@ async function initializeCall() {
     }
     
     if (callType === 'video') {
-      document.getElementById('videoContainer').style.display = 'block';
+      document.querySelector('.call-videos').style.display = 'block';
       localVideo.srcObject = localStream;
       await localVideo.play().catch(e => console.warn('Ошибка воспроизведения локального видео:', e));
     }
@@ -3434,13 +3432,16 @@ async function startVideoCall() {
 function listenForIncomingCalls() {
   if (incomingCallListener) return;
   
+  // Упрощенный запрос без составного where
   incomingCallListener = db.collection('calls')
     .where('targetId', '==', currentUser.uid)
-    .where('status', '==', 'ringing')
     .onSnapshot((snapshot) => {
       snapshot.docChanges().forEach(async (change) => {
         if (change.type === 'added') {
           const call = change.doc.data();
+          
+          // Проверяем статус в коде, а не в запросе
+          if (call.status !== 'ringing') return;
           
           const callerInfo = await getUserInfo(call.callerId);
           
@@ -3449,7 +3450,7 @@ function listenForIncomingCalls() {
           incomingType.textContent = 
             call.type === 'video' ? 'Входящий видеозвонок' : 'Входящий аудиозвонок';
           
-          incomingCall.style.display = 'block';
+          incomingCall.style.display = 'flex';
           
           playRingtone();
           
@@ -3501,7 +3502,7 @@ async function acceptIncomingCall() {
     callModal.classList.add('show');
     
     if (call.type === 'video') {
-      document.getElementById('videoContainer').style.display = 'block';
+      document.querySelector('.call-videos').style.display = 'block';
       localVideo.srcObject = localStream;
       await localVideo.play().catch(e => console.warn('Ошибка воспроизведения локального видео:', e));
     }
@@ -3596,7 +3597,7 @@ function cleanupCall() {
   
   callModal.classList.remove('show');
   incomingCall.style.display = 'none';
-  document.getElementById('videoContainer').style.display = 'none';
+  document.querySelector('.call-videos').style.display = 'none';
   
   localVideo.srcObject = null;
   remoteVideo.srcObject = null;
