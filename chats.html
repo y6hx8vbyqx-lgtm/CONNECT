@@ -1773,42 +1773,33 @@ let ringtoneInterval = null;
 let audioContext = null;
 let iceCandidateListener = null;
 let pendingIceCandidates = [];
-let chatsListener = null; // Для автообновления чатов
+let chatsListener = null;
 
-// Улучшенные ICE серверы для работы через интернет
+// ===== ПУБЛИЧНЫЕ TURN СЕРВЕРЫ (БЕЗ РЕГИСТРАЦИИ) =====
 const iceServers = {
   iceServers: [
-    // Google STUN серверы
+    // STUN серверы (для прямого соединения)
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
     { urls: 'stun:stun4.l.google.com:19302' },
-    
-    // Дополнительные STUN серверы
     { urls: 'stun:stun.services.mozilla.com' },
     { urls: 'stun:stun.stunprotocol.org:3478' },
     { urls: 'stun:stun.voiparound.com' },
-    { urls: 'stun:stun.voipbuster.com' },
     
-    // Публичные TURN серверы (для соединения через интернет)
-    { 
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    { 
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    { 
-      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    // TURN серверы Metered.ca (публичные, без регистрации)
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp'
+      ],
       username: 'openrelayproject',
       credential: 'openrelayproject'
     },
     
-    // Дополнительные TURN серверы
+    // Дополнительные публичные TURN серверы
     {
       urls: 'turn:turn.voipmatrix.com:3478',
       username: 'guest',
@@ -1818,9 +1809,15 @@ const iceServers = {
       urls: 'turn:turn.bistri.com:80',
       username: 'homeo',
       credential: 'homeo'
+    },
+    {
+      urls: 'turn:turn.voip.ms:3478',
+      username: 'webrtc',
+      credential: 'webrtc'
     }
   ],
-  iceCandidatePoolSize: 20 // Увеличиваем пул кандидатов
+  iceCandidatePoolSize: 20,
+  iceTransportPolicy: 'all' // разрешаем использовать relay
 };
 
 // ===== DOM ЭЛЕМЕНТЫ =====
@@ -1890,13 +1887,11 @@ auth.onAuthStateChanged(async (user) => {
     await loadChatsList();
     await renderProfile();
     
-    // Запускаем автоматическое обновление чатов
     startChatsListener();
     
     checkForAutoOpenChat();
     listenForIncomingCalls();
     
-    // Показываем кнопку разблокировки звука
     unlockAudioBtn.style.display = 'block';
 });
 
@@ -3191,7 +3186,7 @@ async function playRingtone() {
     }
     
     if (audioContext.state === 'running') {
-      stopRingtone(); // Останавливаем предыдущий звонок если был
+      stopRingtone();
       
       console.log('🔊 Запускаем рингтон');
       
@@ -3201,7 +3196,6 @@ async function playRingtone() {
           return;
         }
         
-        // Двойной сигнал для рингтона
         playBeep(523.25, 0.2); // До
         setTimeout(() => playBeep(659.25, 0.2), 250); // Ми
         setTimeout(() => playBeep(783.99, 0.3), 500); // Соль
@@ -3577,7 +3571,7 @@ function listenForIncomingCalls() {
 
 async function acceptIncomingCall() {
   console.log('✅ Принимаем звонок');
-  stopRingtone(); // ОСТАНАВЛИВАЕМ РИНГТОН
+  stopRingtone();
   incomingCall.classList.remove('show');
   
   try {
@@ -3664,7 +3658,7 @@ async function acceptIncomingCall() {
 
 async function declineIncomingCall() {
   console.log('❌ Отклоняем звонок');
-  stopRingtone(); // ОСТАНАВЛИВАЕМ РИНГТОН
+  stopRingtone();
   incomingCall.classList.remove('show');
   
   if (currentCall) {
@@ -3678,7 +3672,7 @@ async function declineIncomingCall() {
 
 async function endCall() {
   console.log('📞 Завершаем звонок');
-  stopRingtone(); // ОСТАНАВЛИВАЕМ РИНГТОН НА ВСЯКИЙ СЛУЧАЙ
+  stopRingtone();
   
   if (currentCall) {
     const callDoc = await db.collection('calls').doc(currentCall).get();
@@ -3691,7 +3685,7 @@ async function endCall() {
 }
 
 function cleanupCall() {
-  stopRingtone(); // ОСТАНАВЛИВАЕМ РИНГТОН
+  stopRingtone();
   
   if (localStream) {
     localStream.getTracks().forEach(track => track.stop());
@@ -3766,7 +3760,7 @@ function toggleVideo() {
   }
 }
 
-console.log('Call system initialized');
+console.log('Call system initialized with public TURN servers');
 </script>
 </body>
 </html>
