@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Contegg · Чаты и Группы</title>
     
     <!-- Font Awesome -->
@@ -2096,6 +2096,53 @@
 <button id="unlock-audio-btn" style="display: none;" onclick="unlockAudio()">🔊 Разрешить звук звонка</button>
 
 <script>
+// ===== СКРЫВАЕМ ИНТЕРФЕЙС БРАУЗЕРА (Kiosk / Fullscreen App) =====
+(function hideBrowserUI() {
+    // Запрос полноэкранного режима (для мобильных браузеров, поддерживающих)
+    const requestFullscreen = () => {
+        const docEl = document.documentElement;
+        if (docEl.requestFullscreen) {
+            docEl.requestFullscreen().catch(e => console.log("Fullscreen error:", e));
+        } else if (docEl.webkitRequestFullscreen) {
+            docEl.webkitRequestFullscreen();
+        } else if (docEl.msRequestFullscreen) {
+            docEl.msRequestFullscreen();
+        }
+    };
+    
+    // Для мобильных: предотвращаем прокрутку страницы и скрываем адресную строку
+    window.addEventListener('load', () => {
+        // Пытаемся активировать полноэкранный режим после загрузки
+        setTimeout(() => {
+            requestFullscreen();
+        }, 500);
+        
+        // Для iOS: скрываем адресную строку при прокрутке
+        window.scrollTo(0, 1);
+        
+        // Обработчик для выхода из полноэкранного режима пользователем — повторный запрос при нажатии
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+                setTimeout(requestFullscreen, 500);
+            }
+        });
+    });
+    
+    // При касании любого элемента, если не в полноэкранном режиме, повторно запрашиваем
+    document.addEventListener('touchstart', () => {
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+            setTimeout(() => {
+                const docEl = document.documentElement;
+                if (docEl.requestFullscreen) docEl.requestFullscreen().catch(()=>{});
+                else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen();
+            }, 100);
+        }
+    }, { passive: true });
+    
+    // Устанавливаем мета-теги для скрытия интерфейса на мобильных
+    // viewport уже установлен в head: user-scalable=no и viewport-fit=cover
+})();
+
 // ===== FIREBASE CONFIG =====
 const firebaseConfig = {
     apiKey: "AIzaSyBKTPyHKC_Mp1ZO6NDiCaJVz3w1u_PWfUo",
@@ -2152,11 +2199,11 @@ let pendingIceCandidates = [];
 let chatsListener = null;
 
 // Переменные для создания группы
-let selectedUsers = new Map(); // userId -> userInfo
+let selectedUsersMap = new Map();
 let allUsers = [];
 let groupAvatarBase64 = null;
 
-// ===== ПУБЛИЧНЫЕ TURN СЕРВЕРЫ (БЕЗ РЕГИСТРАЦИИ) =====
+// ===== ПУБЛИЧНЫЕ TURN СЕРВЕРЫ =====
 const iceServers = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -2252,7 +2299,7 @@ const createGroupModal = document.getElementById('createGroupModal');
 const groupAvatarPreview = document.getElementById('groupAvatarPreview');
 const groupNameInput = document.getElementById('groupNameInput');
 const groupUserSearch = document.getElementById('groupUserSearch');
-const usersList = document.getElementById('usersList');
+const usersListEl = document.getElementById('usersList');
 const selectedUsersDiv = document.getElementById('selectedUsers');
 const createGroupBtn = document.getElementById('createGroupBtn');
 const groupAvatarUploadInput = document.getElementById('groupAvatarUploadInput');
@@ -2609,7 +2656,7 @@ async function loadAllUsers() {
 }
 
 function openCreateGroupModal() {
-    selectedUsers.clear();
+    selectedUsersMap.clear();
     groupAvatarBase64 = null;
     groupNameInput.value = '';
     groupUserSearch.value = '';
@@ -2693,14 +2740,14 @@ function saveGroupCroppedAvatar() {
 }
 
 function updateSelectedUsersDisplay() {
-    if (selectedUsers.size === 0) {
+    if (selectedUsersMap.size === 0) {
         selectedUsersDiv.innerHTML = '';
         createGroupBtn.disabled = true;
         return;
     }
     
     let html = '';
-    selectedUsers.forEach((user, userId) => {
+    selectedUsersMap.forEach((user, userId) => {
         html += `
             <div class="selected-user-tag">
                 ${escapeHtml(user.displayName || user.username)}
@@ -2709,11 +2756,11 @@ function updateSelectedUsersDisplay() {
         `;
     });
     selectedUsersDiv.innerHTML = html;
-    createGroupBtn.disabled = selectedUsers.size < 1 || !groupNameInput.value.trim();
+    createGroupBtn.disabled = selectedUsersMap.size < 1 || !groupNameInput.value.trim();
 }
 
 function removeSelectedUser(userId) {
-    selectedUsers.delete(userId);
+    selectedUsersMap.delete(userId);
     updateSelectedUsersDisplay();
     
     const userElement = document.querySelector(`.user-select-item[data-user-id="${userId}"]`);
@@ -2742,7 +2789,7 @@ function filterUsers() {
 function renderUsersList(users) {
     let html = '';
     users.forEach(user => {
-        const isSelected = selectedUsers.has(user.uid);
+        const isSelected = selectedUsersMap.has(user.uid);
         const avatarStyle = user.avatarBase64 
             ? `style="background-image: url('${user.avatarBase64}');"` 
             : '';
@@ -2767,20 +2814,20 @@ function renderUsersList(users) {
         html = '<div class="user-select-item" style="justify-content: center;">Ничего не найдено</div>';
     }
     
-    usersList.innerHTML = html;
+    usersListEl.innerHTML = html;
     
     document.querySelectorAll('.user-select-item').forEach(item => {
         item.addEventListener('click', () => {
             const userId = item.dataset.userId;
             const user = allUsers.find(u => u.uid === userId);
             
-            if (selectedUsers.has(userId)) {
-                selectedUsers.delete(userId);
+            if (selectedUsersMap.has(userId)) {
+                selectedUsersMap.delete(userId);
                 item.classList.remove('selected');
                 const checkElement = item.querySelector('.user-select-check');
                 if (checkElement) checkElement.innerHTML = '';
             } else {
-                selectedUsers.set(userId, user);
+                selectedUsersMap.set(userId, user);
                 item.classList.add('selected');
                 const checkElement = item.querySelector('.user-select-check');
                 if (checkElement) checkElement.innerHTML = '<i class="fas fa-check"></i>';
@@ -2792,7 +2839,7 @@ function renderUsersList(users) {
 }
 
 groupNameInput.addEventListener('input', () => {
-    createGroupBtn.disabled = selectedUsers.size < 1 || !groupNameInput.value.trim();
+    createGroupBtn.disabled = selectedUsersMap.size < 1 || !groupNameInput.value.trim();
 });
 
 async function createGroup() {
@@ -2802,14 +2849,14 @@ async function createGroup() {
         return;
     }
     
-    if (selectedUsers.size < 1) {
+    if (selectedUsersMap.size < 1) {
         showNotification('Выберите хотя бы одного участника');
         return;
     }
     
     createGroupBtn.disabled = true;
     
-    const participants = [currentUser.uid, ...selectedUsers.keys()];
+    const participants = [currentUser.uid, ...selectedUsersMap.keys()];
     
     try {
         const groupData = {
@@ -3156,10 +3203,10 @@ function addMessageToUI(msg) {
     
     let replyHTML = '';
     if (msg.replyTo) {
-        const replySender = msg.replyTo.senderId === currentUser.uid ? 'Вы' : 'Пользователь';
-        const replyText = msg.replyTo.text || '';
-        const shortText = replyText.length > 50 ? replyText.substring(0, 47) + '...' : replyText;
-        replyHTML = `<div class="message-reply"><div class="message-reply-sender">${replySender}</div><div class="message-reply-text">${escapeHtml(shortText)}</div></div>`;
+        const replySenderName = msg.replyTo.senderId === currentUser.uid ? 'Вы' : 'Пользователь';
+        const replyTextContent = msg.replyTo.text || '';
+        const shortText = replyTextContent.length > 50 ? replyTextContent.substring(0, 47) + '...' : replyTextContent;
+        replyHTML = `<div class="message-reply"><div class="message-reply-sender">${replySenderName}</div><div class="message-reply-text">${escapeHtml(shortText)}</div></div>`;
     }
     
     let senderNameHTML = '';
@@ -3923,7 +3970,7 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// ===== ФУНКЦИИ ЗВОНКОВ (без изменений) =====
+// ===== ФУНКЦИИ ЗВОНКОВ =====
 async function playRingtone() {
   console.log('🔔 Попытка воспроизвести рингтон...');
   
@@ -4519,7 +4566,7 @@ function toggleVideo() {
   }
 }
 
-console.log('✅ Приложение загружено с поддержкой групповых чатов');
+console.log('✅ Приложение загружено с поддержкой групповых чатов и полноэкранным режимом');
 </script>
 </body>
 </html>
