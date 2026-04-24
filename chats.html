@@ -19,6 +19,15 @@
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
     
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
         :root {
             --bg-primary: #000000;
             --bg-secondary: #1c1c1e;
@@ -33,20 +42,10 @@
             --danger: #ff3b30;
             --pinned: #ffcc00;
             --separator: rgba(84, 84, 88, 0.65);
-            --tab-bar-bg: rgba(28, 28, 30, 0.95);
+            --tab-bar-bg: rgba(28, 28, 30, 0.92);
             --safe-bottom: env(safe-area-inset-bottom, 20px);
             --safe-top: env(safe-area-inset-top, 0px);
             --navbar-height: 44px;
-            --tabbar-height: 50px;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-            -webkit-user-select: none;
-            user-select: none;
         }
 
         body {
@@ -59,7 +58,6 @@
             position: fixed;
             width: 100%;
             -webkit-font-smoothing: antialiased;
-            padding-top: var(--safe-top);
         }
 
         .app-container {
@@ -69,10 +67,11 @@
             height: 100dvh;
             position: relative;
             background: var(--bg-primary);
+            padding-bottom: 80px;
         }
 
         .navbar {
-            background: var(--tab-bar-bg);
+            background: rgba(0, 0, 0, 0.8);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             padding: 0 16px;
@@ -86,26 +85,29 @@
         }
 
         .navbar-title {
-            font-size: 17px;
-            font-weight: 600;
-            letter-spacing: -0.2px;
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #fff, #8e8e93);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
 
         .navbar-btn {
-            width: 30px;
-            height: 30px;
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
-            background: var(--accent);
+            background: rgba(0, 122, 255, 0.2);
             border: none;
-            color: white;
-            font-size: 14px;
+            color: var(--accent);
+            font-size: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             transition: 0.2s;
         }
-        .navbar-btn:active { transform: scale(0.9); opacity: 0.8; }
+        .navbar-btn:active { transform: scale(0.9); background: rgba(0, 122, 255, 0.4); }
 
         .content-area {
             flex: 1;
@@ -135,29 +137,40 @@
             transform: translateX(0);
             pointer-events: auto;
         }
-        .page.slide-left {
-            opacity: 0;
-            transform: translateX(-30px);
-        }
 
+        /* Скрываемая строка поиска */
+        .search-container {
+            position: sticky;
+            top: 0;
+            background: var(--bg-primary);
+            z-index: 10;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateY(0);
+        }
+        
+        .search-container.hidden {
+            transform: translateY(-100%);
+        }
+        
         .search-bar {
             margin: 8px 16px;
             background: var(--bg-input);
-            border-radius: 10px;
-            padding: 0 10px;
+            border-radius: 12px;
+            padding: 0 12px;
             display: flex;
             align-items: center;
-            gap: 6px;
-            height: 36px;
+            gap: 8px;
+            height: 40px;
             border: 0.5px solid var(--separator);
         }
-        .search-bar i { color: var(--text-tertiary); font-size: 14px; }
+        
+        .search-bar i { color: var(--text-tertiary); font-size: 16px; }
         .search-bar input {
             flex: 1;
             background: none;
             border: none;
             color: var(--text-primary);
-            font-size: 15px;
+            font-size: 17px;
             outline: none;
             font-family: inherit;
         }
@@ -165,11 +178,11 @@
 
         .search-results {
             position: absolute;
-            top: 52px;
+            top: 56px;
             left: 16px;
             right: 16px;
             background: var(--bg-secondary);
-            border-radius: 12px;
+            border-radius: 16px;
             max-height: 300px;
             overflow-y: auto;
             z-index: 50;
@@ -202,7 +215,7 @@
             align-items: center;
             gap: 12px;
             padding: 10px 12px;
-            border-radius: 12px;
+            border-radius: 14px;
             cursor: pointer;
             transition: 0.2s;
             background: transparent;
@@ -217,21 +230,21 @@
             right: 16px;
             top: 50%;
             transform: translateY(-50%);
-            width: 8px;
-            height: 8px;
+            width: 10px;
+            height: 10px;
             border-radius: 50%;
             background: var(--accent);
         }
 
         .chat-avatar {
-            width: 50px;
-            height: 50px;
+            width: 52px;
+            height: 52px;
             border-radius: 50%;
             background: linear-gradient(135deg, #007aff, #5856d6);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 20px;
+            font-size: 22px;
             font-weight: 500;
             color: white;
             flex-shrink: 0;
@@ -239,7 +252,7 @@
             background-position: center;
             overflow: hidden;
         }
-        .chat-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+        .chat-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .chat-avatar.group { background: linear-gradient(135deg, #34c759, #007aff); }
 
         .chat-content {
@@ -255,10 +268,10 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 3px;
+            margin-bottom: 4px;
         }
         .chat-name {
-            font-size: 16px;
+            font-size: 17px;
             font-weight: 500;
             white-space: nowrap;
             overflow: hidden;
@@ -268,12 +281,74 @@
             align-items: center;
             gap: 4px;
         }
-        .chat-time { font-size: 13px; color: var(--text-tertiary); flex-shrink: 0; }
+        .chat-time { font-size: 12px; color: var(--text-tertiary); flex-shrink: 0; }
         .chat-preview { font-size: 14px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .verified-icon { color: var(--accent); font-size: 12px; }
         .pinned-icon { color: var(--pinned); font-size: 10px; }
         .group-icon { color: var(--online); font-size: 12px; }
 
+        /* Плавающая панель как в Telegram iOS */
+        .tabbar {
+            position: fixed;
+            bottom: 12px;
+            left: 16px;
+            right: 16px;
+            background: rgba(28, 28, 30, 0.92);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border-radius: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            padding: 6px 8px;
+            z-index: 100;
+            border: 0.5px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        @supports (padding-bottom: env(safe-area-inset-bottom)) {
+            .tabbar {
+                bottom: max(12px, env(safe-area-inset-bottom));
+            }
+        }
+
+        .tab-item {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            color: var(--text-tertiary);
+            font-size: 10px;
+            font-weight: 500;
+            cursor: pointer;
+            padding: 8px 0;
+            border-radius: 20px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            background: transparent;
+        }
+
+        .tab-item i {
+            font-size: 22px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .tab-item.active {
+            color: var(--accent);
+            background: rgba(0, 122, 255, 0.15);
+        }
+
+        .tab-item.active i {
+            transform: translateY(-2px);
+        }
+
+        .tab-item:active {
+            transform: scale(0.96);
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Профиль */
         .profile-page { padding: 20px 16px 40px; }
         .profile-header {
             display: flex;
@@ -284,191 +359,69 @@
         }
         .profile-avatar-container { position: relative; margin-bottom: 16px; }
         .profile-avatar {
-            width: 90px;
-            height: 90px;
+            width: 100px;
+            height: 100px;
             border-radius: 50%;
             background: linear-gradient(135deg, #007aff, #5856d6);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 36px;
+            font-size: 40px;
             font-weight: 500;
             color: white;
             background-size: cover;
             background-position: center;
             overflow: hidden;
         }
-        .profile-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+        .profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .avatar-change-btn {
             position: absolute;
             bottom: 0;
             right: 0;
-            width: 28px;
-            height: 28px;
+            width: 32px;
+            height: 32px;
             border-radius: 50%;
             background: var(--bg-secondary);
             border: 2px solid var(--bg-primary);
             color: var(--accent);
-            font-size: 12px;
+            font-size: 14px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: 0.2s;
         }
         .avatar-change-btn:active { transform: scale(0.9); }
 
-        .profile-name { font-size: 20px; font-weight: 600; margin-bottom: 2px; display: flex; align-items: center; gap: 6px; }
-        .profile-username { font-size: 15px; color: var(--text-secondary); margin-bottom: 8px; }
-        .profile-bio { font-size: 14px; color: var(--text-secondary); text-align: center; max-width: 280px; line-height: 1.4; }
+        .profile-name { font-size: 24px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+        .profile-username { font-size: 16px; color: var(--text-secondary); margin-bottom: 8px; }
+        .profile-bio { font-size: 15px; color: var(--text-secondary); text-align: center; max-width: 280px; line-height: 1.4; }
 
-        .profile-section { background: var(--bg-secondary); border-radius: 12px; margin-bottom: 24px; overflow: hidden; }
+        .profile-section { background: var(--bg-secondary); border-radius: 16px; margin-bottom: 24px; overflow: hidden; }
         .profile-cell {
             display: flex;
             align-items: center;
-            padding: 12px 16px;
+            padding: 14px 16px;
             border-bottom: 0.5px solid var(--separator);
             cursor: pointer;
-            transition: 0.2s;
-            gap: 12px;
+            gap: 14px;
         }
         .profile-cell:last-child { border-bottom: none; }
         .profile-cell:active { background: var(--bg-tertiary); }
         .profile-cell-icon {
-            width: 30px;
-            height: 30px;
-            border-radius: 8px;
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 14px;
+            font-size: 16px;
             flex-shrink: 0;
         }
         .profile-cell-content { flex: 1; display: flex; justify-content: space-between; align-items: center; }
-        .profile-cell-title { font-size: 15px; }
+        .profile-cell-title { font-size: 16px; }
         .profile-cell-value { font-size: 15px; color: var(--text-secondary); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .profile-cell-arrow { color: var(--text-tertiary); font-size: 12px; margin-left: 8px; }
 
-        .tabbar {
-            background: var(--tab-bar-bg);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border-top: 0.5px solid var(--separator);
-            display: flex;
-            align-items: center;
-            justify-content: space-around;
-            padding: 0 16px;
-            padding-bottom: var(--safe-bottom);
-            height: calc(var(--tabbar-height) + var(--safe-bottom));
-            flex-shrink: 0;
-            z-index: 100;
-        }
-
-        .tab-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-            color: var(--text-tertiary);
-            font-size: 10px;
-            font-weight: 500;
-            cursor: pointer;
-            padding: 6px 12px;
-            border-radius: 10px;
-            transition: 0.2s;
-            min-width: 60px;
-            position: relative;
-        }
-        .tab-item i { font-size: 22px; transition: 0.3s; }
-        .tab-item.active { color: var(--accent); }
-        .tab-item.active i { transform: scale(1.1); }
-        .tab-item:active { background: var(--bg-tertiary); }
-
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.6);
-            backdrop-filter: blur(10px);
-            z-index: 1000;
-            display: flex;
-            align-items: flex-end;
-            justify-content: center;
-            opacity: 0;
-            pointer-events: none;
-            transition: 0.3s;
-        }
-        .modal-overlay.show { opacity: 1; pointer-events: auto; }
-        .modal-sheet {
-            background: var(--bg-secondary);
-            border-radius: 20px 20px 0 0;
-            width: 100%;
-            max-width: 500px;
-            max-height: 85vh;
-            overflow-y: auto;
-            transform: translateY(100%);
-            transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            padding-bottom: var(--safe-bottom);
-        }
-        .modal-overlay.show .modal-sheet { transform: translateY(0); }
-        .modal-handle {
-            width: 36px;
-            height: 5px;
-            background: var(--text-tertiary);
-            border-radius: 3px;
-            margin: 8px auto 16px;
-            opacity: 0.5;
-        }
-        .modal-title { font-size: 17px; font-weight: 600; text-align: center; margin-bottom: 16px; }
-        .modal-content { padding: 0 16px 20px; }
-
-        .input-row {
-            background: var(--bg-tertiary);
-            border-radius: 10px;
-            padding: 12px 16px;
-            margin-bottom: 12px;
-            border: 0.5px solid var(--separator);
-        }
-        .input-row label {
-            font-size: 12px;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 6px;
-            display: block;
-        }
-        .input-row input, .input-row textarea {
-            width: 100%;
-            background: none;
-            border: none;
-            color: var(--text-primary);
-            font-size: 16px;
-            font-family: inherit;
-            outline: none;
-            resize: none;
-        }
-        .input-row textarea { min-height: 60px; }
-
-        .btn {
-            width: 100%;
-            padding: 14px;
-            border-radius: 12px;
-            border: none;
-            font-size: 16px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: 0.2s;
-            font-family: inherit;
-            letter-spacing: -0.2px;
-        }
-        .btn-primary { background: var(--accent); color: white; }
-        .btn-primary:active { background: var(--accent-hover); transform: scale(0.98); }
-        .btn-primary:disabled { opacity: 0.4; }
-        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); margin-top: 8px; }
-        .btn-danger { background: rgba(255, 59, 48, 0.15); color: var(--danger); margin-top: 8px; }
-
+        /* Чат */
         .chat-overlay {
             position: fixed;
             top: 0;
@@ -481,12 +434,11 @@
             flex-direction: column;
             transform: translateX(100%);
             transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            padding-top: var(--safe-top);
         }
         .chat-overlay.show { transform: translateX(0); }
         .chat-navbar {
             min-height: var(--navbar-height);
-            background: var(--tab-bar-bg);
+            background: rgba(0,0,0,0.8);
             backdrop-filter: blur(20px);
             display: flex;
             align-items: center;
@@ -504,9 +456,6 @@
             color: var(--accent);
             font-size: 20px;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
         }
         .chat-user-info { flex: 1; display: flex; align-items: center; gap: 10px; cursor: pointer; }
         .chat-user-avatar {
@@ -524,7 +473,7 @@
             overflow: hidden;
             flex-shrink: 0;
         }
-        .chat-user-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+        .chat-user-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .chat-user-name { font-size: 15px; font-weight: 500; }
         .chat-user-status { font-size: 12px; color: var(--text-secondary); }
 
@@ -595,7 +544,7 @@
         .reaction-badge.by-me { background: rgba(0,122,255,0.4); border: 0.5px solid rgba(0,122,255,0.8); }
 
         .chat-input-bar {
-            background: var(--tab-bar-bg);
+            background: rgba(0,0,0,0.8);
             backdrop-filter: blur(20px);
             padding: 8px 10px;
             display: flex;
@@ -616,10 +565,6 @@
             align-items: center;
             gap: 8px;
         }
-        .reply-preview-name { font-weight: 500; color: var(--accent); }
-        .reply-preview-text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-secondary); }
-        .reply-preview-close { color: var(--text-tertiary); cursor: pointer; padding: 4px; }
-
         .chat-input {
             flex: 1;
             background: var(--bg-input);
@@ -632,7 +577,6 @@
             max-height: 100px;
             resize: none;
             outline: none;
-            line-height: 1.3;
         }
         .chat-send {
             width: 34px;
@@ -644,10 +588,92 @@
             font-size: 14px;
             cursor: pointer;
             flex-shrink: 0;
-            transition: 0.2s;
         }
         .chat-send:active { transform: scale(0.9); }
-        .chat-send:disabled { opacity: 0.4; }
+
+        /* Модальные окна */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: 0.3s;
+        }
+        .modal-overlay.show { opacity: 1; pointer-events: auto; }
+        .modal-sheet {
+            background: var(--bg-secondary);
+            border-radius: 20px 20px 0 0;
+            width: 100%;
+            max-width: 500px;
+            max-height: 85vh;
+            overflow-y: auto;
+            transform: translateY(100%);
+            transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            padding-bottom: var(--safe-bottom);
+        }
+        .modal-overlay.show .modal-sheet { transform: translateY(0); }
+        .modal-handle {
+            width: 36px;
+            height: 5px;
+            background: var(--text-tertiary);
+            border-radius: 3px;
+            margin: 8px auto 16px;
+            opacity: 0.5;
+        }
+        .modal-title { font-size: 17px; font-weight: 600; text-align: center; margin-bottom: 16px; }
+        .modal-content { padding: 0 16px 20px; }
+
+        .input-row {
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            border: 0.5px solid var(--separator);
+        }
+        .input-row label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            display: block;
+        }
+        .input-row input, .input-row textarea {
+            width: 100%;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 16px;
+            font-family: inherit;
+            outline: none;
+            resize: none;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border-radius: 12px;
+            border: none;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: 0.2s;
+            font-family: inherit;
+        }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:active { background: var(--accent-hover); transform: scale(0.98); }
+        .btn-primary:disabled { opacity: 0.4; }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); margin-top: 8px; }
+        .btn-danger { background: rgba(255, 59, 48, 0.15); color: var(--danger); margin-top: 8px; }
 
         .context-menu {
             position: fixed;
@@ -659,11 +685,6 @@
             box-shadow: 0 10px 40px rgba(0,0,0,0.6);
             border: 0.5px solid var(--separator);
             display: none;
-            animation: contextIn 0.15s ease;
-        }
-        @keyframes contextIn {
-            from { opacity: 0; transform: scale(0.95); }
-            to { opacity: 1; transform: scale(1); }
         }
         .context-item {
             padding: 12px 16px;
@@ -673,7 +694,6 @@
             font-size: 15px;
             border-radius: 10px;
             cursor: pointer;
-            transition: 0.2s;
         }
         .context-item:active { background: var(--bg-tertiary); }
         .context-item i { width: 20px; text-align: center; color: var(--accent); }
@@ -720,7 +740,7 @@
 
 <div class="app-container">
     <div class="navbar">
-        <span class="navbar-title" id="navbarTitle">Чаты</span>
+        <span class="navbar-title">Contegg</span>
         <button class="navbar-btn" onclick="showCreateGroup()">
             <i class="fas fa-plus"></i>
         </button>
@@ -728,7 +748,7 @@
 
     <div class="content-area">
         <div class="page active" id="pageChats">
-            <div style="position: relative;">
+            <div class="search-container" id="searchContainer">
                 <div class="search-bar">
                     <i class="fas fa-search"></i>
                     <input type="text" id="searchInput" placeholder="Поиск" autocomplete="off">
@@ -747,9 +767,10 @@
         </div>
     </div>
 
+    <!-- Плавающая панель как в Telegram -->
     <div class="tabbar">
         <div class="tab-item active" data-tab="chats" onclick="switchTab('chats')">
-            <i class="fas fa-message"></i>
+            <i class="fas fa-comment"></i>
             <span>Чаты</span>
         </div>
         <div class="tab-item" data-tab="profile" onclick="switchTab('profile')">
@@ -759,6 +780,7 @@
     </div>
 </div>
 
+<!-- Чат оверлей -->
 <div class="chat-overlay" id="chatOverlay">
     <div class="chat-navbar">
         <button class="chat-back" onclick="closeChat()">
@@ -796,6 +818,7 @@
     </div>
 </div>
 
+<!-- Модальные окна -->
 <div class="modal-overlay" id="groupModal">
     <div class="modal-sheet">
         <div class="modal-handle"></div>
@@ -892,14 +915,14 @@
 </div>
 
 <div class="context-menu" id="reactionsPanel" style="flex-direction: row; gap: 4px; padding: 8px 10px; min-width: auto; display: none;">
-    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('❤️')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">❤️</span>
-    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('👍')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">👍</span>
-    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('👎')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">👎</span>
-    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('😂')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">😂</span>
-    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('😮')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">😮</span>
-    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('😢')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">😢</span>
-    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('😡')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">😡</span>
-    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('🔥')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">🔥</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('❤️')">❤️</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('👍')">👍</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('👎')">👎</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('😂')">😂</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('😮')">😮</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('😢')">😢</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('😡')">😡</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('🔥')">🔥</span>
 </div>
 
 <input type="file" id="avatarInput" accept="image/*" style="display:none;">
@@ -917,24 +940,14 @@ function enterFullscreen() {
     }
 }
 
-function handleFullscreen() {
-    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-        enterFullscreen();
-    }
-}
-
 window.addEventListener('load', () => {
     setTimeout(enterFullscreen, 300);
     window.scrollTo(0, 1);
 });
 
 document.addEventListener('click', () => {
-    setTimeout(handleFullscreen, 100);
-});
-
-document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-        setTimeout(enterFullscreen, 200);
+        setTimeout(enterFullscreen, 100);
     }
 });
 
@@ -1025,7 +1038,7 @@ async function loadUserData() {
         userData = {
             uid: currentUser.uid,
             username: 'user' + Date.now().toString(36),
-            displayName: 'Пользователь',
+            displayName: currentUser.displayName || 'Пользователь',
             bio: '',
             email: currentUser.email || '',
             avatarBase64: null,
@@ -1077,28 +1090,34 @@ function switchTab(tab) {
     
     if (currentPage === targetPage) return;
     
-    // Анимация ухода текущей страницы
-    if (currentPage) {
-        currentPage.classList.add('slide-left');
-        currentPage.classList.remove('active');
-    }
-    
-    // Показываем целевую страницу
-    targetPage.classList.remove('slide-left');
+    currentPage.classList.remove('active');
     targetPage.classList.add('active');
     
-    // Обновляем активную вкладку в таббаре
     tabs.forEach(t => t.classList.remove('active'));
     const activeTab = document.querySelector(`.tab-item[data-tab="${tab}"]`);
     if (activeTab) activeTab.classList.add('active');
     
-    // Обновляем заголовок
-    const navbarTitle = document.getElementById('navbarTitle');
-    if (navbarTitle) navbarTitle.textContent = tab === 'chats' ? 'Чаты' : 'Профиль';
+    if (tab === 'profile') renderProfile();
+}
+
+// ===== СКРЫВАЕМАЯ СТРОКА ПОИСКА =====
+function initSearchScroll() {
+    const chatsPage = document.getElementById('pageChats');
+    const searchContainer = document.getElementById('searchContainer');
+    let lastScrollY = 0;
     
-    // Перерисовываем профиль если нужно
-    if (tab === 'profile') {
-        renderProfile();
+    if (chatsPage && searchContainer) {
+        chatsPage.addEventListener('scroll', function() {
+            const currentScrollY = this.scrollTop;
+            
+            if (currentScrollY > 50 && currentScrollY > lastScrollY) {
+                searchContainer.classList.add('hidden');
+            } else if (currentScrollY < 30 || currentScrollY < lastScrollY) {
+                searchContainer.classList.remove('hidden');
+            }
+            
+            lastScrollY = currentScrollY;
+        });
     }
 }
 
@@ -1655,15 +1674,14 @@ async function addReaction(emoji) {
         
         if (reactions[currentUser.uid] === emoji) {
             delete reactions[currentUser.uid];
-            toast(`❤️ Реакция убрана`);
+            toast(`Реакция убрана`);
         } else {
             reactions[currentUser.uid] = emoji;
-            toast(`✅ Реакция ${emoji} добавлена`);
+            toast(`Реакция ${emoji} добавлена`);
         }
         
         await ref.update({ reactions });
     } catch (e) { 
-        console.error(e);
         toast('Ошибка при добавлении реакции'); 
     }
 }
@@ -1686,7 +1704,6 @@ async function toggleReaction(msgId, emoji) {
         
         await ref.update({ reactions });
     } catch (e) { 
-        console.error(e);
         toast('Ошибка при изменении реакции'); 
     }
 }
@@ -2081,7 +2098,11 @@ function logout() {
     }
 }
 
-// ===== ГОРЯЧИЕ КЛАВИШИ =====
+// ===== ИНИЦИАЛИЗАЦИЯ =====
+window.addEventListener('DOMContentLoaded', () => {
+    initSearchScroll();
+});
+
 document.getElementById('chatInput').addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -2094,7 +2115,6 @@ document.getElementById('chatInput').addEventListener('input', function() {
     this.style.height = Math.min(this.scrollHeight, 100) + 'px';
 });
 
-// ===== ЗАКРЫТИЕ МЕНЮ =====
 document.addEventListener('click', (e) => {
     if (!e.target.closest('.search-bar') && !e.target.closest('.search-results')) {
         document.getElementById('searchResults').style.display = 'none';
@@ -2116,7 +2136,7 @@ document.addEventListener('keydown', e => {
     }
 });
 
-console.log('✅ Contegg Messenger · Реакции работают корректно · Полноэкранный режим');
+console.log('✅ Contegg Messenger · Полный функционал · Плавающая панель · Скрываемая строка поиска');
 </script>
 </body>
 </html>
