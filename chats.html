@@ -41,6 +41,7 @@
             --online: #34c759;
             --danger: #ff3b30;
             --pinned: #ffcc00;
+            --saved: #ff9f0a;
             --separator: rgba(84, 84, 88, 0.65);
             --tab-bar-bg: rgba(28, 28, 30, 0.92);
             --safe-bottom: env(safe-area-inset-bottom, 20px);
@@ -224,6 +225,7 @@
         .chat-cell:active { background: var(--bg-secondary); }
         .chat-cell.unread { background: rgba(0, 122, 255, 0.08); }
         .chat-cell.pinned { background: rgba(255, 204, 0, 0.05); }
+        .chat-cell.saved { background: rgba(255, 159, 10, 0.05); }
 
         .unread-dot {
             position: absolute;
@@ -254,6 +256,7 @@
         }
         .chat-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .chat-avatar.group { background: linear-gradient(135deg, #34c759, #007aff); }
+        .chat-avatar.saved { background: linear-gradient(135deg, #ff9f0a, #ff4d4d); }
 
         .chat-content {
             flex: 1;
@@ -285,6 +288,7 @@
         .chat-preview { font-size: 14px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .verified-icon { color: var(--accent); font-size: 12px; }
         .pinned-icon { color: var(--pinned); font-size: 10px; }
+        .saved-icon { color: var(--saved); font-size: 12px; }
         .group-icon { color: var(--online); font-size: 12px; }
 
         /* Плавающая панель как в Telegram iOS */
@@ -864,6 +868,31 @@
     </div>
 </div>
 
+<!-- Модалка смены пароля -->
+<div class="modal-overlay" id="changePasswordModal">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Смена пароля</div>
+        <div class="modal-content">
+            <div class="input-row">
+                <label>Текущий пароль</label>
+                <input type="password" id="oldPassword" placeholder="Введите текущий пароль">
+            </div>
+            <div class="input-row">
+                <label>Новый пароль</label>
+                <input type="password" id="newPassword" placeholder="Минимум 6 символов">
+            </div>
+            <div class="input-row">
+                <label>Подтвердите пароль</label>
+                <input type="password" id="confirmPassword" placeholder="Повторите новый пароль">
+            </div>
+            <button class="btn btn-primary" onclick="changePassword()">Сменить пароль</button>
+            <button class="btn btn-secondary" onclick="closeChangePasswordModal()">Отмена</button>
+            <div id="passwordError" class="error-message" style="margin-top:12px;"></div>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="cropModal">
     <div class="modal-sheet">
         <div class="modal-handle"></div>
@@ -905,6 +934,7 @@
 
 <div class="context-menu" id="msgContextMenu">
     <div class="context-item" onclick="ctxReply()"><i class="fas fa-reply"></i> Ответить</div>
+    <div class="context-item" onclick="ctxSaveToFavorites()"><i class="fas fa-bookmark"></i> В избранное</div>
     <div class="context-item" onclick="ctxReaction()"><i class="fas fa-smile"></i> Реакции</div>
     <div class="context-item danger" onclick="ctxDelete()"><i class="fas fa-trash"></i> Удалить</div>
 </div>
@@ -972,6 +1002,7 @@ let adminUsers = [];
 let currentChatId = null;
 let currentChatUser = null;
 let currentChatIsGroup = false;
+let currentChatIsSaved = false;
 let currentChatParticipants = [];
 let chatMessagesListener = null;
 let chatsGlobalListener = null;
@@ -985,6 +1016,7 @@ let groupAvatarBase64 = null;
 let cropper = null;
 let groupCropper = null;
 let usersCache = {};
+let savedChatId = null;
 
 function toast(msg) {
     const t = document.getElementById('toast');
@@ -1020,12 +1052,104 @@ function dateDivider(d) {
     return d.toLocaleDateString('ru', { day: 'numeric', month: 'long' });
 }
 
+// ===== СОЗДАНИЕ/ПОЛУЧЕНИЕ ЧАТА "ИЗБРАННОЕ" =====
+async function getOrCreateSavedChat() {
+    if (savedChatId) return savedChatId;
+    
+    const savedChatsRef = db.collection('chats');
+    const query = await savedChatsRef.where('isSaved', '==', true).where('ownerId', '==', currentUser.uid).get();
+    
+    if (!query.empty) {
+        savedChatId = query.docs[0].id;
+        return savedChatId;
+    }
+    
+    const newChat = {
+        isSaved: true,
+        isGroup: false,
+        ownerId: currentUser.uid,
+        participants: [currentUser.uid],
+        name: 'Избранное',
+        lastMessage: '',
+        lastMessageTime: new Date(),
+        createdAt: new Date(),
+        unreadFor: []
+    };
+    
+    const docRef = await db.collection('chats').add(newChat);
+    savedChatId = docRef.id;
+    return savedChatId;
+}
+
+// ===== ОТКРЫТИЕ ИЗБРАННОГО =====
+async function openSavedChat() {
+    currentChatIsSaved = true;
+    currentChatIsGroup = false;
+    currentChatUser = null;
+    const chatId = await getOrCreateSavedChat();
+    currentChatId = chatId;
+    await openSavedChatUI();
+}
+
+async function openSavedChatUI() {
+    const avatar = document.getElementById('chatAvatar');
+    avatar.innerHTML = '<i class="fas fa-bookmark" style="font-size:20px;"></i>';
+    avatar.style.background = 'linear-gradient(135deg, #ff9f0a, #ff4d4d)';
+    avatar.style.display = 'flex';
+    avatar.style.alignItems = 'center';
+    avatar.style.justifyContent = 'center';
+    
+    document.getElementById('chatName').textContent = 'Избранное';
+    document.getElementById('chatStatus').textContent = 'Сохранённые сообщения';
+    
+    document.getElementById('chatOverlay').classList.add('show');
+    document.getElementById('chatInput').disabled = false;
+    document.getElementById('sendBtn').disabled = false;
+    await loadMessages();
+    
+    setTimeout(() => document.getElementById('chatInput').focus(), 300);
+}
+
+// ===== СОХРАНЕНИЕ СООБЩЕНИЯ В ИЗБРАННОЕ =====
+async function saveMessageToFavorites(messageId, messageData) {
+    try {
+        const savedChatId = await getOrCreateSavedChat();
+        const textToSave = `📌 ${messageData.text || ''}`;
+        
+        await db.collection('chats').doc(savedChatId).collection('messages').add({
+            text: textToSave,
+            senderId: currentUser.uid,
+            timestamp: new Date(),
+            originalMessageId: messageId,
+            isSavedMessage: true,
+            read: false
+        });
+        
+        await db.collection('chats').doc(savedChatId).update({
+            lastMessage: textToSave,
+            lastSender: currentUser.uid,
+            lastMessageTime: new Date()
+        });
+        
+        toast('Сообщение сохранено в избранное');
+    } catch (e) {
+        toast('Ошибка сохранения');
+    }
+}
+
+function ctxSaveToFavorites() {
+    document.getElementById('msgContextMenu').style.display = 'none';
+    if (!selectedMsgId || !selectedMsgData) return;
+    saveMessageToFavorites(selectedMsgId, selectedMsgData);
+}
+
 // ===== АВТОРИЗАЦИЯ =====
 auth.onAuthStateChanged(async user => {
     if (!user) { location.href = 'index.html'; return; }
     currentUser = user;
     await loadUserData();
     await loadAdminUsers();
+    await getOrCreateSavedChat();
     await loadChats();
     startGlobalChatsListener();
     loadAllUsers();
@@ -1132,7 +1256,9 @@ async function loadChats() {
             const chat = doc.data();
             if (!chat.participants?.includes(currentUser.uid)) continue;
             
-            if (chat.isGroup) {
+            if (chat.isSaved) {
+                chats.push({ id: doc.id, ...chat, type: 'saved' });
+            } else if (chat.isGroup) {
                 chats.push({ id: doc.id, ...chat, type: 'group' });
             } else {
                 const otherId = chat.participants.find(id => id !== currentUser.uid);
@@ -1143,8 +1269,11 @@ async function loadChats() {
             }
         }
         
-        const pinned = chats.filter(c => pinnedChats.includes(c.id));
-        const unpinned = chats.filter(c => !pinnedChats.includes(c.id));
+        const savedChat = chats.find(c => c.type === 'saved');
+        const otherChats = chats.filter(c => c.type !== 'saved');
+        
+        const pinned = otherChats.filter(c => pinnedChats.includes(c.id));
+        const unpinned = otherChats.filter(c => !pinnedChats.includes(c.id));
         const sortFn = (a, b) => {
             const ta = a.lastMessageTime?.toDate?.() || new Date(0);
             const tb = b.lastMessageTime?.toDate?.() || new Date(0);
@@ -1152,15 +1281,31 @@ async function loadChats() {
         };
         pinned.sort(sortFn);
         unpinned.sort(sortFn);
-        chats = [...pinned, ...unpinned];
         
-        if (chats.length === 0) {
+        let sortedChats = [];
+        if (savedChat) sortedChats.push(savedChat);
+        sortedChats.push(...pinned, ...unpinned);
+        
+        if (sortedChats.length === 0) {
             list.innerHTML = `<div class="empty-state"><div class="empty-state-icon">💬</div><div class="empty-state-title">Нет чатов</div><div class="empty-state-desc">Используйте поиск, чтобы найти пользователей и начать общение</div></div>`;
             return;
         }
         
-        list.innerHTML = chats.map(chat => {
-            if (chat.type === 'group') {
+        list.innerHTML = sortedChats.map(chat => {
+            if (chat.type === 'saved') {
+                const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
+                return `
+                    <div class="chat-cell saved" onclick="openSavedChat()" data-chat-id="${chat.id}">
+                        <div class="chat-avatar saved"><i class="fas fa-bookmark" style="font-size:24px;"></i></div>
+                        <div class="chat-content">
+                            <div class="chat-top">
+                                <span class="chat-name"><i class="fas fa-bookmark saved-icon"></i> Избранное</span>
+                                <span class="chat-time">${timeStr}</span>
+                            </div>
+                            <div class="chat-preview">${esc(chat.lastMessage || 'Сохранённые сообщения')}</div>
+                        </div>
+                    </div>`;
+            } else if (chat.type === 'group') {
                 const avHTML = chat.avatarBase64 ? `<img src="${chat.avatarBase64}">` : '👥';
                 const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
                 return `
@@ -1200,14 +1345,18 @@ async function loadChats() {
             const chatId = cell.dataset.chatId;
             cell.addEventListener('touchstart', () => {
                 timer = setTimeout(() => {
-                    showChatContext({ clientX: 100, clientY: 200, preventDefault: () => {} }, chatId);
+                    if (!cell.classList.contains('saved')) {
+                        showChatContext({ clientX: 100, clientY: 200, preventDefault: () => {} }, chatId);
+                    }
                 }, 500);
             });
             cell.addEventListener('touchend', () => clearTimeout(timer));
             cell.addEventListener('touchmove', () => clearTimeout(timer));
             cell.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
-                showChatContext(e, chatId);
+                if (!cell.classList.contains('saved')) {
+                    showChatContext(e, chatId);
+                }
             });
         });
         
@@ -1291,12 +1440,13 @@ async function ctxDeleteChat() {
 async function openDirectChat(userId, username) {
     currentChatUser = { uid: userId, username };
     currentChatIsGroup = false;
+    currentChatIsSaved = false;
     
     let chatId = null;
     const snap = await db.collection('chats').get();
     for (const doc of snap.docs) {
         const c = doc.data();
-        if (!c.isGroup && c.participants?.includes(currentUser.uid) && c.participants?.includes(userId)) {
+        if (!c.isGroup && !c.isSaved && c.participants?.includes(currentUser.uid) && c.participants?.includes(userId)) {
             chatId = doc.id; break;
         }
     }
@@ -1305,7 +1455,7 @@ async function openDirectChat(userId, username) {
         const ref = await db.collection('chats').add({
             participants: [currentUser.uid, userId],
             lastMessage: '', lastMessageTime: new Date(),
-            createdAt: new Date(), isGroup: false,
+            createdAt: new Date(), isGroup: false, isSaved: false,
             unreadFor: [userId]
         });
         chatId = ref.id;
@@ -1318,6 +1468,7 @@ async function openDirectChat(userId, username) {
 async function openGroupChat(chatId) {
     currentChatId = chatId;
     currentChatIsGroup = true;
+    currentChatIsSaved = false;
     
     const doc = await db.collection('chats').doc(chatId).get();
     const chat = doc.data();
@@ -1369,6 +1520,7 @@ function closeChat() {
     currentChatId = null;
     currentChatUser = null;
     currentChatIsGroup = false;
+    currentChatIsSaved = false;
     currentChatParticipants = [];
     cancelReply();
 }
@@ -1575,7 +1727,7 @@ async function sendMessage() {
         let unreadFor = [];
         if (currentChatIsGroup) {
             unreadFor = currentChatParticipants.filter(id => id !== currentUser.uid);
-        } else if (currentChatUser) {
+        } else if (currentChatUser && !currentChatIsSaved) {
             unreadFor = [currentChatUser.uid];
         }
         
@@ -1744,12 +1896,33 @@ async function renderProfile() {
         </div>
         
         <div class="profile-section">
+            <div class="profile-cell" onclick="openSavedChat()">
+                <div class="profile-cell-icon" style="background:rgba(255,159,10,0.15);color:#ff9f0a;">
+                    <i class="fas fa-bookmark"></i>
+                </div>
+                <div class="profile-cell-content">
+                    <span class="profile-cell-title">Избранное</span>
+                    <i class="fas fa-chevron-right profile-cell-arrow"></i>
+                </div>
+            </div>
+        </div>
+        
+        <div class="profile-section">
             <div class="profile-cell" onclick="openProfileEdit()">
                 <div class="profile-cell-icon" style="background:rgba(0,122,255,0.15);color:#007aff;">
                     <i class="fas fa-user-edit"></i>
                 </div>
                 <div class="profile-cell-content">
                     <span class="profile-cell-title">Редактировать профиль</span>
+                    <i class="fas fa-chevron-right profile-cell-arrow"></i>
+                </div>
+            </div>
+            <div class="profile-cell" onclick="openChangePasswordModal()">
+                <div class="profile-cell-icon" style="background:rgba(52,199,89,0.15);color:#34c759;">
+                    <i class="fas fa-key"></i>
+                </div>
+                <div class="profile-cell-content">
+                    <span class="profile-cell-title">Сменить пароль</span>
                     <i class="fas fa-chevron-right profile-cell-arrow"></i>
                 </div>
             </div>
@@ -1830,6 +2003,61 @@ async function saveProfile() {
         renderProfile();
         toast('Профиль обновлён');
     } catch (e) { toast('Ошибка сохранения'); }
+}
+
+// ===== СМЕНА ПАРОЛЯ =====
+function openChangePasswordModal() {
+    document.getElementById('oldPassword').value = '';
+    document.getElementById('newPassword').value = '';
+    document.getElementById('confirmPassword').value = '';
+    document.getElementById('passwordError').style.display = 'none';
+    document.getElementById('changePasswordModal').classList.add('show');
+}
+
+function closeChangePasswordModal() {
+    document.getElementById('changePasswordModal').classList.remove('show');
+}
+
+async function changePassword() {
+    const oldPassword = document.getElementById('oldPassword').value;
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    const errorEl = document.getElementById('passwordError');
+    
+    if (!oldPassword || !newPassword || !confirmPassword) {
+        errorEl.textContent = 'Заполните все поля';
+        errorEl.style.display = 'block';
+        return;
+    }
+    
+    if (newPassword.length < 6) {
+        errorEl.textContent = 'Новый пароль должен быть не менее 6 символов';
+        errorEl.style.display = 'block';
+        return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+        errorEl.textContent = 'Новые пароли не совпадают';
+        errorEl.style.display = 'block';
+        return;
+    }
+    
+    const user = auth.currentUser;
+    const credential = firebase.auth.EmailAuthProvider.credential(user.email, oldPassword);
+    
+    try {
+        await user.reauthenticateWithCredential(credential);
+        await user.updatePassword(newPassword);
+        toast('Пароль успешно изменён');
+        closeChangePasswordModal();
+    } catch (error) {
+        if (error.code === 'auth/wrong-password') {
+            errorEl.textContent = 'Неверный текущий пароль';
+        } else {
+            errorEl.textContent = 'Ошибка: ' + error.message;
+        }
+        errorEl.style.display = 'block';
+    }
 }
 
 // ===== АВАТАРКА =====
@@ -1979,7 +2207,8 @@ async function createGroup() {
             isGroup: true, name, participants,
             lastMessage: '', lastMessageTime: new Date(),
             createdAt: new Date(), createdBy: currentUser.uid,
-            unreadFor: participants.filter(id => id !== currentUser.uid)
+            unreadFor: participants.filter(id => id !== currentUser.uid),
+            isSaved: false
         };
         
         if (groupAvatarBase64) data.avatarBase64 = groupAvatarBase64;
@@ -2002,7 +2231,7 @@ async function createGroup() {
 
 // ===== ПРОСМОТР ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ =====
 async function viewChatUserProfile() {
-    if (!currentChatUser || currentChatIsGroup) return;
+    if (!currentChatUser || currentChatIsGroup || currentChatIsSaved) return;
     
     const user = await getUserInfo(currentChatUser.uid);
     const avHTML = user.avatarBase64
@@ -2129,6 +2358,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
         closeChat();
         document.getElementById('profileEditModal').classList.remove('show');
+        document.getElementById('changePasswordModal').classList.remove('show');
         document.getElementById('userProfileModal').classList.remove('show');
         document.getElementById('cropModal').classList.remove('show');
         document.getElementById('groupCropModal').classList.remove('show');
@@ -2136,7 +2366,7 @@ document.addEventListener('keydown', e => {
     }
 });
 
-console.log('✅ Contegg Messenger · Полный функционал · Плавающая панель · Скрываемая строка поиска');
+console.log('✅ Contegg Messenger · Полный функционал · Избранное · Смена пароля · Плавающая панель');
 </script>
 </body>
 </html>
