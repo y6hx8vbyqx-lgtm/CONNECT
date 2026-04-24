@@ -317,6 +317,27 @@
             border: 1px solid rgba(76, 175, 80, 0.2);
         }
 
+        /* Auto-login indicator */
+        .auto-login-badge {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--accent-color);
+            border-radius: 20px;
+            padding: 6px 12px;
+            font-size: 12px;
+            color: var(--accent-color);
+            cursor: pointer;
+            transition: 0.2s;
+            z-index: 100;
+        }
+
+        .auto-login-badge:hover {
+            background: var(--accent-color);
+            color: white;
+        }
+
         /* Animations */
         @keyframes slideIn {
             from {
@@ -475,6 +496,11 @@
         </div>
     </div>
 
+    <!-- Индикатор авто-входа -->
+    <div class="auto-login-badge" id="autoLoginBadge" style="display: none;">
+        <i class="fas fa-user-check"></i> Вы вошли
+    </div>
+
     <script>
         // Firebase Configuration
         const firebaseConfig = {
@@ -503,6 +529,10 @@
         const loginFormElement = document.getElementById('loginFormElement');
         const registerError = document.getElementById('registerError');
         const loginError = document.getElementById('loginError');
+        const autoLoginBadge = document.getElementById('autoLoginBadge');
+
+        // Ключ для sessionStorage (запоминаем, вышел ли пользователь сам)
+        const LOGOUT_FLAG_KEY = 'contegg_manual_logout';
 
         // Toggle Password
         window.togglePassword = function(inputId, icon) {
@@ -517,6 +547,39 @@
                 icon.classList.add('fa-eye');
             }
         };
+
+        // Проверка, вышел ли пользователь сам
+        function hasManualLogout() {
+            return sessionStorage.getItem(LOGOUT_FLAG_KEY) === 'true';
+        }
+
+        // Установить флаг ручного выхода
+        function setManualLogout(value) {
+            if (value) {
+                sessionStorage.setItem(LOGOUT_FLAG_KEY, 'true');
+            } else {
+                sessionStorage.removeItem(LOGOUT_FLAG_KEY);
+            }
+        }
+
+        // Показать индикатор авто-входа
+        function showAutoLoginBadge() {
+            autoLoginBadge.style.display = 'flex';
+            setTimeout(() => {
+                autoLoginBadge.style.opacity = '0.7';
+            }, 100);
+        }
+
+        // Скрыть индикатор
+        function hideAutoLoginBadge() {
+            autoLoginBadge.style.display = 'none';
+            autoLoginBadge.style.opacity = '1';
+        }
+
+        // Redirect to chats
+        function redirectToChats() {
+            window.location.href = 'chats.html';
+        }
 
         // Navigation
         showRegisterBtn.addEventListener('click', () => {
@@ -607,11 +670,13 @@
                     createdAt: new Date()
                 });
 
+                // Убираем флаг ручного выхода при успешной регистрации
+                setManualLogout(false);
+                
                 showSuccess(registerError, 'Регистрация успешна! Перенаправление...');
                 
-                // *** ИСПРАВЛЕНО: правильный путь к файлу чатов ***
                 setTimeout(() => {
-                    window.location.href = 'chats.html'; // Убрал слеш
+                    redirectToChats();
                 }, 1500);
 
             } catch (error) {
@@ -659,11 +724,13 @@
             try {
                 await auth.signInWithEmailAndPassword(email, password);
                 
+                // Убираем флаг ручного выхода при успешном входе
+                setManualLogout(false);
+                
                 showSuccess(loginError, 'Вход выполнен! Перенаправление...');
                 
-                // *** ИСПРАВЛЕНО: правильный путь к файлу чатов ***
                 setTimeout(() => {
-                    window.location.href = 'chats.html'; // Убрал слеш
+                    redirectToChats();
                 }, 1500);
 
             } catch (error) {
@@ -689,12 +756,64 @@
             }
         });
 
-        // Check if user is already logged in
-        auth.onAuthStateChanged((user) => {
+        // Функция для выхода (будет вызвана из chats.html)
+        window.logoutFromApp = async function() {
+            try {
+                // Устанавливаем флаг ручного выхода
+                setManualLogout(true);
+                await auth.signOut();
+                hideAutoLoginBadge();
+                // Возвращаемся на страницу входа
+                window.location.href = 'index.html';
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
+        };
+
+        // Автоматический вход если пользователь уже залогинен и не вышел сам
+        auth.onAuthStateChanged(async (user) => {
             if (user) {
-                console.log('User logged in:', user.email);
-                // Если хочешь авто-редирект для уже залогиненных:
-                // window.location.href = 'chats.html';
+                console.log('User detected:', user.email);
+                
+                // Проверяем, не вышел ли пользователь сам
+                if (hasManualLogout()) {
+                    console.log('Manual logout detected, staying on login page');
+                    // Если вышел сам - остаемся на странице входа
+                    return;
+                }
+                
+                // Автоматический вход
+                console.log('Auto-login in progress...');
+                showAutoLoginBadge();
+                
+                // Проверяем, существует ли пользователь в Firestore
+                try {
+                    const userDoc = await db.collection('users').doc(user.uid).get();
+                    if (!userDoc.exists) {
+                        // Если нет в Firestore, создаем (на случай, если регистрация была через другой метод)
+                        await db.collection('users').doc(user.uid).set({
+                            uid: user.uid,
+                            username: user.displayName || 'user_' + user.uid.slice(0, 8),
+                            displayName: user.displayName || 'Пользователь',
+                            email: user.email,
+                            bio: 'Расскажите о себе...',
+                            isAdmin: false,
+                            blockedUsers: [],
+                            pinnedChats: [],
+                            createdAt: new Date()
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error checking user document:', error);
+                }
+                
+                // Перенаправляем в чаты
+                setTimeout(() => {
+                    redirectToChats();
+                }, 500);
+            } else {
+                // Пользователь не залогинен, скрываем индикатор
+                hideAutoLoginBadge();
             }
         });
 
@@ -710,6 +829,16 @@
             element.style.display = 'block';
             element.className = 'success-message';
         }
+
+        // Обработчик клика по индикатору (для отображения информации)
+        autoLoginBadge.addEventListener('click', () => {
+            const user = auth.currentUser;
+            if (user) {
+                alert(`Вы вошли как: ${user.email}\nАвтоматический вход активен`);
+            } else {
+                autoLoginBadge.style.display = 'none';
+            }
+        });
     </script>
 </body>
 </html>
