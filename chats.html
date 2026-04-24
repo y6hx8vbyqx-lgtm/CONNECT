@@ -1077,23 +1077,29 @@ function switchTab(tab) {
     
     if (currentPage === targetPage) return;
     
-    const currentIdx = Array.from(pages).indexOf(currentPage);
-    const targetIdx = Array.from(pages).indexOf(targetPage);
-    
+    // Анимация ухода текущей страницы
     if (currentPage) {
-        currentPage.classList.add(targetIdx > currentIdx ? 'slide-left' : '');
+        currentPage.classList.add('slide-left');
         currentPage.classList.remove('active');
     }
     
+    // Показываем целевую страницу
     targetPage.classList.remove('slide-left');
     targetPage.classList.add('active');
     
+    // Обновляем активную вкладку в таббаре
     tabs.forEach(t => t.classList.remove('active'));
-    document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+    const activeTab = document.querySelector(`.tab-item[data-tab="${tab}"]`);
+    if (activeTab) activeTab.classList.add('active');
     
-    document.getElementById('navbarTitle').textContent = tab === 'chats' ? 'Чаты' : 'Профиль';
+    // Обновляем заголовок
+    const navbarTitle = document.getElementById('navbarTitle');
+    if (navbarTitle) navbarTitle.textContent = tab === 'chats' ? 'Чаты' : 'Профиль';
     
-    if (tab === 'profile') renderProfile();
+    // Перерисовываем профиль если нужно
+    if (tab === 'profile') {
+        renderProfile();
+    }
 }
 
 // ===== ЗАГРУЗКА ЧАТОВ =====
