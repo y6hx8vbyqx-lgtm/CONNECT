@@ -591,8 +591,8 @@
             gap: 3px;
             transition: 0.2s;
         }
-        .reaction-badge:hover { background: rgba(255,255,255,0.2); }
-        .reaction-badge.by-me { background: rgba(0,122,255,0.3); }
+        .reaction-badge:active { background: rgba(255,255,255,0.2); transform: scale(0.95); }
+        .reaction-badge.by-me { background: rgba(0,122,255,0.4); border: 0.5px solid rgba(0,122,255,0.8); }
 
         .chat-input-bar {
             background: var(--tab-bar-bg);
@@ -682,9 +682,9 @@
 
         .toast {
             position: fixed;
-            top: calc(var(--safe-top) + 60px);
+            bottom: 100px;
             left: 50%;
-            transform: translateX(-50%) translateY(-20px);
+            transform: translateX(-50%) translateY(20px);
             background: var(--bg-secondary);
             color: var(--text-primary);
             padding: 10px 20px;
@@ -892,14 +892,14 @@
 </div>
 
 <div class="context-menu" id="reactionsPanel" style="flex-direction: row; gap: 4px; padding: 8px 10px; min-width: auto; display: none;">
-    <span style="font-size:24px;cursor:pointer;padding:4px;" onclick="addReaction('❤️')">❤️</span>
-    <span style="font-size:24px;cursor:pointer;padding:4px;" onclick="addReaction('👍')">👍</span>
-    <span style="font-size:24px;cursor:pointer;padding:4px;" onclick="addReaction('👎')">👎</span>
-    <span style="font-size:24px;cursor:pointer;padding:4px;" onclick="addReaction('😂')">😂</span>
-    <span style="font-size:24px;cursor:pointer;padding:4px;" onclick="addReaction('😮')">😮</span>
-    <span style="font-size:24px;cursor:pointer;padding:4px;" onclick="addReaction('😢')">😢</span>
-    <span style="font-size:24px;cursor:pointer;padding:4px;" onclick="addReaction('😡')">😡</span>
-    <span style="font-size:24px;cursor:pointer;padding:4px;" onclick="addReaction('🔥')">🔥</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('❤️')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">❤️</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('👍')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">👍</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('👎')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">👎</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('😂')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">😂</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('😮')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">😮</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('😢')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">😢</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('😡')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">😡</span>
+    <span style="font-size:28px;cursor:pointer;padding:6px;border-radius:30px;transition:0.1s;" onclick="addReaction('🔥')" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">🔥</span>
 </div>
 
 <input type="file" id="avatarInput" accept="image/*" style="display:none;">
@@ -909,31 +909,34 @@
 
 <script>
 // ===== ПОЛНОЭКРАННЫЙ РЕЖИМ =====
-(function() {
-    const goFull = () => {
-        const d = document.documentElement;
-        if (d.requestFullscreen) d.requestFullscreen().catch(() => {});
-        else if (d.webkitRequestFullscreen) d.webkitRequestFullscreen();
-        else if (d.msRequestFullscreen) d.msRequestFullscreen();
-    };
-    
-    window.addEventListener('load', () => {
-        setTimeout(goFull, 500);
-        window.scrollTo(0, 1);
-    });
-    
-    document.addEventListener('click', () => {
-        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-            setTimeout(goFull, 100);
-        }
-    }, { once: false });
-    
-    document.addEventListener('fullscreenchange', () => {
-        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-            setTimeout(goFull, 500);
-        }
-    });
-})();
+function enterFullscreen() {
+    const docEl = document.documentElement;
+    const requestFullscreen = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.msRequestFullscreen;
+    if (requestFullscreen) {
+        requestFullscreen.call(docEl).catch(() => {});
+    }
+}
+
+function handleFullscreen() {
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        enterFullscreen();
+    }
+}
+
+window.addEventListener('load', () => {
+    setTimeout(enterFullscreen, 300);
+    window.scrollTo(0, 1);
+});
+
+document.addEventListener('click', () => {
+    setTimeout(handleFullscreen, 100);
+});
+
+document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        setTimeout(enterFullscreen, 200);
+    }
+});
 
 // ===== FIREBASE =====
 const firebaseConfig = {
@@ -960,7 +963,6 @@ let currentChatParticipants = [];
 let chatMessagesListener = null;
 let chatsGlobalListener = null;
 let replyingTo = null;
-let selectedMsgForReaction = null;
 let selectedMsgId = null;
 let selectedMsgData = null;
 let selectedChatContext = null;
@@ -1206,10 +1208,13 @@ function showChatContext(e, chatId) {
     menu.style.top = Math.min(y, window.innerHeight - 120) + 'px';
     menu.style.display = 'block';
     
-    setTimeout(() => {
-        const closer = () => { menu.style.display = 'none'; document.removeEventListener('click', closer); };
-        document.addEventListener('click', closer);
-    }, 10);
+    const closeHandler = (e) => {
+        if (!menu.contains(e.target)) {
+            menu.style.display = 'none';
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler), 10);
 }
 
 function ctxPinChat() {
@@ -1385,7 +1390,7 @@ async function loadMessages() {
     
     if (chatMessagesListener) chatMessagesListener();
     chatMessagesListener = db.collection('chats').doc(currentChatId)
-        .collection('messages').orderBy('timestamp', 'desc').limit(1)
+        .collection('messages').orderBy('timestamp', 'asc')
         .onSnapshot(snap => {
             snap.docChanges().forEach(change => {
                 if (change.type === 'added' && !document.querySelector(`[data-msg-id="${change.doc.id}"]`)) {
@@ -1411,7 +1416,6 @@ function renderMessage(id, msg) {
     
     let html = '';
     
-    // Ответ
     if (msg.replyTo) {
         html += `<div class="msg-reply">
             <div class="msg-reply-name">${msg.replyTo.senderId === currentUser.uid ? 'Вы' : 'Пользователь'}</div>
@@ -1419,7 +1423,6 @@ function renderMessage(id, msg) {
         </div>`;
     }
     
-    // Имя отправителя в группах
     if (currentChatIsGroup && !isOut && msg.senderId) {
         getUserInfo(msg.senderId).then(u => {
             const el = div.querySelector('.msg-sender');
@@ -1430,7 +1433,6 @@ function renderMessage(id, msg) {
     
     html += esc(msg.text || '');
     
-    // Реакции
     if (msg.reactions && Object.keys(msg.reactions).length > 0) {
         html += '<div class="msg-reactions">';
         const groups = {};
@@ -1440,7 +1442,7 @@ function renderMessage(id, msg) {
         });
         Object.entries(groups).forEach(([emoji, users]) => {
             const byMe = users.includes(currentUser.uid);
-            html += `<span class="reaction-badge ${byMe ? 'by-me' : ''}" onclick="event.stopPropagation();toggleReaction('${id}', '${emoji}')">${emoji} ${users.length}</span>`;
+            html += `<span class="reaction-badge ${byMe ? 'by-me' : ''}" data-msg-id="${id}" data-emoji="${emoji}">${emoji} ${users.length}</span>`;
         });
         html += '</div>';
     }
@@ -1448,13 +1450,20 @@ function renderMessage(id, msg) {
     html += `<div class="msg-time">${timeFormat(d)}${isOut ? ' · ✓✓' : ''}</div>`;
     div.innerHTML = html;
     
-    // Клик – реакции
+    div.querySelectorAll('.reaction-badge').forEach(badge => {
+        badge.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const msgId = badge.dataset.msgId;
+            const emoji = badge.dataset.emoji;
+            toggleReaction(msgId, emoji);
+        });
+    });
+    
     div.addEventListener('click', (e) => {
         if (e.target.closest('.reaction-badge')) return;
         showReactionsPanelForMsg(id, msg, e);
     });
     
-    // Долгое нажатие – контекстное меню
     let timer;
     div.addEventListener('touchstart', (e) => {
         timer = setTimeout(() => showMsgContext(e, id, msg), 500);
@@ -1498,8 +1507,13 @@ function updateMessageReactions(id, reactions) {
         const byMe = users.includes(currentUser.uid);
         const span = document.createElement('span');
         span.className = `reaction-badge ${byMe ? 'by-me' : ''}`;
+        span.setAttribute('data-msg-id', id);
+        span.setAttribute('data-emoji', emoji);
         span.textContent = `${emoji} ${users.length}`;
-        span.onclick = (e) => { e.stopPropagation(); toggleReaction(id, emoji); };
+        span.onclick = (e) => {
+            e.stopPropagation();
+            toggleReaction(id, emoji);
+        };
         rc.appendChild(span);
     });
 }
@@ -1567,10 +1581,13 @@ function showMsgContext(e, id, msg) {
     menu.style.display = 'block';
     document.getElementById('reactionsPanel').style.display = 'none';
     
-    setTimeout(() => {
-        const closer = () => { menu.style.display = 'none'; document.removeEventListener('click', closer); };
-        document.addEventListener('click', closer);
-    }, 10);
+    const closeHandler = (e) => {
+        if (!menu.contains(e.target)) {
+            menu.style.display = 'none';
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler), 10);
 }
 
 function ctxReply() {
@@ -1592,70 +1609,80 @@ function cancelReply() {
 function ctxReaction() {
     document.getElementById('msgContextMenu').style.display = 'none';
     if (!selectedMsgId || !selectedMsgData) return;
-    selectedMsgForReaction = { id: selectedMsgId, ...selectedMsgData };
-    showReactionsPanel(window.innerWidth / 2, window.innerHeight / 2);
+    showReactionsPanel(window.innerWidth / 2, window.innerHeight / 2, selectedMsgId);
 }
 
 function showReactionsPanelForMsg(id, msg, e) {
-    selectedMsgForReaction = { id, ...msg };
     let x = e.touches?.[0]?.clientX || e.clientX || window.innerWidth / 2;
     let y = e.touches?.[0]?.clientY || e.clientY || window.innerHeight / 2;
-    showReactionsPanel(x, y);
+    showReactionsPanel(x, y, id);
 }
 
-function showReactionsPanel(x, y) {
+function showReactionsPanel(x, y, msgId) {
     const panel = document.getElementById('reactionsPanel');
-    panel.style.left = Math.min(x - 140, window.innerWidth - 300) + 'px';
-    panel.style.top = Math.min(y - 50, window.innerHeight - 80) + 'px';
+    panel.setAttribute('data-msg-id', msgId || '');
+    panel.style.left = Math.min(x - 160, window.innerWidth - 320) + 'px';
+    panel.style.top = Math.min(y - 60, window.innerHeight - 100) + 'px';
     panel.style.display = 'flex';
     document.getElementById('msgContextMenu').style.display = 'none';
     
-    setTimeout(() => {
-        const closer = () => { panel.style.display = 'none'; document.removeEventListener('click', closer); };
-        document.addEventListener('click', closer);
-    }, 10);
+    const closeHandler = (e) => {
+        if (!panel.contains(e.target) && !e.target.closest('.reaction-badge')) {
+            panel.style.display = 'none';
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler), 10);
 }
 
 async function addReaction(emoji) {
-    document.getElementById('reactionsPanel').style.display = 'none';
-    if (!selectedMsgForReaction || !currentChatId) return;
+    const panel = document.getElementById('reactionsPanel');
+    const msgId = panel.getAttribute('data-msg-id');
+    panel.style.display = 'none';
     
-    const ref = db.collection('chats').doc(currentChatId).collection('messages').doc(selectedMsgForReaction.id);
-    
-    try {
-        const doc = await ref.get();
-        const reactions = doc.data()?.reactions || {};
-        const myReaction = reactions[currentUser.uid];
-        
-        if (myReaction === emoji) {
-            delete reactions[currentUser.uid];
-            toast('Реакция убрана');
-        } else {
-            reactions[currentUser.uid] = emoji;
-            toast(`+${emoji}`);
-        }
-        
-        await ref.update({ reactions });
-    } catch (e) { toast('Ошибка'); }
-}
-
-async function toggleReaction(msgId, emoji) {
-    if (!currentChatId) return;
-    
-    const ref = db.collection('chats').doc(currentChatId).collection('messages').doc(msgId);
+    if (!msgId || !currentChatId) return;
     
     try {
+        const ref = db.collection('chats').doc(currentChatId).collection('messages').doc(msgId);
         const doc = await ref.get();
         const reactions = doc.data()?.reactions || {};
         
         if (reactions[currentUser.uid] === emoji) {
             delete reactions[currentUser.uid];
+            toast(`❤️ Реакция убрана`);
         } else {
             reactions[currentUser.uid] = emoji;
+            toast(`✅ Реакция ${emoji} добавлена`);
         }
         
         await ref.update({ reactions });
-    } catch (e) { toast('Ошибка'); }
+    } catch (e) { 
+        console.error(e);
+        toast('Ошибка при добавлении реакции'); 
+    }
+}
+
+async function toggleReaction(msgId, emoji) {
+    if (!currentChatId) return;
+    
+    try {
+        const ref = db.collection('chats').doc(currentChatId).collection('messages').doc(msgId);
+        const doc = await ref.get();
+        const reactions = doc.data()?.reactions || {};
+        
+        if (reactions[currentUser.uid] === emoji) {
+            delete reactions[currentUser.uid];
+            toast(`Реакция убрана`);
+        } else {
+            reactions[currentUser.uid] = emoji;
+            toast(`Реакция ${emoji} добавлена`);
+        }
+        
+        await ref.update({ reactions });
+    } catch (e) { 
+        console.error(e);
+        toast('Ошибка при изменении реакции'); 
+    }
 }
 
 async function ctxDelete() {
@@ -1666,7 +1693,7 @@ async function ctxDelete() {
     try {
         await db.collection('chats').doc(currentChatId).collection('messages').doc(selectedMsgId).delete();
         document.querySelector(`[data-msg-id="${selectedMsgId}"]`)?.remove();
-        toast('Удалено');
+        toast('Сообщение удалено');
     } catch (e) { toast('Ошибка удаления'); }
 }
 
@@ -2069,7 +2096,6 @@ document.addEventListener('click', (e) => {
     if (!e.target.closest('.context-menu')) {
         document.getElementById('msgContextMenu').style.display = 'none';
         document.getElementById('chatContextMenu').style.display = 'none';
-        document.getElementById('reactionsPanel').style.display = 'none';
     }
 });
 
@@ -2084,7 +2110,7 @@ document.addEventListener('keydown', e => {
     }
 });
 
-console.log('✅ Contegg Messenger · Полный функционал · Реакции · Профили · Полный экран');
+console.log('✅ Contegg Messenger · Реакции работают корректно · Полноэкранный режим');
 </script>
 </body>
 </html>
