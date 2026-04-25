@@ -13,379 +13,56 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
     
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
         :root {
-            --bg: #000; --bg2: #1c1c1e; --bg3: #2c2c2e;
-            --text: #fff; --text2: #8e8e93; --text3: #636366;
-            --accent: #007aff; --danger: #ff3b30; --saved: #ff9f0a; --channel: #af52de;
-            --sep: rgba(84,84,88,0.65); --safe-bottom: env(safe-area-inset-bottom, 20px);
+            --bg-primary: #000000;
+            --bg-secondary: #1c1c1e;
+            --bg-tertiary: #2c2c2e;
+            --bg-input: #1c1c1e;
+            --text-primary: #ffffff;
+            --text-secondary: #8e8e93;
+            --text-tertiary: #636366;
+            --accent: #007aff;
+            --accent-hover: #0051d5;
+            --online: #34c759;
+            --danger: #ff3b30;
+            --pinned: #ffcc00;
+            --saved: #ff9f0a;
+            --separator: rgba(84, 84, 88, 0.65);
+            --tab-bar-bg: rgba(28, 28, 30, 0.92);
+            --safe-bottom: env(safe-area-inset-bottom, 20px);
+            --safe-top: env(safe-area-inset-top, 0px);
+            --navbar-height: 44px;
         }
-        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; position: fixed; width: 100%; }
-        .app { display: flex; flex-direction: column; height: 100vh; padding-bottom: 80px; }
-        .navbar { background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); padding: 0 16px; height: 44px; display: flex; align-items: center; justify-content: space-between; border-bottom: 0.5px solid var(--sep); }
-        .navbar-title { font-size: 28px; font-weight: 700; background: linear-gradient(135deg, #fff, #8e8e93); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .navbar-btn { width: 36px; height: 36px; border-radius: 50%; background: rgba(0,122,255,0.2); border: none; color: var(--accent); font-size: 18px; cursor: pointer; }
-        .content { flex: 1; overflow: hidden; position: relative; }
-        .page { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow-y: auto; opacity: 0; transform: translateX(30px); transition: 0.3s; pointer-events: none; }
-        .page.active { opacity: 1; transform: translateX(0); pointer-events: auto; }
-        .search-bar { margin: 8px 16px; background: var(--bg3); border-radius: 12px; padding: 0 12px; display: flex; align-items: center; height: 40px; }
-        .search-bar input { flex: 1; background: none; border: none; color: var(--text); font-size: 17px; outline: none; }
-        .chats-list { padding: 0 16px 20px; }
-        .chat { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; cursor: pointer; }
-        .chat:active { background: var(--bg2); }
-        .avatar { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; color: white; flex-shrink: 0; overflow: hidden; }
-        .avatar.channel { background: linear-gradient(135deg, #af52de, #5856d6); }
-        .avatar.saved { background: linear-gradient(135deg, #ff9f0a, #ff4d4d); }
-        .avatar.group { background: linear-gradient(135deg, #34c759, #007aff); }
-        .info { flex: 1; border-bottom: 0.5px solid var(--sep); padding: 10px 0; }
-        .chat:last-child .info { border-bottom: none; }
-        .top { display: flex; justify-content: space-between; margin-bottom: 4px; }
-        .name { font-size: 17px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
-        .time { font-size: 12px; color: var(--text3); }
-        .preview { font-size: 14px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .tabbar { position: fixed; bottom: 12px; left: 16px; right: 16px; background: rgba(28,28,30,0.92); backdrop-filter: blur(25px); border-radius: 28px; display: flex; padding: 6px 8px; z-index: 100; }
-        .tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--text3); font-size: 10px; cursor: pointer; padding: 8px 0; border-radius: 20px; }
-        .tab i { font-size: 22px; }
-        .tab.active { color: var(--accent); background: rgba(0,122,255,0.15); }
-        .profile-header { display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .profile-avatar { width: 100px; height: 100px; border-radius: 50%; background: linear-gradient(135deg, #007aff, #5856d6); display: flex; align-items: center; justify-content: center; font-size: 40px; color: white; overflow: hidden; cursor: pointer; }
-        .profile-name { font-size: 24px; font-weight: 600; margin-top: 12px; }
-        .profile-username { font-size: 16px; color: var(--text2); }
-        .profile-bio { font-size: 15px; color: var(--text2); text-align: center; margin-top: 8px; }
-        .section { background: var(--bg2); border-radius: 16px; margin: 16px; overflow: hidden; }
-        .cell { display: flex; align-items: center; padding: 14px 16px; gap: 14px; cursor: pointer; border-bottom: 0.5px solid var(--sep); }
-        .cell:last-child { border-bottom: none; }
-        .cell:active { background: var(--bg3); }
-        .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px); z-index: 1000; display: flex; align-items: flex-end; justify-content: center; opacity: 0; pointer-events: none; transition: 0.3s; }
-        .modal.show { opacity: 1; pointer-events: auto; }
-        .sheet { background: var(--bg2); border-radius: 20px 20px 0 0; width: 100%; max-width: 500px; max-height: 85vh; overflow-y: auto; transform: translateY(100%); transition: 0.3s; }
-        .modal.show .sheet { transform: translateY(0); }
-        .handle { width: 36px; height: 5px; background: var(--text3); border-radius: 3px; margin: 8px auto 16px; }
-        .modal-title { font-size: 17px; font-weight: 600; text-align: center; margin-bottom: 16px; }
-        .modal-content { padding: 0 16px 20px; }
-        .input-row { background: var(--bg3); border-radius: 10px; padding: 12px 16px; margin-bottom: 12px; }
-        .input-row label { font-size: 12px; color: var(--text2); display: block; margin-bottom: 6px; }
-        .input-row input, .input-row textarea { width: 100%; background: none; border: none; color: var(--text); font-size: 16px; outline: none; }
-        .btn { width: 100%; padding: 14px; border-radius: 12px; border: none; font-size: 16px; font-weight: 500; cursor: pointer; }
-        .btn-primary { background: var(--accent); color: white; }
-        .btn-secondary { background: var(--bg3); color: var(--text); margin-top: 8px; }
-        .btn-danger { background: rgba(255,59,48,0.15); color: var(--danger); margin-top: 8px; }
-        .chat-screen { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg); z-index: 500; display: flex; flex-direction: column; transform: translateX(100%); transition: 0.3s; }
-        .chat-screen.show { transform: translateX(0); }
-        .chat-header { min-height: 44px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); display: flex; align-items: center; padding: 0 12px; gap: 12px; border-bottom: 0.5px solid var(--sep); }
-        .chat-back { width: 30px; height: 30px; border-radius: 50%; background: none; border: none; color: var(--accent); font-size: 20px; cursor: pointer; }
-        .chat-info { flex: 1; display: flex; align-items: center; gap: 10px; cursor: pointer; }
-        .chat-avatar { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; color: white; overflow: hidden; }
-        .messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 4px; }
-        .msg { max-width: 75%; padding: 8px 12px; border-radius: 16px; font-size: 15px; }
-        .msg-out { align-self: flex-end; background: var(--accent); color: white; border-bottom-right-radius: 4px; }
-        .msg-in { align-self: flex-start; background: var(--bg2); border-bottom-left-radius: 4px; }
-        .msg-time { font-size: 11px; opacity: 0.7; text-align: right; margin-top: 4px; }
-        .input-bar { background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); padding: 8px 10px; display: flex; gap: 8px; border-top: 0.5px solid var(--sep); }
-        .chat-input { flex: 1; background: var(--bg3); border-radius: 18px; padding: 8px 14px; color: var(--text); font-size: 15px; max-height: 100px; resize: none; outline: none; border: none; }
-        .send { width: 34px; height: 34px; border-radius: 50%; background: var(--accent); border: none; color: white; font-size: 14px; cursor: pointer; }
-        .post { background: var(--bg2); border-radius: 16px; padding: 12px; margin-bottom: 12px; }
-        .post-text { font-size: 15px; line-height: 1.4; }
-        .post-time { font-size: 11px; color: var(--text3); margin-top: 8px; }
-        .toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--bg2); padding: 10px 20px; border-radius: 20px; z-index: 3000; opacity: 0; transition: 0.3s; pointer-events: none; }
-        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-        .loader { display: flex; justify-content: center; padding: 40px; }
-        .spinner { width: 30px; height: 30px; border: 3px solid var(--sep); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .empty { text-align: center; padding: 60px 20px; color: var(--text2); }
-        .context-menu { position: fixed; background: var(--bg2); border-radius: 14px; padding: 6px; z-index: 2000; min-width: 180px; display: none; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
-        .context-item { padding: 12px 16px; display: flex; align-items: center; gap: 12px; font-size: 15px; border-radius: 10px; cursor: pointer; }
-        .context-item.danger { color: var(--danger); }
-    </style>
-</head>
-<body>
 
-<div class="app">
-    <div class="navbar"><span class="navbar-title">Contegg</span><button class="navbar-btn" onclick="showCreateMenu()"><i class="fas fa-plus"></i></button></div>
-    <div class="content">
-        <div class="page active" id="chatsPage">
-            <div class="search-bar"><i class="fas fa-search"></i><input type="text" id="searchInput" placeholder="Поиск"></div>
-            <div class="chats-list" id="chatsList"><div class="loader"><div class="spinner"></div></div></div>
-        </div>
-        <div class="page" id="profilePage"><div id="profileContent"></div></div>
-    </div>
-    <div class="tabbar"><div class="tab active" data-tab="chats" onclick="switchTab('chats')"><i class="fas fa-comment"></i><span>Чаты</span></div><div class="tab" data-tab="profile" onclick="switchTab('profile')"><i class="fas fa-user"></i><span>Профиль</span></div></div>
-</div>
-
-<!-- Меню создания -->
-<div class="modal" id="createMenu"><div class="sheet"><div class="handle"></div><div class="modal-title">Создать</div><div class="modal-content"><button class="btn btn-primary" onclick="showCreateGroup()" style="margin-bottom:8px;"><i class="fas fa-users"></i> Группу</button><button class="btn btn-primary" onclick="showCreateChannel()"><i class="fas fa-broadcast-tower"></i> Канал</button><button class="btn btn-secondary" onclick="closeCreateMenu()">Отмена</button></div></div></div>
-
-<!-- Создание канала -->
-<div class="modal" id="createChannelModal"><div class="sheet"><div class="handle"></div><div class="modal-title">Создать канал</div><div class="modal-content"><div id="channelAvatarPreview" class="avatar" style="width:80px;height:80px;margin:0 auto 16px;cursor:pointer;" onclick="document.getElementById('channelAvatarInput').click()">📢</div><div class="input-row"><label>Название</label><input type="text" id="channelName" placeholder="Название канала"></div><div class="input-row"><label>Описание</label><textarea id="channelDesc" placeholder="Описание канала" rows="2"></textarea></div><button class="btn btn-primary" onclick="createChannel()">Создать</button><button class="btn btn-secondary" onclick="closeChannelModal()">Отмена</button></div></div></div>
-
-<!-- Создание группы -->
-<div class="modal" id="groupModal"><div class="sheet"><div class="handle"></div><div class="modal-title">Новая группа</div><div class="modal-content"><div id="groupAvatarPreview" class="avatar" style="width:80px;margin:0 auto 16px;cursor:pointer;" onclick="document.getElementById('groupAvatarInput').click()">👥</div><div class="input-row"><label>Название</label><input type="text" id="groupName" placeholder="Название группы"></div><div class="input-row"><label>Поиск</label><input type="text" id="groupSearch"></div><div id="groupUsersList" style="max-height:200px;overflow-y:auto;"></div><button class="btn btn-primary" id="createGroupBtn" onclick="createGroup()" disabled>Создать</button><button class="btn btn-secondary" onclick="closeGroupModal()">Отмена</button></div></div></div>
-
-<!-- Редактирование профиля -->
-<div class="modal" id="editProfileModal"><div class="sheet"><div class="handle"></div><div class="modal-title">Редактировать</div><div class="modal-content"><div id="editAvatarPreview" class="profile-avatar" style="width:80px;margin:0 auto 16px;cursor:pointer;" onclick="document.getElementById('avatarInput').click()"></div><div class="input-row"><label>Имя</label><input type="text" id="editName"></div><div class="input-row"><label>Био</label><textarea id="editBio" rows="2"></textarea></div><button class="btn btn-primary" onclick="saveProfile()">Сохранить</button><button class="btn btn-secondary" onclick="closeEditProfile()">Отмена</button></div></div></div>
-
-<!-- Смена пароля -->
-<div class="modal" id="passwordModal"><div class="sheet"><div class="handle"></div><div class="modal-title">Смена пароля</div><div class="modal-content"><div class="input-row"><label>Текущий</label><input type="password" id="oldPass"></div><div class="input-row"><label>Новый</label><input type="password" id="newPass"></div><div class="input-row"><label>Подтвердите</label><input type="password" id="confirmPass"></div><button class="btn btn-primary" onclick="changePassword()">Сменить</button><button class="btn btn-secondary" onclick="closePasswordModal()">Отмена</button><div id="passError" style="color:var(--danger);margin-top:8px;"></div></div></div></div>
-
-<!-- Добавление поста в канал -->
-<div class="modal" id="postModal"><div class="sheet"><div class="handle"></div><div class="modal-title">Новый пост</div><div class="modal-content"><div class="input-row"><label>Текст</label><textarea id="postText" rows="4" placeholder="Введите текст поста..."></textarea></div><button class="btn btn-primary" onclick="addPost()">Опубликовать</button><button class="btn btn-secondary" onclick="closePostModal()">Отмена</button></div></div></div>
-
-<!-- Настройки канала -->
-<div class="modal" id="channelSettingsModal"><div class="sheet"><div class="handle"></div><div class="modal-title">Настройки канала</div><div class="modal-content" id="channelSettingsContent"></div></div></div>
-
-<!-- Профиль пользователя -->
-<div class="modal" id="userModal"><div class="sheet"><div class="handle"></div><div id="userContent"></div></div></div>
-
-<!-- Обрезка фото -->
-<div class="modal" id="cropModal"><div class="sheet"><div class="handle"></div><div class="modal-title">Обрезать</div><div class="modal-content"><img id="cropImage" style="max-width:100%"><button class="btn btn-primary" onclick="saveCrop()">Готово</button><button class="btn btn-secondary" onclick="closeCrop()">Отмена</button></div></div></div>
-<div class="modal" id="channelCropModal"><div class="sheet"><div class="handle"></div><div class="modal-title">Обрезать</div><div class="modal-content"><img id="channelCropImage" style="max-width:100%"><button class="btn btn-primary" onclick="saveChannelCrop()">Готово</button><button class="btn btn-secondary" onclick="closeChannelCrop()">Отмена</button></div></div></div>
-
-<!-- Экран чата -->
-<div class="chat-screen" id="chatScreen">
-    <div class="chat-header"><button class="chat-back" onclick="closeChat()"><i class="fas fa-chevron-left"></i></button><div class="chat-info" onclick="openChatInfo()"><div class="chat-avatar" id="chatAvatar"></div><div><div id="chatName"></div><div id="chatStatus" style="font-size:12px;color:var(--text2);"></div></div></div></div>
-    <div class="messages" id="messages"></div>
-    <div class="input-bar"><textarea class="chat-input" id="messageInput" placeholder="Сообщение" rows="1"></textarea><button class="send" onclick="sendMessage()"><i class="fas fa-arrow-up"></i></button></div>
-</div>
-
-<!-- Контекстное меню -->
-<div class="context-menu" id="contextMenu"><div class="context-item" onclick="ctxDelete()"><i class="fas fa-trash"></i> Удалить чат</div></div>
-
-<input type="file" id="avatarInput" accept="image/*" style="display:none">
-<input type="file" id="groupAvatarInput" accept="image/*" style="display:none">
-<input type="file" id="channelAvatarInput" accept="image/*" style="display:none">
-<div class="toast" id="toast"></div>
-
-<script>
-// ==================== FIREBASE ====================
-const firebaseConfig = {
-    apiKey: "AIzaSyBKTPyHKC_Mp1ZO6NDiCaJVz3w1u_PWfUo",
-    authDomain: "contegg-b3b4b.firebaseapp.com",
-    projectId: "contegg-b3b4b",
-    storageBucket: "contegg-b3b4b.firebasestorage.app",
-    messagingSenderId: "678323780149",
-    appId: "1:678323780149:web:9717ac593a21d97a19cf7c"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-const auth = firebase.auth();
-
-let currentUser = null, userData = {}, pinnedChats = [];
-let currentChat = null, currentChatType = null, currentChannel = null;
-let allUsers = [], selectedUsers = new Set();
-let groupAvatar = null, channelAvatar = null;
-let cropper = null, channelCropper = null;
-let chatsListener = null, messagesListener = null;
-let savedChatId = null;
-
-function toast(msg) { let t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2000); }
-function esc(s) { return (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function timeAgo(d) { if(!d) return ''; let s=Math.floor((Date.now()-d)/1000); if(s<60) return 'сейчас'; if(s<3600) return Math.floor(s/60)+' мин'; return Math.floor(s/3600)+' ч'; }
-
-// ==================== АВТОРИЗАЦИЯ ====================
-auth.onAuthStateChanged(async user => {
-    if (!user) { location.href = 'index.html'; return; }
-    currentUser = user;
-    await loadUserData();
-    await initSavedChat();
-    await loadChats();
-    startChatsListener();
-    loadAllUsers();
-});
-
-async function loadUserData() {
-    let doc = await db.collection('users').doc(currentUser.uid).get();
-    if (!doc.exists) {
-        userData = { uid: currentUser.uid, username: 'user'+Date.now().toString(36), displayName: currentUser.displayName || 'Пользователь', bio: '', email: currentUser.email, avatar: null, pinnedChats: [] };
-        await db.collection('users').doc(currentUser.uid).set(userData);
-    } else {
-        userData = doc.data();
-        userData.pinnedChats = userData.pinnedChats || [];
-    }
-    pinnedChats = userData.pinnedChats;
-}
-
-async function initSavedChat() {
-    let q = await db.collection('chats').where('type', '==', 'saved').where('ownerId', '==', currentUser.uid).get();
-    if (!q.empty) { savedChatId = q.docs[0].id; return; }
-    let ref = await db.collection('chats').add({ type: 'saved', ownerId: currentUser.uid, participants: [currentUser.uid], name: 'Избранное', lastMessage: '', lastTime: new Date(), createdAt: new Date() });
-    savedChatId = ref.id;
-}
-
-async function loadAllUsers() {
-    let snap = await db.collection('users').get();
-    allUsers = [];
-    snap.forEach(d => { if (d.id !== currentUser.uid) allUsers.push({ uid: d.id, ...d.data() }); });
-}
-
-// ==================== НАВИГАЦИЯ ====================
-function switchTab(tab) {
-    let pages = document.querySelectorAll('.page');
-    let cur = document.querySelector('.page.active');
-    let target = document.getElementById(tab === 'chats' ? 'chatsPage' : 'profilePage');
-    if (cur === target) return;
-    cur.classList.remove('active');
-    target.classList.add('active');
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelector(`.tab[data-tab="${tab}"]`).classList.add('active');
-    if (tab === 'profile') renderProfile();
-}
-
-// ==================== ЗАГРУЗКА ЧАТОВ ====================
-async function loadChats() {
-    let list = document.getElementById('chatsList');
-    try {
-        let snap = await db.collection('chats').get();
-        let chats = [];
-        for (let doc of snap.docs) {
-            let chat = doc.data();
-            if (chat.type === 'saved' && chat.ownerId === currentUser.uid) chats.push({ id: doc.id, ...chat });
-            else if (chat.type === 'channel' && chat.subscribers?.includes(currentUser.uid)) chats.push({ id: doc.id, ...chat });
-            else if (chat.type === 'group' && chat.participants?.includes(currentUser.uid)) chats.push({ id: doc.id, ...chat });
-            else if (!chat.type && chat.participants?.includes(currentUser.uid)) {
-                let otherId = chat.participants.find(id => id !== currentUser.uid);
-                if (otherId) { let u = await getUserInfo(otherId); chats.push({ id: doc.id, ...chat, otherUser: u }); }
-            }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            -webkit-font-smoothing: antialiased;
         }
-        let saved = chats.find(c => c.type === 'saved');
-        let channels = chats.filter(c => c.type === 'channel');
-        let groups = chats.filter(c => c.type === 'group');
-        let dms = chats.filter(c => !c.type);
-        channels.sort((a,b) => (b.lastTime?.toDate()||0) - (a.lastTime?.toDate()||0));
-        groups.sort((a,b) => (b.lastTime?.toDate()||0) - (a.lastTime?.toDate()||0));
-        dms.sort((a,b) => (b.lastTime?.toDate()||0) - (a.lastTime?.toDate()||0));
-        let sorted = [];
-        if (saved) sorted.push(saved);
-        sorted.push(...channels, ...groups, ...dms);
-        if (sorted.length === 0) { list.innerHTML = '<div class="empty"><i class="fas fa-comments"></i><div>Нет чатов</div></div>'; return; }
-        list.innerHTML = sorted.map(chat => {
-            if (chat.type === 'saved') return `<div class="chat" onclick="openSavedChat()"><div class="avatar saved"><i class="fas fa-bookmark"></i></div><div class="info"><div class="top"><span class="name"><i class="fas fa-bookmark"></i> Избранное</span><span class="time">${timeAgo(chat.lastTime?.toDate())}</span></div><div class="preview">${esc(chat.lastMessage || 'Сохранённые сообщения')}</div></div></div>`;
-            if (chat.type === 'channel') return `<div class="chat" onclick="openChannel('${chat.id}')"><div class="avatar channel">${chat.avatar ? `<img src="${chat.avatar}" style="width:100%;height:100%;object-fit:cover;">` : '📢'}</div><div class="info"><div class="top"><span class="name"><i class="fas fa-broadcast-tower"></i> ${esc(chat.name)}</span><span class="time">${timeAgo(chat.lastTime?.toDate())}</span></div><div class="preview">${esc(chat.lastMessage || '')}</div></div></div>`;
-            if (chat.type === 'group') return `<div class="chat" onclick="openGroup('${chat.id}')"><div class="avatar group">${chat.avatar ? `<img src="${chat.avatar}">` : '👥'}</div><div class="info"><div class="top"><span class="name"><i class="fas fa-users"></i> ${esc(chat.name)}</span><span class="time">${timeAgo(chat.lastTime?.toDate())}</span></div><div class="preview">${esc(chat.lastMessage || '')}</div></div></div>`;
-            let u = chat.otherUser; return `<div class="chat" onclick="openDM('${chat.otherId}')"><div class="avatar">${u.avatar ? `<img src="${u.avatar}">` : (u.displayName?.[0]||'U')}</div><div class="info"><div class="top"><span class="name">${esc(u.displayName||u.username)}</span><span class="time">${timeAgo(chat.lastTime?.toDate())}</span></div><div class="preview">${chat.lastSender === currentUser.uid ? 'Вы: ' : ''}${esc(chat.lastMessage || '')}</div></div></div>`;
-        }).join('');
-    } catch(e) { list.innerHTML = '<div class="empty">Ошибка</div>'; }
-}
 
-function startChatsListener() { if (chatsListener) return; chatsListener = db.collection('chats').onSnapshot(() => loadChats()); }
-
-async function getUserInfo(uid) { let doc = await db.collection('users').doc(uid).get(); return doc.exists ? doc.data() : { uid, displayName: 'Пользователь', username: 'user', avatar: null, bio: '' }; }
-
-// ==================== СОЗДАНИЕ МЕНЮ ====================
-function showCreateMenu() { document.getElementById('createMenu').classList.add('show'); }
-function closeCreateMenu() { document.getElementById('createMenu').classList.remove('show'); }
-
-// ==================== КАНАЛЫ ====================
-function showCreateChannel() { closeCreateMenu(); document.getElementById('channelName').value = ''; document.getElementById('channelDesc').value = ''; channelAvatar = null; document.getElementById('channelAvatarPreview').innerHTML = '📢'; document.getElementById('createChannelModal').classList.add('show'); }
-function closeChannelModal() { document.getElementById('createChannelModal').classList.remove('show'); }
-async function createChannel() {
-    let name = document.getElementById('channelName').value.trim();
-    if (!name) { toast('Введите название'); return; }
-    let desc = document.getElementById('channelDesc').value.trim();
-    let data = { type: 'channel', name, description: desc, ownerId: currentUser.uid, subscribers: [currentUser.uid], posts: [], lastMessage: '', lastTime: new Date(), createdAt: new Date() };
-    if (channelAvatar) data.avatar = channelAvatar;
-    await db.collection('chats').add(data);
-    closeChannelModal();
-    toast('Канал создан');
-}
-async function openChannel(chatId) {
-    currentChat = { id: chatId };
-    currentChatType = 'channel';
-    let doc = await db.collection('chats').doc(chatId).get();
-    currentChannel = doc.data();
-    let avatar = document.getElementById('chatAvatar');
-    avatar.innerHTML = currentChannel.avatar ? `<img src="${currentChannel.avatar}" style="width:100%;height:100%;object-fit:cover;">` : '📢';
-    document.getElementById('chatName').textContent = currentChannel.name;
-    document.getElementById('chatStatus').textContent = `📢 Канал • ${currentChannel.subscribers?.length || 0} подписчиков`;
-    document.getElementById('chatScreen').classList.add('show');
-    await loadChannelPosts();
-}
-async function loadChannelPosts() {
-    let container = document.getElementById('messages');
-    container.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
-    let posts = await db.collection('chats').doc(currentChat.id).collection('posts').orderBy('timestamp', 'desc').get();
-    container.innerHTML = '';
-    if (posts.empty) { container.innerHTML = '<div class="empty">Нет постов</div>'; }
-    for (let doc of posts.docs) {
-        let post = doc.data();
-        let div = document.createElement('div');
-        div.className = 'post';
-        div.innerHTML = `<div class="post-text">${esc(post.text)}</div><div class="post-time">${new Date(post.timestamp?.toDate()).toLocaleString()}</div>`;
-        container.appendChild(div);
-    }
-}
-function openChatInfo() {
-    if (currentChatType === 'channel') {
-        document.getElementById('channelSettingsContent').innerHTML = `
-            <div style="width:80px;height:80px;border-radius:50%;margin:0 auto 16px;background:linear-gradient(135deg,#af52de,#5856d6);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;" onclick="document.getElementById('channelAvatarInput').click()">${currentChannel.avatar ? `<img src="${currentChannel.avatar}" style="width:100%;height:100%;object-fit:cover;">` : '📢'}</div>
-            <div class="input-row"><label>Название</label><input type="text" id="channelEditName" value="${esc(currentChannel.name)}"></div>
-            <div class="input-row"><label>Описание</label><textarea id="channelEditDesc" rows="2">${esc(currentChannel.description || '')}</textarea></div>
-            <button class="btn btn-primary" onclick="saveChannelSettings()">Сохранить</button>
-            <button class="btn btn-danger" onclick="deleteChannel()">Удалить канал</button>
-            <button class="btn btn-secondary" onclick="closeChannelSettings()">Закрыть</button>`;
-        document.getElementById('channelSettingsModal').classList.add('show');
-    }
-}
-async function saveChannelSettings() {
-    let name = document.getElementById('channelEditName').value.trim();
-    let desc = document.getElementById('channelEditDesc').value.trim();
-    await db.collection('chats').doc(currentChat.id).update({ name, description: desc });
-    currentChannel.name = name;
-    document.getElementById('chatName').textContent = name;
-    toast('Сохранено');
-    document.getElementById('channelSettingsModal').classList.remove('show');
-}
-async function deleteChannel() {
-    if (!confirm('Удалить канал навсегда?')) return;
-    let posts = await db.collection('chats').doc(currentChat.id).collection('posts').get();
-    let batch = db.batch();
-    posts.forEach(doc => batch.delete(doc.ref));
-    batch.delete(db.collection('chats').doc(currentChat.id));
-    await batch.commit();
-    closeChat();
-    toast('Канал удалён');
-}
-function closeChannelSettings() { document.getElementById('channelSettingsModal').classList.remove('show'); }
-async function addPost() {
-    let text = document.getElementById('postText').value.trim();
-    if (!text) return;
-    await db.collection('chats').doc(currentChat.id).collection('posts').add({ text, senderId: currentUser.uid, timestamp: new Date() });
-    await db.collection('chats').doc(currentChat.id).update({ lastMessage: text, lastTime: new Date() });
-    document.getElementById('postText').value = '';
-    closePostModal();
-    loadChannelPosts();
-}
-function showAddPost() { document.getElementById('postText').value = ''; document.getElementById('postModal').classList.add('show'); }
-function closePostModal() { document.getElementById('postModal').classList.remove('show'); }
-
-// ==================== ИЗБРАННОЕ ====================
-async function openSavedChat() {
-    currentChat = { id: savedChatId };
-    currentChatType = 'saved';
-    let avatar = document.getElementById('chatAvatar');
-    avatar.innerHTML = '<i class="fas fa-bookmark"></i>';
-    document.getElementById('chatName').textContent = 'Избранное';
-    document.getElementById('chatStatus').textContent = 'Сохранённые сообщения';
-    document.getElementById('chatScreen').classList.add('show');
-    await loadMessages();
-}
-async function saveToFavorites(text) {
-    await db.collection('chats').doc(savedChatId).collection('messages').add({ text: `📌 ${text}`, senderId: currentUser.uid, timestamp: new Date() });
-    await db.collection('chats').doc(savedChatId).update({ lastMessage: `📌 ${text.substring(0,50)}`, lastTime: new Date() });
-    toast('Сохранено в избранное');
-}
-
-// ==================== ГРУППЫ ====================
-function showCreateGroup() { closeCreateMenu(); selectedUsers.clear(); groupAvatar = null; document.getElementById('groupName').value = ''; document.getElementById('groupAvatarPreview').innerHTML = '👥'; updateGroupBtn(); renderGroupUsers(); document.getElementById('groupModal').classList.add('show'); }
-function closeGroupModal() { document.getElementById('groupModal').classList.remove('show'); }
-function renderGroupUsers(f = '') {
-    let q = f.toLowerCase();
-    let filtered = allUsers.filter(u => (u.displayName || '').toLowerCase().includes(q) || (u.username || '').toLowerCase().includes(q));
-    document.getElementById('groupUsersList').innerHTML = filtered.map(u => `<div onclick="toggleUser('${u.uid}')" style="display:flex;align-items:center;gap            display: flex;
+        .app-container {
+            display: flex;
             flex-direction: column;
             height: 100vh;
             height: 100dvh;
