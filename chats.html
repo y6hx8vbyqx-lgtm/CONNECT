@@ -543,6 +543,89 @@
         .reaction-badge:active { background: rgba(255,255,255,0.2); transform: scale(0.95); }
         .reaction-badge.by-me { background: rgba(0,122,255,0.4); border: 0.5px solid rgba(0,122,255,0.8); }
 
+        /* Новые стили для изображений */
+        .msg-image {
+            max-width: 250px;
+            max-height: 250px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: 0.2s;
+            display: block;
+            margin: 4px 0;
+        }
+        
+        .msg-image:active {
+            transform: scale(0.98);
+        }
+        
+        .image-upload-btn {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            border: none;
+            color: var(--accent);
+            font-size: 16px;
+            cursor: pointer;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.2s;
+        }
+        
+        .image-upload-btn:active {
+            transform: scale(0.9);
+            background: rgba(0, 122, 255, 0.2);
+        }
+        
+        .image-preview-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 3000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: 0.3s;
+            cursor: pointer;
+        }
+        
+        .image-preview-overlay.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        .image-preview-overlay img {
+            max-width: 95%;
+            max-height: 95%;
+            object-fit: contain;
+            border-radius: 8px;
+        }
+        
+        .image-preview-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 3001;
+        }
+
         .chat-input-bar {
             background: rgba(0,0,0,0.8);
             backdrop-filter: blur(20px);
@@ -837,6 +920,9 @@
                 </div>
             </div>
             <div style="display:flex;gap:8px;align-items:flex-end;">
+                <button class="image-upload-btn" id="imageUploadBtn" onclick="document.getElementById('imageInput').click()">
+                    <i class="fas fa-image"></i>
+                </button>
                 <textarea class="chat-input" id="chatInput" placeholder="Сообщение" rows="1"></textarea>
                 <button class="chat-send" id="sendBtn" onclick="sendMessage()">
                     <i class="fas fa-arrow-up"></i>
@@ -979,8 +1065,17 @@
     <span onclick="addReaction('💩')">💩</span>
 </div>
 
+<!-- Новый оверлей для просмотра фото -->
+<div class="image-preview-overlay" id="imagePreviewOverlay" onclick="closeImagePreview()">
+    <button class="image-preview-close" onclick="closeImagePreview()">
+        <i class="fas fa-times"></i>
+    </button>
+    <img id="imagePreviewImg" src="" alt="Preview">
+</div>
+
 <input type="file" id="avatarInput" accept="image/*" style="display:none;">
 <input type="file" id="groupAvatarInput" accept="image/*" style="display:none;">
+<input type="file" id="imageInput" accept="image/*" style="display:none;" multiple>
 
 <div class="toast" id="toast"></div>
 
@@ -1040,6 +1135,12 @@ let groupCropper = null;
 let usersCache = {};
 let savedChatId = null;
 
+// Константы для сжатия изображений
+const MAX_IMAGE_WIDTH = 1280;
+const MAX_IMAGE_HEIGHT = 1280;
+const MAX_IMAGE_SIZE_MB = 5;
+const JPEG_QUALITY = 0.75;
+
 function toast(msg) {
     const t = document.getElementById('toast');
     t.textContent = msg;
@@ -1073,6 +1174,137 @@ function dateDivider(d) {
     if (diff === 1) return 'Вчера';
     return d.toLocaleDateString('ru', { day: 'numeric', month: 'long' });
 }
+
+// Функция сжатия изображения
+async function compressImage(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                let { width, height } = img;
+                
+                if (width > MAX_IMAGE_WIDTH || height > MAX_IMAGE_HEIGHT) {
+                    const ratio = Math.min(
+                        MAX_IMAGE_WIDTH / width,
+                        MAX_IMAGE_HEIGHT / height
+                    );
+                    width = Math.round(width * ratio);
+                    height = Math.round(height * ratio);
+                }
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                let quality = JPEG_QUALITY;
+                let result = canvas.toDataURL('image/jpeg', quality);
+                
+                while (result.length > MAX_IMAGE_SIZE_MB * 1024 * 1024 && quality > 0.3) {
+                    quality -= 0.1;
+                    result = canvas.toDataURL('image/jpeg', quality);
+                }
+                
+                if (result.length > MAX_IMAGE_SIZE_MB * 1024 * 1024) {
+                    const smallerCanvas = document.createElement('canvas');
+                    const ratio = Math.sqrt((MAX_IMAGE_SIZE_MB * 1024 * 1024) / result.length);
+                    smallerCanvas.width = Math.round(width * ratio);
+                    smallerCanvas.height = Math.round(height * ratio);
+                    const sCtx = smallerCanvas.getContext('2d');
+                    sCtx.drawImage(canvas, 0, 0, smallerCanvas.width, smallerCanvas.height);
+                    result = smallerCanvas.toDataURL('image/jpeg', 0.7);
+                }
+                
+                resolve(result);
+            };
+            img.onerror = reject;
+            img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+// Отправка изображений
+async function sendImages(files) {
+    if (!currentChatId || !files || files.length === 0) return;
+    
+    const sendBtn = document.getElementById('sendBtn');
+    const uploadBtn = document.getElementById('imageUploadBtn');
+    sendBtn.disabled = true;
+    uploadBtn.disabled = true;
+    
+    try {
+        for (const file of files) {
+            if (!file.type.startsWith('image/')) {
+                toast('Можно отправлять только изображения');
+                continue;
+            }
+            
+            const compressed = await compressImage(file);
+            
+            const msgData = {
+                text: '',
+                imageBase64: compressed,
+                senderId: currentUser.uid,
+                timestamp: new Date(),
+                read: false
+            };
+            
+            if (replyingTo) {
+                msgData.replyTo = {
+                    messageId: replyingTo.id,
+                    senderId: replyingTo.senderId,
+                    text: replyingTo.text
+                };
+                cancelReply();
+            }
+            
+            await db.collection('chats').doc(currentChatId)
+                .collection('messages').add(msgData);
+            
+            let unreadFor = [];
+            if (currentChatIsGroup) {
+                unreadFor = currentChatParticipants.filter(id => id !== currentUser.uid);
+            } else if (currentChatUser && !currentChatIsSaved) {
+                unreadFor = [currentChatUser.uid];
+            }
+            
+            await db.collection('chats').doc(currentChatId).update({
+                lastMessage: '📷 Фото',
+                lastSender: currentUser.uid,
+                lastMessageTime: new Date(),
+                unreadFor: firebase.firestore.FieldValue.arrayUnion(...unreadFor)
+            });
+        }
+    } catch (e) {
+        console.error('Ошибка отправки фото:', e);
+        toast('Ошибка при отправке фото');
+    } finally {
+        sendBtn.disabled = false;
+        uploadBtn.disabled = false;
+    }
+}
+
+// Просмотр изображения
+function viewImage(src) {
+    const overlay = document.getElementById('imagePreviewOverlay');
+    const img = document.getElementById('imagePreviewImg');
+    img.src = src;
+    overlay.classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeImagePreview() {
+    const overlay = document.getElementById('imagePreviewOverlay');
+    overlay.classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+// ... ПРОДОЛЖЕНИЕ ВСЕХ СУЩЕСТВУЮЩИХ ФУНКЦИЙ БЕЗ ИЗМЕНЕНИЙ ...
 
 async function getOrCreateSavedChat() {
     if (savedChatId) return savedChatId;
@@ -1125,6 +1357,7 @@ async function openSavedChatUI() {
     document.getElementById('chatOverlay').classList.add('show');
     document.getElementById('chatInput').disabled = false;
     document.getElementById('sendBtn').disabled = false;
+    document.getElementById('imageUploadBtn').disabled = false;
     await loadMessages();
     
     setTimeout(() => document.getElementById('chatInput').focus(), 300);
@@ -1133,16 +1366,24 @@ async function openSavedChatUI() {
 async function saveMessageToFavorites(messageId, messageData) {
     try {
         const savedChatId = await getOrCreateSavedChat();
-        const textToSave = `📌 ${messageData.text || ''}`;
+        const textToSave = messageData.imageBase64 
+            ? `📷 Фото` 
+            : `📌 ${messageData.text || ''}`;
         
-        await db.collection('chats').doc(savedChatId).collection('messages').add({
+        const msgToSave = {
             text: textToSave,
             senderId: currentUser.uid,
             timestamp: new Date(),
             originalMessageId: messageId,
             isSavedMessage: true,
             read: false
-        });
+        };
+        
+        if (messageData.imageBase64) {
+            msgToSave.imageBase64 = messageData.imageBase64;
+        }
+        
+        await db.collection('chats').doc(savedChatId).collection('messages').add(msgToSave);
         
         await db.collection('chats').doc(savedChatId).update({
             lastMessage: textToSave,
@@ -1534,6 +1775,7 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
     document.getElementById('chatOverlay').classList.add('show');
     document.getElementById('chatInput').disabled = false;
     document.getElementById('sendBtn').disabled = false;
+    document.getElementById('imageUploadBtn').disabled = false;
     await loadMessages();
     markAsRead();
     
@@ -1622,6 +1864,7 @@ async function loadMessages() {
         });
 }
 
+// ОБНОВЛЕННАЯ функция renderMessage с поддержкой изображений
 function renderMessage(id, msg) {
     const container = document.getElementById('chatMessages');
     const isOut = msg.senderId === currentUser.uid;
@@ -1640,7 +1883,7 @@ function renderMessage(id, msg) {
     if (msg.replyTo) {
         html += `<div class="msg-reply">
             <div class="msg-reply-name">${msg.replyTo.senderId === currentUser.uid ? 'Вы' : 'Пользователь'}</div>
-            <div class="msg-reply-text">${esc(msg.replyTo.text || '')}</div>
+            <div class="msg-reply-text">${esc(msg.replyTo.text || 'Фото')}</div>
         </div>`;
     }
     
@@ -1652,7 +1895,14 @@ function renderMessage(id, msg) {
         html += `<span class="msg-sender" style="font-size:12px;color:var(--accent);font-weight:500;"></span>`;
     }
     
-    html += esc(msg.text || '');
+    // Добавляем изображение если есть
+    if (msg.imageBase64) {
+        html += `<img src="${msg.imageBase64}" class="msg-image" onclick="event.stopPropagation(); viewImage('${msg.imageBase64}')" alt="Photo" loading="lazy">`;
+    }
+    
+    if (msg.text) {
+        html += esc(msg.text);
+    }
     
     if (msg.reactions && Object.keys(msg.reactions).length > 0) {
         html += '<div class="msg-reactions">';
@@ -1681,12 +1931,13 @@ function renderMessage(id, msg) {
     });
     
     div.addEventListener('click', (e) => {
-        if (e.target.closest('.reaction-badge')) return;
+        if (e.target.closest('.reaction-badge') || e.target.closest('.msg-image')) return;
         showReactionsPanelForMsg(id, msg, e);
     });
     
     let timer;
     div.addEventListener('touchstart', (e) => {
+        if (e.target.closest('.msg-image')) return;
         timer = setTimeout(() => showMsgContext(e, id, msg), 500);
     });
     div.addEventListener('touchend', () => clearTimeout(timer));
@@ -1739,13 +1990,16 @@ function updateMessageReactions(id, reactions) {
     });
 }
 
+// ОБНОВЛЕННАЯ функция sendMessage
 async function sendMessage() {
     const input = document.getElementById('chatInput');
     const text = input.value.trim();
     if (!text || !currentChatId) return;
     
     const btn = document.getElementById('sendBtn');
+    const uploadBtn = document.getElementById('imageUploadBtn');
     btn.disabled = true;
+    uploadBtn.disabled = true;
     input.value = '';
     input.style.height = 'auto';
     
@@ -1784,6 +2038,7 @@ async function sendMessage() {
     } catch (e) { toast('Ошибка отправки'); }
     
     btn.disabled = false;
+    uploadBtn.disabled = false;
     document.getElementById('chatInput').focus();
 }
 
@@ -1814,10 +2069,10 @@ function ctxReply() {
     document.getElementById('msgContextMenu').style.display = 'none';
     if (!selectedMsgId || !selectedMsgData) return;
     
-    replyingTo = { id: selectedMsgId, text: selectedMsgData.text, senderId: selectedMsgData.senderId };
+    replyingTo = { id: selectedMsgId, text: selectedMsgData.text || 'Фото', senderId: selectedMsgData.senderId };
     document.getElementById('replyPreview').style.display = 'flex';
     document.getElementById('replyName').textContent = selectedMsgData.senderId === currentUser.uid ? 'Вы' : 'Пользователь';
-    document.getElementById('replyText').textContent = (selectedMsgData.text || '').substring(0, 60);
+    document.getElementById('replyText').textContent = (selectedMsgData.text || 'Фото').substring(0, 60);
     document.getElementById('chatInput').focus();
 }
 
@@ -2374,6 +2629,51 @@ window.addEventListener('DOMContentLoaded', () => {
     initSearchScroll();
 });
 
+// Обработчики для отправки изображений
+document.getElementById('imageInput').addEventListener('change', function(e) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    sendImages(files);
+    this.value = '';
+});
+
+// Обработчик вставки изображений из буфера обмена
+document.addEventListener('paste', function(e) {
+    const chatInput = document.getElementById('chatInput');
+    if (document.activeElement !== chatInput) return;
+    
+    const items = e.clipboardData.items;
+    const files = [];
+    
+    for (const item of items) {
+        if (item.type.indexOf('image') !== -1) {
+            const file = item.getAsFile();
+            files.push(file);
+        }
+    }
+    
+    if (files.length > 0) {
+        e.preventDefault();
+        sendImages(files);
+    }
+});
+
+// Drag & drop для изображений
+document.getElementById('chatOverlay').addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+});
+
+document.getElementById('chatOverlay').addEventListener('drop', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length > 0) {
+        sendImages(files);
+    }
+});
+
 document.getElementById('chatInput').addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -2401,6 +2701,7 @@ document.addEventListener('click', (e) => {
 
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
+        closeImagePreview();
         closeChat();
         document.getElementById('profileEditModal').classList.remove('show');
         document.getElementById('changePasswordModal').classList.remove('show');
@@ -2412,7 +2713,7 @@ document.addEventListener('keydown', e => {
     }
 });
 
-console.log('✅ Contegg Messenger · Полная версия со всеми функциями');
+console.log('✅ Contegg Messenger · Полная версия с поддержкой фото и автосжатием');
 </script>
 </body>
 </html>
