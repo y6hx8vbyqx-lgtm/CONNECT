@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Contegg · Messenger</title>
+    <title>Contegg · Messenger + Каналы</title>
     
     <meta name="theme-color" content="#000000">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -42,6 +42,7 @@
             --danger: #ff3b30;
             --pinned: #ffcc00;
             --saved: #ff9f0a;
+            --channel: #af52de;
             --separator: rgba(84, 84, 88, 0.65);
             --tab-bar-bg: rgba(28, 28, 30, 0.92);
             --safe-bottom: env(safe-area-inset-bottom, 20px);
@@ -203,7 +204,7 @@
         .search-result-item:last-child { border-bottom: none; }
         .search-result-item:active { background: var(--bg-tertiary); }
 
-        .chats-list {
+        .chats-list, .channels-list {
             padding: 0 16px 20px;
             display: flex;
             flex-direction: column;
@@ -225,6 +226,16 @@
         .chat-cell.unread { background: rgba(0, 122, 255, 0.08); }
         .chat-cell.pinned { background: rgba(255, 204, 0, 0.05); }
         .chat-cell.saved { background: rgba(255, 159, 10, 0.05); }
+
+        .channel-card {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 14px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .channel-card:active { background: var(--bg-tertiary); transform: scale(0.98); }
 
         .unread-dot {
             position: absolute;
@@ -256,6 +267,7 @@
         .chat-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .chat-avatar.group { background: linear-gradient(135deg, #34c759, #007aff); }
         .chat-avatar.saved { background: linear-gradient(135deg, #ff9f0a, #ff4d4d); }
+        .chat-avatar.channel { background: linear-gradient(135deg, var(--channel), #5856d6); }
 
         .chat-content {
             flex: 1;
@@ -289,6 +301,7 @@
         .pinned-icon { color: var(--pinned); font-size: 10px; }
         .saved-icon { color: var(--saved); font-size: 12px; }
         .group-icon { color: var(--online); font-size: 12px; }
+        .channel-icon { color: var(--channel); font-size: 12px; }
 
         .tabbar {
             position: fixed;
@@ -339,6 +352,11 @@
         .tab-item.active {
             color: var(--accent);
             background: rgba(0, 122, 255, 0.15);
+        }
+
+        .tab-item[data-tab="channels"].active {
+            color: var(--channel);
+            background: rgba(175, 82, 222, 0.15);
         }
 
         .tab-item.active i {
@@ -505,6 +523,17 @@
         }
         .msg-out { align-self: flex-end; background: var(--accent); color: white; border-bottom-right-radius: 4px; }
         .msg-in { align-self: flex-start; background: var(--bg-secondary); border-bottom-left-radius: 4px; }
+        
+        .channel-message {
+            background: var(--bg-secondary);
+            border-radius: 14px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+        .channel-msg-text { font-size: 15px; line-height: 1.4; margin: 6px 0; }
+        .channel-msg-stats { font-size: 11px; color: var(--text-tertiary); display: flex; gap: 12px; margin-top: 6px; }
+        .channel-info-bar { background: rgba(175,82,222,0.15); padding: 8px 12px; font-size: 13px; text-align: center; border-bottom: 0.5px solid var(--separator); }
+
         .msg-reply {
             background: rgba(255,255,255,0.15);
             border-left: 2px solid rgba(255,255,255,0.4);
@@ -657,6 +686,25 @@
             resize: none;
         }
 
+        .visibility-select {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .visibility-option {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            border-radius: 12px;
+            background: var(--bg-tertiary);
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .visibility-option.active {
+            background: var(--accent);
+            color: white;
+        }
+
         .btn {
             width: 100%;
             padding: 14px;
@@ -764,6 +812,14 @@
             transform: scale(1.1);
             background: rgba(255,255,255,0.1);
         }
+
+        .sub-badge {
+            background: rgba(0,122,255,0.2);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            margin-left: 8px;
+        }
     </style>
 </head>
 <body>
@@ -771,7 +827,7 @@
 <div class="app-container">
     <div class="navbar">
         <span class="navbar-title">Contegg</span>
-        <button class="navbar-btn" onclick="showCreateGroup()">
+        <button class="navbar-btn" id="createBtn">
             <i class="fas fa-plus"></i>
         </button>
     </div>
@@ -790,6 +846,12 @@
             </div>
         </div>
 
+        <div class="page" id="pageChannels">
+            <div class="channels-list" id="channelsList">
+                <div class="loader"><div class="spinner"></div><span>Загрузка каналов...</span></div>
+            </div>
+        </div>
+
         <div class="page" id="pageProfile">
             <div class="profile-page" id="profileContent">
                 <div class="loader"><div class="spinner"></div></div>
@@ -801,6 +863,10 @@
         <div class="tab-item active" data-tab="chats" onclick="switchTab('chats')">
             <i class="fas fa-comment"></i>
             <span>Чаты</span>
+        </div>
+        <div class="tab-item" data-tab="channels" onclick="switchTab('channels')">
+            <i class="fas fa-bullhorn"></i>
+            <span>Каналы</span>
         </div>
         <div class="tab-item" data-tab="profile" onclick="switchTab('profile')">
             <i class="fas fa-user"></i>
@@ -818,14 +884,18 @@
             <div class="chat-user-avatar" id="chatAvatar"></div>
             <div>
                 <div class="chat-user-name" id="chatName"></div>
-                <div class="chat-user-status" id="chatStatus">онлайн</div>
+                <div class="chat-user-status" id="chatStatus"></div>
             </div>
         </div>
+        <button class="navbar-btn" id="chatMenuBtn" style="width:36px;height:36px;background:transparent;" onclick="showChatMenu()">
+            <i class="fas fa-ellipsis-h"></i>
+        </button>
     </div>
+    <div id="channelInfoBar" class="channel-info-bar" style="display:none;"></div>
     <div class="chat-messages" id="chatMessages">
         <div class="loader"><div class="spinner"></div></div>
     </div>
-    <div class="chat-input-bar">
+    <div class="chat-input-bar" id="inputBar">
         <div style="flex:1;display:flex;flex-direction:column;">
             <div class="reply-preview" id="replyPreview" style="display:none;">
                 <div style="flex:1;">
@@ -842,6 +912,70 @@
                     <i class="fas fa-arrow-up"></i>
                 </button>
             </div>
+        </div>
+    </div>
+    <div class="chat-input-bar" id="subscribeBar" style="display:none; justify-content:center;">
+        <button class="btn-primary" style="width:auto;padding:10px 24px;border-radius:30px;" onclick="subscribeToChannel()">
+            <i class="fas fa-bell"></i> Подписаться
+        </button>
+    </div>
+</div>
+
+<!-- Модалка создания канала -->
+<div class="modal-overlay" id="createChannelModal">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Создать канал</div>
+        <div class="modal-content">
+            <div class="input-row">
+                <label>Название канала</label>
+                <input type="text" id="channelNameInput" placeholder="Название" maxlength="40">
+            </div>
+            <div class="input-row">
+                <label>Описание</label>
+                <textarea id="channelDescInput" placeholder="Описание канала" maxlength="200" rows="2"></textarea>
+            </div>
+            <div class="visibility-select">
+                <div class="visibility-option active" data-vis="public" onclick="selectChannelVisibility('public')">
+                    <i class="fas fa-globe"></i> Публичный
+                </div>
+                <div class="visibility-option" data-vis="private" onclick="selectChannelVisibility('private')">
+                    <i class="fas fa-lock"></i> По ссылке
+                </div>
+            </div>
+            <div style="margin-bottom: 16px; text-align: center;">
+                <div id="channelAvatarPreview" style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, var(--channel), #5856d6); display: flex; align-items: center; justify-content: center; font-size: 32px; color: white; margin: 0 auto 8px; overflow: hidden;">📢</div>
+                <button class="btn-sm" onclick="document.getElementById('channelAvatarFile').click()" style="background: none; border: none; color: var(--accent); font-size: 14px; cursor: pointer;">
+                    <i class="fas fa-camera"></i> Загрузить фото
+                </button>
+            </div>
+            <button class="btn btn-primary" onclick="createChannel()">Создать канал</button>
+            <button class="btn btn-secondary" onclick="closeModal('createChannelModal')">Отмена</button>
+        </div>
+    </div>
+</div>
+
+<!-- Модалка управления каналом -->
+<div class="modal-overlay" id="manageChannelModal">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Управление каналом</div>
+        <div class="modal-content" id="manageChannelContent"></div>
+    </div>
+</div>
+
+<!-- Модалка приглашения -->
+<div class="modal-overlay" id="inviteModal">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Пригласить в канал</div>
+        <div class="modal-content">
+            <div class="input-row">
+                <label>Ссылка-приглашение</label>
+                <input type="text" id="inviteLinkInput" readonly onclick="this.select()">
+            </div>
+            <button class="btn btn-primary" onclick="copyInviteLink()">Копировать ссылку</button>
+            <button class="btn btn-secondary" onclick="closeModal('inviteModal')">Закрыть</button>
         </div>
     </div>
 </div>
@@ -981,10 +1115,12 @@
 
 <input type="file" id="avatarInput" accept="image/*" style="display:none;">
 <input type="file" id="groupAvatarInput" accept="image/*" style="display:none;">
+<input type="file" id="channelAvatarFile" accept="image/*" style="display:none;">
 
 <div class="toast" id="toast"></div>
 
 <script>
+// ==================== ИНИЦИАЛИЗАЦИЯ FULLSCREEN ====================
 function enterFullscreen() {
     const docEl = document.documentElement;
     const requestFullscreen = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.msRequestFullscreen;
@@ -1004,6 +1140,7 @@ document.addEventListener('click', () => {
     }
 });
 
+// ==================== FIREBASE ====================
 const firebaseConfig = {
     apiKey: "AIzaSyBKTPyHKC_Mp1ZO6NDiCaJVz3w1u_PWfUo",
     authDomain: "contegg-b3b4b.firebaseapp.com",
@@ -1016,6 +1153,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
 
+// ==================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ====================
 let currentUser = null;
 let userData = {};
 let blockedUsers = [];
@@ -1025,6 +1163,8 @@ let currentChatId = null;
 let currentChatUser = null;
 let currentChatIsGroup = false;
 let currentChatIsSaved = false;
+let currentChatIsChannel = false;
+let currentChannel = null;
 let currentChatParticipants = [];
 let chatMessagesListener = null;
 let chatsGlobalListener = null;
@@ -1035,11 +1175,14 @@ let selectedChatContext = null;
 let allUsers = [];
 let selectedGroupUsers = new Set();
 let groupAvatarBase64 = null;
+let channelAvatarBase64 = null;
+let selectedChannelVisibility = 'public';
 let cropper = null;
 let groupCropper = null;
 let usersCache = {};
 let savedChatId = null;
 
+// ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 function toast(msg) {
     const t = document.getElementById('toast');
     t.textContent = msg;
@@ -1074,94 +1217,11 @@ function dateDivider(d) {
     return d.toLocaleDateString('ru', { day: 'numeric', month: 'long' });
 }
 
-async function getOrCreateSavedChat() {
-    if (savedChatId) return savedChatId;
-    
-    const savedChatsRef = db.collection('chats');
-    const query = await savedChatsRef.where('isSaved', '==', true).where('ownerId', '==', currentUser.uid).get();
-    
-    if (!query.empty) {
-        savedChatId = query.docs[0].id;
-        return savedChatId;
-    }
-    
-    const newChat = {
-        isSaved: true,
-        isGroup: false,
-        ownerId: currentUser.uid,
-        participants: [currentUser.uid],
-        name: 'Избранное',
-        lastMessage: '',
-        lastMessageTime: new Date(),
-        createdAt: new Date(),
-        unreadFor: []
-    };
-    
-    const docRef = await db.collection('chats').add(newChat);
-    savedChatId = docRef.id;
-    return savedChatId;
+function closeModal(modalId) {
+    document.getElementById(modalId).classList.remove('show');
 }
 
-async function openSavedChat() {
-    currentChatIsSaved = true;
-    currentChatIsGroup = false;
-    currentChatUser = null;
-    const chatId = await getOrCreateSavedChat();
-    currentChatId = chatId;
-    await openSavedChatUI();
-}
-
-async function openSavedChatUI() {
-    const avatar = document.getElementById('chatAvatar');
-    avatar.innerHTML = '<i class="fas fa-bookmark" style="font-size:20px;"></i>';
-    avatar.style.background = 'linear-gradient(135deg, #ff9f0a, #ff4d4d)';
-    avatar.style.display = 'flex';
-    avatar.style.alignItems = 'center';
-    avatar.style.justifyContent = 'center';
-    
-    document.getElementById('chatName').textContent = 'Избранное';
-    document.getElementById('chatStatus').textContent = 'Сохранённые сообщения';
-    
-    document.getElementById('chatOverlay').classList.add('show');
-    document.getElementById('chatInput').disabled = false;
-    document.getElementById('sendBtn').disabled = false;
-    await loadMessages();
-    
-    setTimeout(() => document.getElementById('chatInput').focus(), 300);
-}
-
-async function saveMessageToFavorites(messageId, messageData) {
-    try {
-        const savedChatId = await getOrCreateSavedChat();
-        const textToSave = `📌 ${messageData.text || ''}`;
-        
-        await db.collection('chats').doc(savedChatId).collection('messages').add({
-            text: textToSave,
-            senderId: currentUser.uid,
-            timestamp: new Date(),
-            originalMessageId: messageId,
-            isSavedMessage: true,
-            read: false
-        });
-        
-        await db.collection('chats').doc(savedChatId).update({
-            lastMessage: textToSave,
-            lastSender: currentUser.uid,
-            lastMessageTime: new Date()
-        });
-        
-        toast('Сообщение сохранено в избранное');
-    } catch (e) {
-        toast('Ошибка сохранения');
-    }
-}
-
-function ctxSaveToFavorites() {
-    document.getElementById('msgContextMenu').style.display = 'none';
-    if (!selectedMsgId || !selectedMsgData) return;
-    saveMessageToFavorites(selectedMsgId, selectedMsgData);
-}
-
+// ==================== АВТОРИЗАЦИЯ ====================
 auth.onAuthStateChanged(async user => {
     if (!user) { location.href = 'index.html'; return; }
     currentUser = user;
@@ -1169,9 +1229,17 @@ auth.onAuthStateChanged(async user => {
     await loadAdminUsers();
     await getOrCreateSavedChat();
     await loadChats();
+    await loadChannels();
     startGlobalChatsListener();
     loadAllUsers();
     checkAutoOpen();
+    
+    const createBtn = document.getElementById('createBtn');
+    createBtn.onclick = () => {
+        const activeTab = document.querySelector('.tab-item.active').dataset.tab;
+        if (activeTab === 'chats') showCreateGroup();
+        else if (activeTab === 'channels') showCreateChannelModal();
+    };
 });
 
 async function loadUserData() {
@@ -1223,11 +1291,12 @@ async function loadAllUsers() {
     });
 }
 
+// ==================== НАВИГАЦИЯ ====================
 function switchTab(tab) {
     const pages = document.querySelectorAll('.page');
     const tabs = document.querySelectorAll('.tab-item');
     const currentPage = document.querySelector('.page.active');
-    const targetPage = document.getElementById(tab === 'chats' ? 'pageChats' : 'pageProfile');
+    const targetPage = document.getElementById(tab === 'chats' ? 'pageChats' : (tab === 'channels' ? 'pageChannels' : 'pageProfile'));
     
     if (currentPage === targetPage) return;
     
@@ -1238,7 +1307,20 @@ function switchTab(tab) {
     const activeTab = document.querySelector(`.tab-item[data-tab="${tab}"]`);
     if (activeTab) activeTab.classList.add('active');
     
+    const createBtn = document.getElementById('createBtn');
+    if (tab === 'chats') {
+        createBtn.innerHTML = '<i class="fas fa-plus"></i>';
+        createBtn.onclick = () => showCreateGroup();
+    } else if (tab === 'channels') {
+        createBtn.innerHTML = '<i class="fas fa-plus"></i>';
+        createBtn.onclick = () => showCreateChannelModal();
+    } else {
+        createBtn.innerHTML = '<i class="fas fa-user-edit"></i>';
+        createBtn.onclick = () => openProfileEdit();
+    }
+    
     if (tab === 'profile') renderProfile();
+    if (tab === 'channels') loadChannels();
 }
 
 function initSearchScroll() {
@@ -1249,18 +1331,491 @@ function initSearchScroll() {
     if (chatsPage && searchContainer) {
         chatsPage.addEventListener('scroll', function() {
             const currentScrollY = this.scrollTop;
-            
             if (currentScrollY > 50 && currentScrollY > lastScrollY) {
                 searchContainer.classList.add('hidden');
             } else if (currentScrollY < 30 || currentScrollY < lastScrollY) {
                 searchContainer.classList.remove('hidden');
             }
-            
             lastScrollY = currentScrollY;
         });
     }
 }
 
+// ==================== КАНАЛЫ ====================
+function selectChannelVisibility(vis) {
+    selectedChannelVisibility = vis;
+    document.querySelectorAll('.visibility-option').forEach(el => el.classList.remove('active'));
+    document.querySelector(`.visibility-option[data-vis="${vis}"]`).classList.add('active');
+}
+
+function showCreateChannelModal() {
+    channelAvatarBase64 = null;
+    document.getElementById('channelNameInput').value = '';
+    document.getElementById('channelDescInput').value = '';
+    selectedChannelVisibility = 'public';
+    selectChannelVisibility('public');
+    document.getElementById('channelAvatarPreview').innerHTML = '📢';
+    document.getElementById('channelAvatarPreview').style.background = 'linear-gradient(135deg, var(--channel), #5856d6)';
+    document.getElementById('createChannelModal').classList.add('show');
+}
+
+document.getElementById('channelAvatarFile').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 300;
+            canvas.height = 300;
+            const ctx = canvas.getContext('2d');
+            const scale = Math.max(300 / img.width, 300 / img.height);
+            const x = (300 / 2) - (img.width * scale / 2);
+            const y = (300 / 2) - (img.height * scale / 2);
+            ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+            channelAvatarBase64 = canvas.toDataURL('image/jpeg', 0.85);
+            const preview = document.getElementById('channelAvatarPreview');
+            preview.innerHTML = `<img src="${channelAvatarBase64}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+            preview.style.background = 'none';
+        };
+        img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+});
+
+async function createChannel() {
+    const name = document.getElementById('channelNameInput').value.trim();
+    if (!name) { toast('Введите название канала'); return; }
+    
+    const inviteCode = Math.random().toString(36).substring(2, 10);
+    const channelData = {
+        name: name,
+        description: document.getElementById('channelDescInput').value.trim(),
+        ownerId: currentUser.uid,
+        admins: [currentUser.uid],
+        subscribers: [currentUser.uid],
+        visibility: selectedChannelVisibility,
+        inviteCode: inviteCode,
+        createdAt: new Date(),
+        lastMessage: '',
+        lastMessageTime: new Date(),
+        type: 'channel'
+    };
+    
+    if (channelAvatarBase64) channelData.avatarBase64 = channelAvatarBase64;
+    
+    const docRef = await db.collection('channels').add(channelData);
+    
+    await db.collection('channels').doc(docRef.id).collection('messages').add({
+        text: `📢 Канал "${name}" создан`,
+        senderId: currentUser.uid,
+        timestamp: new Date(),
+        views: 0,
+        isSystem: true
+    });
+    
+    toast('Канал создан!');
+    closeModal('createChannelModal');
+    loadChannels();
+}
+
+async function loadChannels() {
+    const container = document.getElementById('channelsList');
+    try {
+        const snap = await db.collection('channels').get();
+        let channels = [];
+        
+        snap.forEach(doc => {
+            const ch = doc.data();
+            if (ch.visibility === 'public' || ch.subscribers?.includes(currentUser.uid) || ch.ownerId === currentUser.uid) {
+                channels.push({ id: doc.id, ...ch });
+            }
+        });
+        
+        if (channels.length === 0) {
+            container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📢</div><div class="empty-state-title">Нет каналов</div><div class="empty-state-desc">Нажмите + чтобы создать канал</div></div>`;
+            return;
+        }
+        
+        container.innerHTML = channels.map(ch => {
+            const isSub = ch.subscribers?.includes(currentUser.uid);
+            const avatarHtml = ch.avatarBase64 ? `<img src="${ch.avatarBase64}">` : '📢';
+            return `
+                <div class="channel-card" onclick="openChannel('${ch.id}')">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div class="chat-avatar channel" style="width:48px;height:48px;">${avatarHtml}</div>
+                        <div style="flex:1;">
+                            <div style="font-weight:600;">${esc(ch.name)} ${ch.ownerId === currentUser.uid ? '<i class="fas fa-crown" style="color:#ffd700;font-size:12px;"></i>' : ''}</div>
+                            <div style="font-size:13px;color:var(--text-secondary);">${esc(ch.description || 'Без описания')}</div>
+                            <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px;">
+                                <i class="fas fa-users"></i> ${ch.subscribers?.length || 0} подписчиков • 
+                                <i class="fas ${ch.visibility === 'public' ? 'fa-globe' : 'fa-lock'}"></i> ${ch.visibility === 'public' ? 'Публичный' : 'Закрытый'}
+                                ${isSub ? '<span class="sub-badge"><i class="fas fa-bell"></i> Подписан</span>' : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch(e) {
+        console.error(e);
+        container.innerHTML = '<div class="empty-state">Ошибка загрузки</div>';
+    }
+}
+
+async function openChannel(channelId) {
+    const doc = await db.collection('channels').doc(channelId).get();
+    if (!doc.exists) return;
+    
+    currentChannel = { id: doc.id, ...doc.data() };
+    currentChatIsChannel = true;
+    currentChatIsGroup = false;
+    currentChatIsSaved = false;
+    
+    const isSub = currentChannel.subscribers?.includes(currentUser.uid);
+    const isAdmin = currentChannel.admins?.includes(currentUser.uid);
+    
+    const avatarDiv = document.getElementById('chatAvatar');
+    if (currentChannel.avatarBase64) {
+        avatarDiv.innerHTML = `<img src="${currentChannel.avatarBase64}">`;
+        avatarDiv.style.background = '';
+    } else {
+        avatarDiv.innerHTML = '📢';
+        avatarDiv.style.background = 'linear-gradient(135deg, var(--channel), #5856d6)';
+    }
+    avatarDiv.style.display = 'flex';
+    avatarDiv.style.alignItems = 'center';
+    avatarDiv.style.justifyContent = 'center';
+    
+    document.getElementById('chatName').textContent = currentChannel.name;
+    document.getElementById('chatStatus').innerHTML = `${currentChannel.subscribers?.length || 0} подписчиков`;
+    
+    const infoBar = document.getElementById('channelInfoBar');
+    infoBar.style.display = 'block';
+    infoBar.innerHTML = currentChannel.description || '';
+    
+    const inputBar = document.getElementById('inputBar');
+    const subscribeBar = document.getElementById('subscribeBar');
+    
+    if (isAdmin) {
+        inputBar.style.display = 'flex';
+        subscribeBar.style.display = 'none';
+    } else if (isSub) {
+        inputBar.style.display = 'none';
+        subscribeBar.style.display = 'none';
+    } else {
+        inputBar.style.display = 'none';
+        subscribeBar.style.display = 'flex';
+    }
+    
+    document.getElementById('chatOverlay').classList.add('show');
+    document.getElementById('chatInput').disabled = !isAdmin;
+    document.getElementById('sendBtn').disabled = !isAdmin;
+    
+    await loadChannelMessages();
+}
+
+async function loadChannelMessages() {
+    if (!currentChannel) return;
+    
+    const container = document.getElementById('chatMessages');
+    container.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка...</span></div>';
+    
+    const snap = await db.collection('channels').doc(currentChannel.id).collection('messages').orderBy('timestamp', 'asc').limit(200).get();
+    container.innerHTML = '';
+    
+    let lastDate = null;
+    
+    for (const doc of snap.docs) {
+        const msg = doc.data();
+        const d = msg.timestamp?.toDate?.() || new Date();
+        const dateKey = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
+        
+        if (!lastDate || lastDate !== dateKey) {
+            const divider = document.createElement('div');
+            divider.className = 'msg-date-divider';
+            divider.innerHTML = `<span>${dateDivider(d)}</span>`;
+            container.appendChild(divider);
+            lastDate = dateKey;
+        }
+        
+        const div = document.createElement('div');
+        div.className = 'channel-message';
+        div.innerHTML = `
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                <span style="font-size:13px;color:var(--accent);">${msg.senderId === currentUser.uid ? 'Вы' : 'Администратор'}</span>
+                <span style="font-size:11px;color:var(--text-tertiary);">${timeFormat(d)}</span>
+            </div>
+            <div class="channel-msg-text">${esc(msg.text || '')}</div>
+            <div class="channel-msg-stats">
+                <span><i class="fas fa-eye"></i> ${msg.views || 0} просмотров</span>
+            </div>
+        `;
+        container.appendChild(div);
+        
+        if (msg.senderId !== currentUser.uid && !msg.viewedBy?.includes(currentUser.uid)) {
+            await db.collection('channels').doc(currentChannel.id).collection('messages').doc(doc.id).update({
+                views: firebase.firestore.FieldValue.increment(1),
+                viewedBy: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
+            });
+        }
+    }
+    
+    container.scrollTop = container.scrollHeight;
+    
+    if (chatMessagesListener) chatMessagesListener();
+    chatMessagesListener = db.collection('channels').doc(currentChannel.id).collection('messages').orderBy('timestamp', 'asc').onSnapshot(() => {
+        if (currentChannel) loadChannelMessages();
+    });
+}
+
+async function sendChannelMessage() {
+    const input = document.getElementById('chatInput');
+    const text = input.value.trim();
+    if (!text || !currentChannel) return;
+    
+    const isAdmin = currentChannel.admins?.includes(currentUser.uid);
+    if (!isAdmin) { toast('Только администраторы могут публиковать'); return; }
+    
+    await db.collection('channels').doc(currentChannel.id).collection('messages').add({
+        text: text,
+        senderId: currentUser.uid,
+        timestamp: new Date(),
+        views: 0,
+        viewedBy: []
+    });
+    
+    await db.collection('channels').doc(currentChannel.id).update({
+        lastMessage: text,
+        lastMessageTime: new Date()
+    });
+    
+    input.value = '';
+    input.style.height = 'auto';
+    toast('Сообщение опубликовано');
+}
+
+async function subscribeToChannel() {
+    if (!currentChannel) return;
+    
+    const isSub = currentChannel.subscribers?.includes(currentUser.uid);
+    const ref = db.collection('channels').doc(currentChannel.id);
+    
+    if (isSub) {
+        await ref.update({ subscribers: firebase.firestore.FieldValue.arrayRemove(currentUser.uid) });
+        toast('Вы отписались от канала');
+        currentChannel.subscribers = currentChannel.subscribers.filter(s => s !== currentUser.uid);
+    } else {
+        await ref.update({ subscribers: firebase.firestore.FieldValue.arrayUnion(currentUser.uid) });
+        toast('Вы подписались на канал');
+        currentChannel.subscribers = [...(currentChannel.subscribers || []), currentUser.uid];
+    }
+    
+    document.getElementById('chatStatus').innerHTML = `${currentChannel.subscribers?.length || 0} подписчиков`;
+    
+    const inputBar = document.getElementById('inputBar');
+    const subscribeBar = document.getElementById('subscribeBar');
+    const isAdmin = currentChannel.admins?.includes(currentUser.uid);
+    
+    if (isAdmin) {
+        inputBar.style.display = 'flex';
+        subscribeBar.style.display = 'none';
+    } else if (currentChannel.subscribers?.includes(currentUser.uid)) {
+        inputBar.style.display = 'none';
+        subscribeBar.style.display = 'none';
+    } else {
+        inputBar.style.display = 'none';
+        subscribeBar.style.display = 'flex';
+    }
+}
+
+function showChannelMenu() {
+    const isAdmin = currentChannel?.admins?.includes(currentUser.uid);
+    const isOwner = currentChannel?.ownerId === currentUser.uid;
+    
+    const content = document.getElementById('manageChannelContent');
+    content.innerHTML = `
+        <div class="profile-cell" onclick="copyChannelInvite()" style="justify-content:space-between;">
+            <span><i class="fas fa-link"></i> Получить ссылку</span>
+            <i class="fas fa-chevron-right"></i>
+        </div>
+        ${isAdmin ? `
+        <div class="profile-cell" onclick="editChannelDescription()" style="justify-content:space-between;">
+            <span><i class="fas fa-edit"></i> Редактировать описание</span>
+            <i class="fas fa-chevron-right"></i>
+        </div>` : ''}
+        ${isOwner ? `
+        <div class="profile-cell" onclick="addChannelAdmin()" style="justify-content:space-between;">
+            <span><i class="fas fa-user-plus"></i> Добавить администратора</span>
+            <i class="fas fa-chevron-right"></i>
+        </div>
+        <div class="profile-cell" onclick="deleteChannel()" style="justify-content:space-between;color:var(--danger);">
+            <span><i class="fas fa-trash"></i> Удалить канал</span>
+            <i class="fas fa-chevron-right"></i>
+        </div>` : ''}
+        <div class="profile-cell" onclick="closeModal('manageChannelModal')" style="justify-content:space-between;">
+            <span><i class="fas fa-times"></i> Закрыть</span>
+            <i class="fas fa-chevron-right"></i>
+        </div>
+    `;
+    document.getElementById('manageChannelModal').classList.add('show');
+}
+
+function copyChannelInvite() {
+    const link = `https://contegg.page.link/channel?code=${currentChannel.inviteCode}`;
+    document.getElementById('inviteLinkInput').value = link;
+    closeModal('manageChannelModal');
+    document.getElementById('inviteModal').classList.add('show');
+}
+
+function copyInviteLink() {
+    const inp = document.getElementById('inviteLinkInput');
+    inp.select();
+    document.execCommand('copy');
+    toast('Ссылка скопирована');
+}
+
+async function editChannelDescription() {
+    const newDesc = prompt('Новое описание канала:', currentChannel.description || '');
+    if (newDesc !== null) {
+        await db.collection('channels').doc(currentChannel.id).update({ description: newDesc });
+        currentChannel.description = newDesc;
+        document.getElementById('channelInfoBar').innerHTML = newDesc;
+        toast('Описание обновлено');
+        closeModal('manageChannelModal');
+    }
+}
+
+async function addChannelAdmin() {
+    const userId = prompt('Введите UID пользователя (можно скопировать из профиля):');
+    if (!userId) return;
+    
+    const userSnap = await db.collection('users').doc(userId).get();
+    if (!userSnap.exists) { toast('Пользователь не найден'); return; }
+    
+    await db.collection('channels').doc(currentChannel.id).update({
+        admins: firebase.firestore.FieldValue.arrayUnion(userId)
+    });
+    toast('Администратор добавлен');
+    closeModal('manageChannelModal');
+}
+
+async function deleteChannel() {
+    if (!confirm('Удалить канал навсегда? Все сообщения будут потеряны.')) return;
+    
+    const msgs = await db.collection('channels').doc(currentChannel.id).collection('messages').get();
+    const batch = db.batch();
+    msgs.forEach(d => batch.delete(d.ref));
+    batch.delete(db.collection('channels').doc(currentChannel.id));
+    await batch.commit();
+    
+    toast('Канал удалён');
+    closeChat();
+    loadChannels();
+}
+
+function showChatMenu() {
+    if (currentChatIsChannel && currentChannel) {
+        showChannelMenu();
+    }
+}
+
+// ==================== ИЗБРАННОЕ ====================
+async function getOrCreateSavedChat() {
+    if (savedChatId) return savedChatId;
+    
+    const savedChatsRef = db.collection('chats');
+    const query = await savedChatsRef.where('isSaved', '==', true).where('ownerId', '==', currentUser.uid).get();
+    
+    if (!query.empty) {
+        savedChatId = query.docs[0].id;
+        return savedChatId;
+    }
+    
+    const newChat = {
+        isSaved: true,
+        isGroup: false,
+        ownerId: currentUser.uid,
+        participants: [currentUser.uid],
+        name: 'Избранное',
+        lastMessage: '',
+        lastMessageTime: new Date(),
+        createdAt: new Date(),
+        unreadFor: []
+    };
+    
+    const docRef = await db.collection('chats').add(newChat);
+    savedChatId = docRef.id;
+    return savedChatId;
+}
+
+async function openSavedChat() {
+    currentChatIsSaved = true;
+    currentChatIsGroup = false;
+    currentChatIsChannel = false;
+    currentChatUser = null;
+    const chatId = await getOrCreateSavedChat();
+    currentChatId = chatId;
+    await openSavedChatUI();
+}
+
+async function openSavedChatUI() {
+    const avatar = document.getElementById('chatAvatar');
+    avatar.innerHTML = '<i class="fas fa-bookmark" style="font-size:20px;"></i>';
+    avatar.style.background = 'linear-gradient(135deg, #ff9f0a, #ff4d4d)';
+    avatar.style.display = 'flex';
+    avatar.style.alignItems = 'center';
+    avatar.style.justifyContent = 'center';
+    
+    document.getElementById('chatName').textContent = 'Избранное';
+    document.getElementById('chatStatus').textContent = 'Сохранённые сообщения';
+    document.getElementById('channelInfoBar').style.display = 'none';
+    document.getElementById('inputBar').style.display = 'flex';
+    document.getElementById('subscribeBar').style.display = 'none';
+    
+    document.getElementById('chatOverlay').classList.add('show');
+    document.getElementById('chatInput').disabled = false;
+    document.getElementById('sendBtn').disabled = false;
+    await loadMessages();
+    
+    setTimeout(() => document.getElementById('chatInput').focus(), 300);
+}
+
+async function saveMessageToFavorites(messageId, messageData) {
+    try {
+        const savedChatId = await getOrCreateSavedChat();
+        const textToSave = `📌 ${messageData.text || ''}`;
+        
+        await db.collection('chats').doc(savedChatId).collection('messages').add({
+            text: textToSave,
+            senderId: currentUser.uid,
+            timestamp: new Date(),
+            originalMessageId: messageId,
+            isSavedMessage: true,
+            read: false
+        });
+        
+        await db.collection('chats').doc(savedChatId).update({
+            lastMessage: textToSave,
+            lastSender: currentUser.uid,
+            lastMessageTime: new Date()
+        });
+        
+        toast('Сообщение сохранено в избранное');
+    } catch (e) {
+        toast('Ошибка сохранения');
+    }
+}
+
+function ctxSaveToFavorites() {
+    document.getElementById('msgContextMenu').style.display = 'none';
+    if (!selectedMsgId || !selectedMsgData) return;
+    saveMessageToFavorites(selectedMsgId, selectedMsgData);
+}
+
+// ==================== ЧАТЫ (ЛИЧНЫЕ И ГРУППЫ) ====================
 async function loadChats() {
     const list = document.getElementById('chatsList');
     try {
@@ -1467,6 +2022,7 @@ async function openDirectChat(userId, username) {
     currentChatUser = { uid: userId, username };
     currentChatIsGroup = false;
     currentChatIsSaved = false;
+    currentChatIsChannel = false;
     
     let chatId = null;
     const snap = await db.collection('chats').get();
@@ -1495,6 +2051,7 @@ async function openGroupChat(chatId) {
     currentChatId = chatId;
     currentChatIsGroup = true;
     currentChatIsSaved = false;
+    currentChatIsChannel = false;
     
     const doc = await db.collection('chats').doc(chatId).get();
     const chat = doc.data();
@@ -1531,6 +2088,9 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
         currentChatUser = { uid: userId, username: name };
     }
     
+    document.getElementById('channelInfoBar').style.display = 'none';
+    document.getElementById('inputBar').style.display = 'flex';
+    document.getElementById('subscribeBar').style.display = 'none';
     document.getElementById('chatOverlay').classList.add('show');
     document.getElementById('chatInput').disabled = false;
     document.getElementById('sendBtn').disabled = false;
@@ -1547,6 +2107,8 @@ function closeChat() {
     currentChatUser = null;
     currentChatIsGroup = false;
     currentChatIsSaved = false;
+    currentChatIsChannel = false;
+    currentChannel = null;
     currentChatParticipants = [];
     cancelReply();
 }
@@ -1740,6 +2302,11 @@ function updateMessageReactions(id, reactions) {
 }
 
 async function sendMessage() {
+    if (currentChatIsChannel) {
+        await sendChannelMessage();
+        return;
+    }
+    
     const input = document.getElementById('chatInput');
     const text = input.value.trim();
     if (!text || !currentChatId) return;
@@ -1869,7 +2436,7 @@ async function addReaction(emoji) {
     const msgId = panel.getAttribute('data-msg-id');
     panel.style.display = 'none';
     
-    if (!msgId || !currentChatId) return;
+    if (!msgId || !currentChatId || currentChatIsChannel) return;
     
     try {
         const ref = db.collection('chats').doc(currentChatId).collection('messages').doc(msgId);
@@ -1891,7 +2458,7 @@ async function addReaction(emoji) {
 }
 
 async function toggleReaction(msgId, emoji) {
-    if (!currentChatId) return;
+    if (!currentChatId || currentChatIsChannel) return;
     
     try {
         const ref = db.collection('chats').doc(currentChatId).collection('messages').doc(msgId);
@@ -1914,7 +2481,7 @@ async function toggleReaction(msgId, emoji) {
 
 async function ctxDelete() {
     document.getElementById('msgContextMenu').style.display = 'none';
-    if (!selectedMsgId || !currentChatId) return;
+    if (!selectedMsgId || !currentChatId || currentChatIsChannel) return;
     if (!confirm('Удалить сообщение?')) return;
     
     try {
@@ -1924,6 +2491,7 @@ async function ctxDelete() {
     } catch (e) { toast('Ошибка удаления'); }
 }
 
+// ==================== ПРОФИЛЬ ====================
 async function renderProfile() {
     const container = document.getElementById('profileContent');
     const avHTML = userData.avatarBase64
@@ -1953,7 +2521,7 @@ async function renderProfile() {
                 </div>
                 <div class="profile-cell-content">
                     <span class="profile-cell-title">Избранное</span>
-                    <i class="fas fa-chevron-right profile-cell-arrow"></i>
+                    <i class="fas fa-chevron-right"></i>
                 </div>
             </div>
         </div>
@@ -1965,7 +2533,7 @@ async function renderProfile() {
                 </div>
                 <div class="profile-cell-content">
                     <span class="profile-cell-title">Редактировать профиль</span>
-                    <i class="fas fa-chevron-right profile-cell-arrow"></i>
+                    <i class="fas fa-chevron-right"></i>
                 </div>
             </div>
             <div class="profile-cell" onclick="openChangePasswordModal()">
@@ -1974,7 +2542,7 @@ async function renderProfile() {
                 </div>
                 <div class="profile-cell-content">
                     <span class="profile-cell-title">Сменить пароль</span>
-                    <i class="fas fa-chevron-right profile-cell-arrow"></i>
+                    <i class="fas fa-chevron-right"></i>
                 </div>
             </div>
             <div class="profile-cell">
@@ -2004,7 +2572,7 @@ async function renderProfile() {
                 </div>
                 <div class="profile-cell-content">
                     <span class="profile-cell-title">Изменить фото</span>
-                    <i class="fas fa-chevron-right profile-cell-arrow"></i>
+                    <i class="fas fa-chevron-right"></i>
                 </div>
             </div>
         </div>
@@ -2110,6 +2678,7 @@ async function changePassword() {
     }
 }
 
+// ==================== АВАТАРЫ ====================
 document.getElementById('avatarInput').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
@@ -2184,6 +2753,7 @@ function saveGroupCrop() {
     toast('Фото группы готово');
 }
 
+// ==================== ГРУППЫ ====================
 function showCreateGroup() {
     selectedGroupUsers.clear();
     groupAvatarBase64 = null;
@@ -2276,8 +2846,9 @@ async function createGroup() {
     } catch (e) { toast('Ошибка создания группы'); }
 }
 
+// ==================== ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ====================
 async function viewChatUserProfile() {
-    if (!currentChatUser || currentChatIsGroup || currentChatIsSaved) return;
+    if (!currentChatUser || currentChatIsGroup || currentChatIsSaved || currentChatIsChannel) return;
     
     const user = await getUserInfo(currentChatUser.uid);
     const avHTML = user.avatarBase64
@@ -2305,6 +2876,7 @@ function closeUserProfile() {
     document.getElementById('userProfileModal').classList.remove('show');
 }
 
+// ==================== ПОИСК ====================
 let searchTimeout;
 document.getElementById('searchInput').addEventListener('input', function() {
     clearTimeout(searchTimeout);
@@ -2370,6 +2942,7 @@ function logout() {
     }
 }
 
+// ==================== ИНИЦИАЛИЗАЦИЯ ====================
 window.addEventListener('DOMContentLoaded', () => {
     initSearchScroll();
 });
@@ -2408,11 +2981,14 @@ document.addEventListener('keydown', e => {
         document.getElementById('cropModal').classList.remove('show');
         document.getElementById('groupCropModal').classList.remove('show');
         document.getElementById('groupModal').classList.remove('show');
+        document.getElementById('createChannelModal').classList.remove('show');
+        document.getElementById('manageChannelModal').classList.remove('show');
+        document.getElementById('inviteModal').classList.remove('show');
         document.getElementById('reactionsPanel').style.display = 'none';
     }
 });
 
-console.log('✅ Contegg Messenger · Полная версия со всеми функциями');
+console.log('✅ Contegg Messenger · Полная версия с каналами');
 </script>
 </body>
 </html>
