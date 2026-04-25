@@ -1713,17 +1713,26 @@ function showMsgContextMenu(msgId, msgData, event) {
     setTimeout(() => document.addEventListener('click', closeHandler), 10);
 }
 
+// Показ панели реакций (с передачей msgId)
 function showReactionsPanel() {
-    document.getElementById('msgContextMenu').style.display = 'none';
-    if (!selectedMsgId) return;
+    const menu = document.getElementById('msgContextMenu');
+    const msgId = selectedMsgId;  // берём сохранённый ID
+    
+    if (!msgId) {
+        console.log('Нет msgId для реакции');
+        return;
+    }
+    
+    menu.style.display = 'none';
     
     const panel = document.getElementById('reactionsPanel');
-    panel.setAttribute('data-msg-id', selectedMsgId);
+    panel.setAttribute('data-msg-id', msgId);
     
     panel.style.left = (window.innerWidth / 2 - 150) + 'px';
     panel.style.top = (window.innerHeight / 2 - 40) + 'px';
     panel.style.display = 'flex';
     
+    // Закрытие при клике вне панели
     const closeHandler = (e) => {
         if (!panel.contains(e.target)) {
             panel.style.display = 'none';
@@ -1733,16 +1742,32 @@ function showReactionsPanel() {
     setTimeout(() => document.addEventListener('click', closeHandler), 10);
 }
 
+// Добавление реакции (теперь точно работает)
 async function addReaction(emoji) {
     const panel = document.getElementById('reactionsPanel');
     const msgId = panel.getAttribute('data-msg-id');
+    
     panel.style.display = 'none';
     
-    if (!msgId || !currentChatId) return;
+    if (!msgId) {
+        toast('Ошибка: ID сообщения не найден');
+        return;
+    }
+    
+    if (!currentChatId) {
+        toast('Ошибка: чат не открыт');
+        return;
+    }
     
     try {
         const ref = db.collection('chats').doc(currentChatId).collection('messages').doc(msgId);
         const doc = await ref.get();
+        
+        if (!doc.exists) {
+            toast('Сообщение не найдено');
+            return;
+        }
+        
         const reactions = doc.data()?.reactions || {};
         
         if (reactions[currentUser.uid] === emoji) {
@@ -1754,45 +1779,14 @@ async function addReaction(emoji) {
         }
         
         await ref.update({ reactions });
-    } catch (e) { 
-        toast('Ошибка при добавлении реакции'); 
-    }
-}
-
-async function toggleReaction(msgId, emoji) {
-    if (!currentChatId) return;
-    
-    try {
-        const ref = db.collection('chats').doc(currentChatId).collection('messages').doc(msgId);
-        const doc = await ref.get();
-        const reactions = doc.data()?.reactions || {};
         
-        if (reactions[currentUser.uid] === emoji) {
-            delete reactions[currentUser.uid];
-        } else {
-            reactions[currentUser.uid] = emoji;
-        }
+        // Принудительно обновляем отображение
+        updateMessageReactions(msgId, reactions);
         
-        await ref.update({ reactions });
-    } catch (e) { 
-        toast('Ошибка при изменении реакции'); 
+    } catch (e) {
+        console.error('Ошибка реакции:', e);
+        toast('Ошибка при добавлении реакции');
     }
-}
-
-function ctxReply() {
-    document.getElementById('msgContextMenu').style.display = 'none';
-    if (!selectedMsgId || !selectedMsgData) return;
-    
-    replyingTo = { 
-        id: selectedMsgId, 
-        text: selectedMsgData.text, 
-        senderId: selectedMsgData.senderId 
-    };
-    document.getElementById('replyPreview').style.display = 'flex';
-    const nameEl = document.getElementById('replyName');
-    nameEl.textContent = selectedMsgData.senderId === currentUser.uid ? 'Вы' : 'Пользователь';
-    document.getElementById('replyText').textContent = (selectedMsgData.text || '').substring(0, 60);
-    document.getElementById('chatInput').focus();
 }
 
 function cancelReply() {
