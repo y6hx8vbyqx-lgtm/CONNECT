@@ -733,6 +733,37 @@
         .empty-state-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.6; }
         .empty-state-title { font-size: 17px; font-weight: 500; margin-bottom: 6px; }
         .empty-state-desc { font-size: 14px; color: var(--text-secondary); line-height: 1.4; max-width: 260px; }
+        
+        .reactions-panel {
+            display: none;
+            position: fixed;
+            background: var(--bg-secondary);
+            border-radius: 40px;
+            padding: 8px 12px;
+            gap: 4px;
+            z-index: 2000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            border: 0.5px solid var(--separator);
+            flex-wrap: wrap;
+            max-width: 300px;
+            justify-content: center;
+        }
+        .reactions-panel span {
+            font-size: 28px;
+            cursor: pointer;
+            padding: 4px;
+            transition: 0.1s;
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .reactions-panel span:active {
+            transform: scale(1.1);
+            background: rgba(255,255,255,0.1);
+        }
     </style>
 </head>
 <body>
@@ -935,15 +966,17 @@
     <div class="context-item danger" onclick="ctxDeleteChat()"><i class="fas fa-trash"></i> Удалить чат</div>
 </div>
 
-<div class="context-menu" id="reactionsPanel" style="flex-direction: row; gap: 4px; padding: 8px 10px; min-width: auto; display: none;">
-    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('❤️')">❤️</span>
-    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('👍')">👍</span>
-    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('👎')">👎</span>
-    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('😂')">😂</span>
-    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('😮')">😮</span>
-    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('😢')">😢</span>
-    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('😡')">😡</span>
-    <span style="font-size:28px;cursor:pointer;padding:6px;" onclick="addReaction('🔥')">🔥</span>
+<div class="reactions-panel" id="reactionsPanel">
+    <span onclick="addReaction('❤️')">❤️</span>
+    <span onclick="addReaction('👍')">👍</span>
+    <span onclick="addReaction('👎')">👎</span>
+    <span onclick="addReaction('😂')">😂</span>
+    <span onclick="addReaction('😮')">😮</span>
+    <span onclick="addReaction('😢')">😢</span>
+    <span onclick="addReaction('😡')">😡</span>
+    <span onclick="addReaction('🔥')">🔥</span>
+    <span onclick="addReaction('🎉')">🎉</span>
+    <span onclick="addReaction('💩')">💩</span>
 </div>
 
 <input type="file" id="avatarInput" accept="image/*" style="display:none;">
@@ -1251,22 +1284,27 @@ async function loadChats() {
             }
         }
         
-        // Сортировка: сначала закреплённые (в порядке закрепления), затем все остальные по времени
-        const pinned = chats.filter(c => pinnedChats.includes(c.id));
-        const unpinned = chats.filter(c => !pinnedChats.includes(c.id));
+        const pinned = [];
+        const unpinned = [];
         
-        const sortFn = (a, b) => {
+        for (const pinnedId of pinnedChats) {
+            const found = chats.find(c => c.id === pinnedId);
+            if (found) pinned.push(found);
+        }
+        
+        for (const chat of chats) {
+            if (!pinnedChats.includes(chat.id)) {
+                unpinned.push(chat);
+            }
+        }
+        
+        const sortByTime = (a, b) => {
             const ta = a.lastMessageTime?.toDate?.() || new Date(0);
             const tb = b.lastMessageTime?.toDate?.() || new Date(0);
             return tb - ta;
         };
+        unpinned.sort(sortByTime);
         
-        // Сортируем закреплённые по времени (свежие сверху)
-        pinned.sort(sortFn);
-        // Сортируем незакреплённые по времени
-        unpinned.sort(sortFn);
-        
-        // Объединяем: сначала все закреплённые, потом все остальные
         const sortedChats = [...pinned, ...unpinned];
         
         if (sortedChats.length === 0) {
@@ -1344,6 +1382,7 @@ async function loadChats() {
         });
         
     } catch (e) {
+        console.error(e);
         list.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-title">Ошибка загрузки</div></div>`;
     }
 }
@@ -1385,11 +1424,11 @@ function ctxPinChat() {
     
     const ref = db.collection('users').doc(currentUser.uid);
     if (isPinned) {
-        ref.update({ pinnedChats: firebase.firestore.FieldValue.arrayRemove(chatId) });
         pinnedChats = pinnedChats.filter(id => id !== chatId);
+        ref.update({ pinnedChats: pinnedChats });
     } else {
-        ref.update({ pinnedChats: firebase.firestore.FieldValue.arrayUnion(chatId) });
-        pinnedChats.push(chatId);
+        pinnedChats = [chatId, ...pinnedChats];
+        ref.update({ pinnedChats: pinnedChats });
     }
     loadChats();
     toast(isPinned ? 'Откреплено' : 'Закреплено');
@@ -1416,10 +1455,8 @@ async function ctxDeleteChat() {
         await batch.commit();
         
         if (pinnedChats.includes(chatId)) {
-            await db.collection('users').doc(currentUser.uid).update({
-                pinnedChats: firebase.firestore.FieldValue.arrayRemove(chatId)
-            });
             pinnedChats = pinnedChats.filter(id => id !== chatId);
+            await db.collection('users').doc(currentUser.uid).update({ pinnedChats: pinnedChats });
         }
         loadChats();
         toast('Чат удалён');
@@ -1804,8 +1841,17 @@ function showReactionsPanelForMsg(id, msg, e) {
 function showReactionsPanel(x, y, msgId) {
     const panel = document.getElementById('reactionsPanel');
     panel.setAttribute('data-msg-id', msgId || '');
-    panel.style.left = Math.min(x - 160, window.innerWidth - 320) + 'px';
-    panel.style.top = Math.min(y - 60, window.innerHeight - 100) + 'px';
+    
+    let left = x - 150;
+    let top = y - 30;
+    
+    if (left < 10) left = 10;
+    if (left + 300 > window.innerWidth) left = window.innerWidth - 310;
+    if (top < 10) top = 10;
+    if (top + 70 > window.innerHeight) top = window.innerHeight - 80;
+    
+    panel.style.left = left + 'px';
+    panel.style.top = top + 'px';
     panel.style.display = 'flex';
     document.getElementById('msgContextMenu').style.display = 'none';
     
@@ -2348,6 +2394,9 @@ document.addEventListener('click', (e) => {
         document.getElementById('msgContextMenu').style.display = 'none';
         document.getElementById('chatContextMenu').style.display = 'none';
     }
+    if (!e.target.closest('.reactions-panel')) {
+        document.getElementById('reactionsPanel').style.display = 'none';
+    }
 });
 
 document.addEventListener('keydown', e => {
@@ -2359,10 +2408,11 @@ document.addEventListener('keydown', e => {
         document.getElementById('cropModal').classList.remove('show');
         document.getElementById('groupCropModal').classList.remove('show');
         document.getElementById('groupModal').classList.remove('show');
+        document.getElementById('reactionsPanel').style.display = 'none';
     }
 });
 
-console.log('✅ Contegg Messenger · Избранное теперь обычный чат (сортировка по времени, закрепление работает)');
+console.log('✅ Contegg Messenger · Полная версия со всеми функциями');
 </script>
 </body>
 </html>
