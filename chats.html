@@ -139,7 +139,6 @@
             pointer-events: auto;
         }
 
-        /* Скрываемая строка поиска */
         .search-container {
             position: sticky;
             top: 0;
@@ -291,7 +290,6 @@
         .saved-icon { color: var(--saved); font-size: 12px; }
         .group-icon { color: var(--online); font-size: 12px; }
 
-        /* Плавающая панель как в Telegram iOS */
         .tabbar {
             position: fixed;
             bottom: 12px;
@@ -352,7 +350,6 @@
             background: rgba(255, 255, 255, 0.1);
         }
 
-        /* Профиль */
         .profile-page { padding: 20px 16px 40px; }
         .profile-header {
             display: flex;
@@ -425,7 +422,6 @@
         .profile-cell-title { font-size: 16px; }
         .profile-cell-value { font-size: 15px; color: var(--text-secondary); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-        /* Чат */
         .chat-overlay {
             position: fixed;
             top: 0;
@@ -595,7 +591,6 @@
         }
         .chat-send:active { transform: scale(0.9); }
 
-        /* Модальные окна */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -771,7 +766,6 @@
         </div>
     </div>
 
-    <!-- Плавающая панель как в Telegram -->
     <div class="tabbar">
         <div class="tab-item active" data-tab="chats" onclick="switchTab('chats')">
             <i class="fas fa-comment"></i>
@@ -784,7 +778,6 @@
     </div>
 </div>
 
-<!-- Чат оверлей -->
 <div class="chat-overlay" id="chatOverlay">
     <div class="chat-navbar">
         <button class="chat-back" onclick="closeChat()">
@@ -822,7 +815,6 @@
     </div>
 </div>
 
-<!-- Модальные окна -->
 <div class="modal-overlay" id="groupModal">
     <div class="modal-sheet">
         <div class="modal-handle"></div>
@@ -868,7 +860,6 @@
     </div>
 </div>
 
-<!-- Модалка смены пароля -->
 <div class="modal-overlay" id="changePasswordModal">
     <div class="modal-sheet">
         <div class="modal-handle"></div>
@@ -961,7 +952,6 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// ===== ПОЛНОЭКРАННЫЙ РЕЖИМ =====
 function enterFullscreen() {
     const docEl = document.documentElement;
     const requestFullscreen = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.msRequestFullscreen;
@@ -981,7 +971,6 @@ document.addEventListener('click', () => {
     }
 });
 
-// ===== FIREBASE =====
 const firebaseConfig = {
     apiKey: "AIzaSyBKTPyHKC_Mp1ZO6NDiCaJVz3w1u_PWfUo",
     authDomain: "contegg-b3b4b.firebaseapp.com",
@@ -1052,7 +1041,6 @@ function dateDivider(d) {
     return d.toLocaleDateString('ru', { day: 'numeric', month: 'long' });
 }
 
-// ===== СОЗДАНИЕ/ПОЛУЧЕНИЕ ЧАТА "ИЗБРАННОЕ" =====
 async function getOrCreateSavedChat() {
     if (savedChatId) return savedChatId;
     
@@ -1081,7 +1069,6 @@ async function getOrCreateSavedChat() {
     return savedChatId;
 }
 
-// ===== ОТКРЫТИЕ ИЗБРАННОГО =====
 async function openSavedChat() {
     currentChatIsSaved = true;
     currentChatIsGroup = false;
@@ -1110,7 +1097,6 @@ async function openSavedChatUI() {
     setTimeout(() => document.getElementById('chatInput').focus(), 300);
 }
 
-// ===== СОХРАНЕНИЕ СООБЩЕНИЯ В ИЗБРАННОЕ =====
 async function saveMessageToFavorites(messageId, messageData) {
     try {
         const savedChatId = await getOrCreateSavedChat();
@@ -1143,7 +1129,6 @@ function ctxSaveToFavorites() {
     saveMessageToFavorites(selectedMsgId, selectedMsgData);
 }
 
-// ===== АВТОРИЗАЦИЯ =====
 auth.onAuthStateChanged(async user => {
     if (!user) { location.href = 'index.html'; return; }
     currentUser = user;
@@ -1205,7 +1190,6 @@ async function loadAllUsers() {
     });
 }
 
-// ===== НАВИГАЦИЯ =====
 function switchTab(tab) {
     const pages = document.querySelectorAll('.page');
     const tabs = document.querySelectorAll('.tab-item');
@@ -1224,7 +1208,6 @@ function switchTab(tab) {
     if (tab === 'profile') renderProfile();
 }
 
-// ===== СКРЫВАЕМАЯ СТРОКА ПОИСКА =====
 function initSearchScroll() {
     const chatsPage = document.getElementById('pageChats');
     const searchContainer = document.getElementById('searchContainer');
@@ -1245,7 +1228,6 @@ function initSearchScroll() {
     }
 }
 
-// ===== ЗАГРУЗКА ЧАТОВ =====
 async function loadChats() {
     const list = document.getElementById('chatsList');
     try {
@@ -1294,12 +1276,13 @@ async function loadChats() {
         list.innerHTML = sortedChats.map(chat => {
             if (chat.type === 'saved') {
                 const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
+                const isPinned = pinnedChats.includes(chat.id);
                 return `
-                    <div class="chat-cell saved" onclick="openSavedChat()" data-chat-id="${chat.id}">
+                    <div class="chat-cell saved ${isPinned ? 'pinned' : ''}" data-chat-id="${chat.id}" data-chat-type="saved" onclick="openSavedChat()">
                         <div class="chat-avatar saved"><i class="fas fa-bookmark" style="font-size:24px;"></i></div>
                         <div class="chat-content">
                             <div class="chat-top">
-                                <span class="chat-name"><i class="fas fa-bookmark saved-icon"></i> Избранное</span>
+                                <span class="chat-name"><i class="fas fa-bookmark saved-icon"></i> Избранное${isPinned ? ' <i class="fas fa-thumbtack pinned-icon"></i>' : ''}</span>
                                 <span class="chat-time">${timeStr}</span>
                             </div>
                             <div class="chat-preview">${esc(chat.lastMessage || 'Сохранённые сообщения')}</div>
@@ -1309,7 +1292,7 @@ async function loadChats() {
                 const avHTML = chat.avatarBase64 ? `<img src="${chat.avatarBase64}">` : '👥';
                 const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
                 return `
-                    <div class="chat-cell" onclick="openGroupChat('${chat.id}')" data-chat-id="${chat.id}">
+                    <div class="chat-cell" onclick="openGroupChat('${chat.id}')" data-chat-id="${chat.id}" data-chat-type="group">
                         <div class="chat-avatar group">${avHTML}</div>
                         <div class="chat-content">
                             <div class="chat-top">
@@ -1326,7 +1309,7 @@ async function loadChats() {
                 const isUnread = chat.unreadFor?.includes(currentUser.uid);
                 return `
                     <div class="chat-cell ${isUnread ? 'unread' : ''} ${pinnedChats.includes(chat.id) ? 'pinned' : ''}" 
-                         onclick="openDirectChat('${chat.otherId}', '${u.username}')" data-chat-id="${chat.id}">
+                         onclick="openDirectChat('${chat.otherId}', '${u.username}')" data-chat-id="${chat.id}" data-chat-type="dm">
                         <div class="chat-avatar">${avHTML}</div>
                         <div class="chat-content">
                             <div class="chat-top">
@@ -1343,20 +1326,17 @@ async function loadChats() {
         document.querySelectorAll('.chat-cell').forEach(cell => {
             let timer;
             const chatId = cell.dataset.chatId;
+            const chatType = cell.dataset.chatType;
             cell.addEventListener('touchstart', () => {
                 timer = setTimeout(() => {
-                    if (!cell.classList.contains('saved')) {
-                        showChatContext({ clientX: 100, clientY: 200, preventDefault: () => {} }, chatId);
-                    }
+                    showChatContext({ clientX: 100, clientY: 200, preventDefault: () => {} }, chatId, chatType);
                 }, 500);
             });
             cell.addEventListener('touchend', () => clearTimeout(timer));
             cell.addEventListener('touchmove', () => clearTimeout(timer));
             cell.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
-                if (!cell.classList.contains('saved')) {
-                    showChatContext(e, chatId);
-                }
+                showChatContext(e, chatId, chatType);
             });
         });
         
@@ -1370,12 +1350,13 @@ function startGlobalChatsListener() {
     chatsGlobalListener = db.collection('chats').onSnapshot(() => loadChats());
 }
 
-function showChatContext(e, chatId) {
+function showChatContext(e, chatId, chatType) {
     e.preventDefault();
-    selectedChatContext = { chatId };
+    selectedChatContext = { chatId, chatType };
     
     const menu = document.getElementById('chatContextMenu');
-    document.getElementById('ctxPinText').textContent = pinnedChats.includes(chatId) ? 'Открепить' : 'Закрепить';
+    const isPinned = pinnedChats.includes(chatId);
+    document.getElementById('ctxPinText').textContent = isPinned ? 'Открепить' : 'Закрепить';
     
     let x = e.clientX || 100, y = e.clientY || 200;
     menu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
@@ -1414,9 +1395,15 @@ function ctxPinChat() {
 async function ctxDeleteChat() {
     document.getElementById('chatContextMenu').style.display = 'none';
     if (!selectedChatContext) return;
+    const { chatId, chatType } = selectedChatContext;
+    
+    if (chatType === 'saved') {
+        toast('Нельзя удалить чат "Избранное"');
+        return;
+    }
+    
     if (!confirm('Удалить чат навсегда?')) return;
     
-    const { chatId } = selectedChatContext;
     try {
         const batch = db.batch();
         const ref = db.collection('chats').doc(chatId);
@@ -1436,7 +1423,6 @@ async function ctxDeleteChat() {
     } catch (e) { toast('Ошибка удаления'); }
 }
 
-// ===== ОТКРЫТИЕ ЧАТОВ =====
 async function openDirectChat(userId, username) {
     currentChatUser = { uid: userId, username };
     currentChatIsGroup = false;
@@ -1534,7 +1520,6 @@ async function markAsRead() {
     }
 }
 
-// ===== СООБЩЕНИЯ =====
 async function loadMessages() {
     const container = document.getElementById('chatMessages');
     if (!currentChatId) return;
@@ -1550,14 +1535,14 @@ async function loadMessages() {
     snap.forEach(doc => {
         const msg = doc.data();
         const d = msg.timestamp?.toDate?.() || new Date();
-        const dateStr = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toString();
+        const dateKey = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
         
-        if (!lastDate || lastDate !== dateStr) {
+        if (!lastDate || lastDate !== dateKey) {
             const divider = document.createElement('div');
             divider.className = 'msg-date-divider';
             divider.innerHTML = `<span>${dateDivider(d)}</span>`;
             container.appendChild(divider);
-            lastDate = dateStr;
+            lastDate = dateKey;
         }
         
         renderMessage(doc.id, msg);
@@ -1570,9 +1555,25 @@ async function loadMessages() {
         .collection('messages').orderBy('timestamp', 'asc')
         .onSnapshot(snap => {
             snap.docChanges().forEach(change => {
-                if (change.type === 'added' && !document.querySelector(`[data-msg-id="${change.doc.id}"]`)) {
-                    renderMessage(change.doc.id, change.doc.data());
-                    container.scrollTop = container.scrollHeight;
+                if (change.type === 'added') {
+                    const existing = document.querySelector(`[data-msg-id="${change.doc.id}"]`);
+                    if (!existing) {
+                        const msg = change.doc.data();
+                        const d = msg.timestamp?.toDate?.() || new Date();
+                        let lastDivider = container.querySelector('.msg-date-divider:last-child');
+                        const lastDateStr = lastDivider ? lastDivider.innerText : '';
+                        const currentDateStr = dateDivider(d);
+                        
+                        if (!lastDivider || lastDateStr !== currentDateStr) {
+                            const divider = document.createElement('div');
+                            divider.className = 'msg-date-divider';
+                            divider.innerHTML = `<span>${currentDateStr}</span>`;
+                            container.appendChild(divider);
+                        }
+                        
+                        renderMessage(change.doc.id, msg);
+                        container.scrollTop = container.scrollHeight;
+                    }
                 }
                 if (change.type === 'modified') {
                     updateMessageReactions(change.doc.id, change.doc.data().reactions);
@@ -1585,6 +1586,9 @@ function renderMessage(id, msg) {
     const container = document.getElementById('chatMessages');
     const isOut = msg.senderId === currentUser.uid;
     const d = msg.timestamp?.toDate?.() || new Date();
+    
+    const exists = document.querySelector(`[data-msg-id="${id}"]`);
+    if (exists) return;
     
     const div = document.createElement('div');
     div.className = `msg ${isOut ? 'msg-out' : 'msg-in'}`;
@@ -1743,7 +1747,6 @@ async function sendMessage() {
     document.getElementById('chatInput').focus();
 }
 
-// ===== КОНТЕКСТНОЕ МЕНЮ СООБЩЕНИЯ =====
 function showMsgContext(e, id, msg) {
     e.preventDefault();
     selectedMsgId = id;
@@ -1872,7 +1875,6 @@ async function ctxDelete() {
     } catch (e) { toast('Ошибка удаления'); }
 }
 
-// ===== ПРОФИЛЬ =====
 async function renderProfile() {
     const container = document.getElementById('profileContent');
     const avHTML = userData.avatarBase64
@@ -2005,7 +2007,6 @@ async function saveProfile() {
     } catch (e) { toast('Ошибка сохранения'); }
 }
 
-// ===== СМЕНА ПАРОЛЯ =====
 function openChangePasswordModal() {
     document.getElementById('oldPassword').value = '';
     document.getElementById('newPassword').value = '';
@@ -2060,7 +2061,6 @@ async function changePassword() {
     }
 }
 
-// ===== АВАТАРКА =====
 document.getElementById('avatarInput').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
@@ -2100,7 +2100,6 @@ async function saveCrop() {
     } catch (e) { toast('Ошибка'); }
 }
 
-// ===== АВАТАРКА ГРУППЫ =====
 document.getElementById('groupAvatarInput').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
@@ -2136,7 +2135,6 @@ function saveGroupCrop() {
     toast('Фото группы готово');
 }
 
-// ===== ГРУППЫ =====
 function showCreateGroup() {
     selectedGroupUsers.clear();
     groupAvatarBase64 = null;
@@ -2229,7 +2227,6 @@ async function createGroup() {
     } catch (e) { toast('Ошибка создания группы'); }
 }
 
-// ===== ПРОСМОТР ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ =====
 async function viewChatUserProfile() {
     if (!currentChatUser || currentChatIsGroup || currentChatIsSaved) return;
     
@@ -2259,7 +2256,6 @@ function closeUserProfile() {
     document.getElementById('userProfileModal').classList.remove('show');
 }
 
-// ===== ПОИСК =====
 let searchTimeout;
 document.getElementById('searchInput').addEventListener('input', function() {
     clearTimeout(searchTimeout);
@@ -2307,7 +2303,6 @@ async function startChatWith(uid, username) {
     await openDirectChat(uid, username);
 }
 
-// ===== АВТООТКРЫТИЕ =====
 function checkAutoOpen() {
     try {
         const data = sessionStorage.getItem('openChatWith');
@@ -2319,7 +2314,6 @@ function checkAutoOpen() {
     } catch (e) {}
 }
 
-// ===== ВЫХОД =====
 function logout() {
     if (confirm('Выйти из аккаунта?')) {
         if (chatsGlobalListener) chatsGlobalListener();
@@ -2327,7 +2321,6 @@ function logout() {
     }
 }
 
-// ===== ИНИЦИАЛИЗАЦИЯ =====
 window.addEventListener('DOMContentLoaded', () => {
     initSearchScroll();
 });
@@ -2366,7 +2359,7 @@ document.addEventListener('keydown', e => {
     }
 });
 
-console.log('✅ Contegg Messenger · Полный функционал · Избранное · Смена пароля · Плавающая панель');
+console.log('✅ Contegg Messenger · Разделение сообщений по дням · Избранное можно закреплять/откреплять');
 </script>
 </body>
 </html>
