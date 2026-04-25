@@ -1251,22 +1251,23 @@ async function loadChats() {
             }
         }
         
-        const savedChat = chats.find(c => c.type === 'saved');
-        const otherChats = chats.filter(c => c.type !== 'saved');
+        // Сортировка: сначала закреплённые (в порядке закрепления), затем все остальные по времени
+        const pinned = chats.filter(c => pinnedChats.includes(c.id));
+        const unpinned = chats.filter(c => !pinnedChats.includes(c.id));
         
-        const pinned = otherChats.filter(c => pinnedChats.includes(c.id));
-        const unpinned = otherChats.filter(c => !pinnedChats.includes(c.id));
         const sortFn = (a, b) => {
             const ta = a.lastMessageTime?.toDate?.() || new Date(0);
             const tb = b.lastMessageTime?.toDate?.() || new Date(0);
             return tb - ta;
         };
+        
+        // Сортируем закреплённые по времени (свежие сверху)
         pinned.sort(sortFn);
+        // Сортируем незакреплённые по времени
         unpinned.sort(sortFn);
         
-        let sortedChats = [];
-        if (savedChat) sortedChats.push(savedChat);
-        sortedChats.push(...pinned, ...unpinned);
+        // Объединяем: сначала все закреплённые, потом все остальные
+        const sortedChats = [...pinned, ...unpinned];
         
         if (sortedChats.length === 0) {
             list.innerHTML = `<div class="empty-state"><div class="empty-state-icon">💬</div><div class="empty-state-title">Нет чатов</div><div class="empty-state-desc">Используйте поиск, чтобы найти пользователей и начать общение</div></div>`;
@@ -1291,12 +1292,13 @@ async function loadChats() {
             } else if (chat.type === 'group') {
                 const avHTML = chat.avatarBase64 ? `<img src="${chat.avatarBase64}">` : '👥';
                 const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
+                const isPinned = pinnedChats.includes(chat.id);
                 return `
                     <div class="chat-cell" onclick="openGroupChat('${chat.id}')" data-chat-id="${chat.id}" data-chat-type="group">
                         <div class="chat-avatar group">${avHTML}</div>
                         <div class="chat-content">
                             <div class="chat-top">
-                                <span class="chat-name"><i class="fas fa-users group-icon"></i> ${esc(chat.name)}${pinnedChats.includes(chat.id) ? ' <i class="fas fa-thumbtack pinned-icon"></i>' : ''}</span>
+                                <span class="chat-name"><i class="fas fa-users group-icon"></i> ${esc(chat.name)}${isPinned ? ' <i class="fas fa-thumbtack pinned-icon"></i>' : ''}</span>
                                 <span class="chat-time">${timeStr}</span>
                             </div>
                             <div class="chat-preview">${esc(chat.lastMessage || '')}</div>
@@ -1307,13 +1309,14 @@ async function loadChats() {
                 const avHTML = u.avatarBase64 ? `<img src="${u.avatarBase64}">` : (u.displayName?.[0]?.toUpperCase() || 'U');
                 const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
                 const isUnread = chat.unreadFor?.includes(currentUser.uid);
+                const isPinned = pinnedChats.includes(chat.id);
                 return `
-                    <div class="chat-cell ${isUnread ? 'unread' : ''} ${pinnedChats.includes(chat.id) ? 'pinned' : ''}" 
+                    <div class="chat-cell ${isUnread ? 'unread' : ''} ${isPinned ? 'pinned' : ''}" 
                          onclick="openDirectChat('${chat.otherId}', '${u.username}')" data-chat-id="${chat.id}" data-chat-type="dm">
                         <div class="chat-avatar">${avHTML}</div>
                         <div class="chat-content">
                             <div class="chat-top">
-                                <span class="chat-name">${esc(u.displayName || u.username)}${adminUsers.includes(chat.otherId) ? ' <i class="fas fa-check-circle verified-icon"></i>' : ''}${pinnedChats.includes(chat.id) ? ' <i class="fas fa-thumbtack pinned-icon"></i>' : ''}</span>
+                                <span class="chat-name">${esc(u.displayName || u.username)}${adminUsers.includes(chat.otherId) ? ' <i class="fas fa-check-circle verified-icon"></i>' : ''}${isPinned ? ' <i class="fas fa-thumbtack pinned-icon"></i>' : ''}</span>
                                 <span class="chat-time">${timeStr}</span>
                             </div>
                             <div class="chat-preview">${chat.lastSender === currentUser.uid ? 'Вы: ' : ''}${esc(chat.lastMessage || '')}</div>
@@ -2359,7 +2362,7 @@ document.addEventListener('keydown', e => {
     }
 });
 
-console.log('✅ Contegg Messenger · Разделение сообщений по дням · Избранное можно закреплять/откреплять');
+console.log('✅ Contegg Messenger · Избранное теперь обычный чат (сортировка по времени, закрепление работает)');
 </script>
 </body>
 </html>
