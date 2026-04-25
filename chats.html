@@ -1343,6 +1343,7 @@ let groupSettingsAvatarBase64 = null;
 let isCurrentUserDeveloper = false;
 let linkedAccounts = [];
 let currentAccountIndex = 0;
+let isSwitchingAccount = false;
 
 const MAX_IMAGE_WIDTH = 1280;
 const MAX_IMAGE_HEIGHT = 1280;
@@ -1395,6 +1396,7 @@ function loadLinkedAccounts() {
     try {
         const stored = localStorage.getItem('contegg_linked_accounts');
         linkedAccounts = stored ? JSON.parse(stored) : [];
+        
         if (currentUser) {
             const exists = linkedAccounts.find(a => a.uid === currentUser.uid);
             if (!exists) {
@@ -1406,7 +1408,6 @@ function loadLinkedAccounts() {
                 });
                 saveLinkedAccounts();
             } else {
-                // Update avatar if changed
                 exists.avatarBase64 = userData.avatarBase64 || exists.avatarBase64;
                 exists.displayName = currentUser.displayName || exists.displayName;
                 saveLinkedAccounts();
@@ -1420,6 +1421,23 @@ function loadLinkedAccounts() {
 function saveLinkedAccounts() {
     const accountsToSave = linkedAccounts.slice(0, 2);
     localStorage.setItem('contegg_linked_accounts', JSON.stringify(accountsToSave));
+}
+
+function saveAccountCredentials(uid, email, password) {
+    const creds = JSON.parse(localStorage.getItem('contegg_account_creds') || '{}');
+    creds[uid] = { email, password };
+    localStorage.setItem('contegg_account_creds', JSON.stringify(creds));
+}
+
+function getAccountCredentials(uid) {
+    const creds = JSON.parse(localStorage.getItem('contegg_account_creds') || '{}');
+    return creds[uid];
+}
+
+function removeAccountCredentials(uid) {
+    const creds = JSON.parse(localStorage.getItem('contegg_account_creds') || '{}');
+    delete creds[uid];
+    localStorage.setItem('contegg_account_creds', JSON.stringify(creds));
 }
 
 function togglePasswordVisibility(inputId, btn) {
@@ -1799,7 +1817,13 @@ function ctxSaveToFavorites() {
 }
 
 auth.onAuthStateChanged(async user => {
-    if (!user) { location.href = 'index.html'; return; }
+    if (!user) { 
+        // Не перенаправляем на index при переключении аккаунтов
+        if (!isSwitchingAccount) {
+            location.href = 'index.html';
+        }
+        return; 
+    }
     currentUser = user;
     checkIsDeveloper();
     await loadUserData();
@@ -1811,6 +1835,7 @@ auth.onAuthStateChanged(async user => {
     loadAllUsers();
     loadLinkedAccounts();
     checkAutoOpen();
+    isSwitchingAccount = false;
 });
 
 async function loadUserData() {
@@ -2910,6 +2935,9 @@ async function addNewAccount() {
             saveLinkedAccounts();
         }
         
+        // Сохраняем учетные данные
+        saveAccountCredentials(newUser.uid, email, password);
+        
         closeAddAccountModal();
         toast('Аккаунт добавлен');
         renderProfile();
@@ -2927,14 +2955,58 @@ async function switchToAccount(index) {
         return;
     }
     
-    if (chatsGlobalListener) chatsGlobalListener();
-    if (chatMessagesListener) chatMessagesListener();
+    isSwitchingAccount = true;
     
-    linkedAccounts = linkedAccounts.filter(a => a.uid !== currentUser.uid);
-    saveLinkedAccounts();
-    
-    await auth.signOut();
-    location.href = 'index.html';
+    try {
+        // Получаем сохраненные учетные данные
+        let creds = getAccountCredentials(account.uid);
+        
+        if (!creds || !creds.password) {
+            const password = prompt(`Введите пароль для аккаунта ${account.email}:`);
+            if (!password) {
+                isSwitchingAccount = false;
+                return;
+            }
+            saveAccountCredentials(account.uid, account.email, password);
+            creds = { email: account.email, password };
+        }
+        
+        // Отключаем слушатели
+        if (chatsGlobalListener) {
+            chatsGlobalListener();
+            chatsGlobalListener = null;
+        }
+        if (chatMessagesListener) {
+            chatMessagesListener();
+            chatMessagesListener = null;
+        }
+        
+        // Выходим и входим в новый аккаунт
+        await auth.signOut();
+        await auth.signInWithEmailAndPassword(creds.email, creds.password);
+        
+        closeAccountSwitcher();
+        toast(`Переключено на ${account.displayName}`);
+        
+    } catch (error) {
+        console.error('Ошибка переключения:', error);
+        isSwitchingAccount = false;
+        toast('Ошибка переключения: ' + error.message);
+        
+        // Если не удалось войти автоматически, пробуем снова с запросом пароля
+        const password = prompt(`Не удалось войти автоматически. Введите пароль для ${account.email}:`);
+        if (password) {
+            saveAccountCredentials(account.uid, account.email, password);
+            try {
+                await auth.signOut();
+                await auth.signInWithEmailAndPassword(account.email, password);
+                closeAccountSwitcher();
+                toast(`Переключено на ${account.displayName}`);
+            } catch (e) {
+                toast('Неверный пароль');
+            }
+        }
+    }
 }
 
 async function removeAccount(index) {
@@ -2950,6 +3022,8 @@ async function removeAccount(index) {
     
     if (!confirm('Удалить этот аккаунт из списка?')) return;
     
+    const uid = linkedAccounts[index].uid;
+    removeAccountCredentials(uid);
     linkedAccounts.splice(index, 1);
     saveLinkedAccounts();
     showAccountSwitcher();
@@ -3638,9 +3712,25 @@ function checkAutoOpen() {
 function logout() {
     if (confirm('Выйти из аккаунта?')) {
         if (chatsGlobalListener) chatsGlobalListener();
+        if (chatMessagesListener) chatMessagesListener();
+        
         linkedAccounts = linkedAccounts.filter(a => a.uid !== currentUser.uid);
         saveLinkedAccounts();
-        auth.signOut().then(() => location.href = 'index.html');
+        
+        if (linkedAccounts.length > 0) {
+            const nextAccount = linkedAccounts[0];
+            const creds = getAccountCredentials(nextAccount.uid);
+            
+            if (creds && creds.password) {
+                auth.signOut().then(async () => {
+                    await auth.signInWithEmailAndPassword(creds.email, creds.password);
+                });
+            } else {
+                auth.signOut().then(() => location.reload());
+            }
+        } else {
+            auth.signOut().then(() => location.reload());
+        }
     }
 }
 
@@ -3734,7 +3824,7 @@ document.addEventListener('keydown', e => {
     }
 });
 
-console.log('✅ Contegg Messenger · Полная версия с мульти-аккаунтами, отображением паролей и удалением сообщений у всех');
+console.log('✅ Contegg Messenger · Исправленная версия с корректным переключением аккаунтов');
 </script>
 </body>
 </html>
