@@ -1915,11 +1915,42 @@ function initSearchScroll() {
         chatsPage.addEventListener('scroll', function() {
             const currentScrollY = this.scrollTop;
             
-            if (currentScrollY > 50 && currentScrollY > lastScrollY) {
-                searchContainer.classList.add('hidden');
-            } else if (currentScrollY < 30 || currentScrollY < lastScrollY) {
-                searchContainer.classList.remove('hidden');
-            }
+            function initSearchScroll() {
+    const chatsPage = document.getElementById('pageChats');
+    const searchContainer = document.getElementById('searchContainer');
+
+    let lastScrollY = 0;
+    let ticking = false;
+    let hidden = false;
+
+    const threshold = 10; // чувствительность
+
+    chatsPage.addEventListener('scroll', () => {
+        if (!ticking) {
+            window.requestAnimationFrame(() => {
+                const currentScrollY = chatsPage.scrollTop;
+                const diff = currentScrollY - lastScrollY;
+
+                // Скролл вниз (контент вверх) → скрыть
+                if (diff > threshold && !hidden) {
+                    searchContainer.classList.add('hidden');
+                    hidden = true;
+                }
+
+                // Скролл вверх → показать
+                if (diff < -threshold && hidden) {
+                    searchContainer.classList.remove('hidden');
+                    hidden = false;
+                }
+
+                lastScrollY = currentScrollY;
+                ticking = false;
+            });
+
+            ticking = true;
+        }
+    });
+}
             
             lastScrollY = currentScrollY;
         });
