@@ -110,46 +110,77 @@
         }
         .navbar-btn:active { transform: scale(0.9); background: rgba(0, 122, 255, 0.4); }
 
-        .content-area {
-            flex: 1;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .page {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            overflow-y: auto;
-            overflow-x: hidden;
+        /* НОВОЕ: Панель папок */
+        .folders-bar {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(15px);
+            border-bottom: 0.5px solid var(--separator);
+            overflow-x: auto;
+            overflow-y: hidden;
+            white-space: nowrap;
+            scrollbar-width: thin;
             -webkit-overflow-scrolling: touch;
-            background: var(--bg-primary);
-            opacity: 0;
-            transform: translateX(30px);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            pointer-events: none;
-            scrollbar-width: none;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
         }
-        .page::-webkit-scrollbar { display: none; }
-        .page.active {
-            opacity: 1;
-            transform: translateX(0);
-            pointer-events: auto;
+        .folders-bar::-webkit-scrollbar {
+            height: 2px;
         }
+        .folders-bar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .folders-bar::-webkit-scrollbar-thumb {
+            background: var(--text-tertiary);
+            border-radius: 4px;
+        }
+        .folder-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            background: var(--bg-tertiary);
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: 0.2s;
+            flex-shrink: 0;
+        }
+        .folder-tab.active {
+            background: var(--accent);
+            color: white;
+        }
+        .folder-tab:active { transform: scale(0.96); }
+        .add-folder-btn {
+            background: rgba(0,122,255,0.2);
+            color: var(--accent);
+            width: auto;
+            justify-content: center;
+        }
+        .delete-folder-icon {
+            margin-left: 6px;
+            font-size: 10px;
+            opacity: 0.7;
+            cursor: pointer;
+        }
+        .delete-folder-icon:hover { opacity: 1; }
 
+        /* НОВОЕ: Скрываемая строка поиска */
         .search-container {
             position: sticky;
             top: 0;
             background: var(--bg-primary);
             z-index: 10;
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            transform: translateY(0);
+            transform: translateY(-100%);
         }
         
-        .search-container.hidden {
-            transform: translateY(-100%);
+        .search-container.visible {
+            transform: translateY(0);
         }
         
         .search-bar {
@@ -977,6 +1008,18 @@
             transition: 0.2s;
         }
         .add-participant-item:active { background: var(--bg-tertiary); }
+        
+        /* Для чекбоксов в папках */
+        .folder-chat-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            border-bottom: 0.5px solid var(--separator);
+            cursor: pointer;
+        }
+        .folder-chat-item:active { background: var(--bg-tertiary); }
+        .folder-chat-item input { width: 20px; height: 20px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -987,6 +1030,11 @@
         <button class="navbar-btn" onclick="showCreateGroup()">
             <i class="fas fa-plus"></i>
         </button>
+    </div>
+    
+    <!-- НОВОЕ: Панель папок -->
+    <div class="folders-bar" id="foldersBar">
+        <div class="folder-tab active" data-folder="all" onclick="selectFolder('all')">Все чаты</div>
     </div>
 
     <div class="content-area">
@@ -1242,6 +1290,26 @@
     </div>
 </div>
 
+<!-- НОВОЕ: Модальное окно для создания/редактирования папки -->
+<div class="modal-overlay" id="folderModal">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title" id="folderModalTitle">Новая папка</div>
+        <div class="modal-content">
+            <div class="input-row">
+                <label>Название папки</label>
+                <input type="text" id="folderNameInput" placeholder="Название папки" maxlength="30">
+            </div>
+            <div class="input-row">
+                <label>Выберите чаты для папки (можно выбрать несколько)</label>
+                <div id="folderChatsList" style="max-height: 250px; overflow-y: auto; margin-top: 8px;"></div>
+            </div>
+            <button class="btn btn-primary" onclick="saveFolder()">Сохранить</button>
+            <button class="btn btn-secondary" onclick="closeFolderModal()">Отмена</button>
+        </div>
+    </div>
+</div>
+
 <div class="context-menu" id="msgContextMenu">
     <div class="context-item" onclick="ctxReply()"><i class="fas fa-reply"></i> Ответить</div>
     <div class="context-item" onclick="ctxSaveToFavorites()"><i class="fas fa-bookmark"></i> В избранное</div>
@@ -1283,6 +1351,10 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// ============================================
+// ПОЛНЫЙ ОРИГИНАЛЬНЫЙ КОД + НОВЫЕ ФУНКЦИИ
+// ============================================
+
 function enterFullscreen() {
     const docEl = document.documentElement;
     const requestFullscreen = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.msRequestFullscreen;
@@ -1344,6 +1416,10 @@ let isCurrentUserDeveloper = false;
 let linkedAccounts = [];
 let currentAccountIndex = 0;
 let isSwitchingAccount = false;
+
+// НОВОЕ: Папки
+let userFolders = []; // [{ id, name, chatIds }]
+let currentFolder = 'all'; // 'all' или id папки
 
 const MAX_IMAGE_WIDTH = 1280;
 const MAX_IMAGE_HEIGHT = 1280;
@@ -1816,9 +1892,164 @@ function ctxSaveToFavorites() {
     saveMessageToFavorites(selectedMsgId, selectedMsgData);
 }
 
+// ========== НОВОЕ: ФУНКЦИИ ДЛЯ ПАПОК ==========
+async function loadUserFolders() {
+    userFolders = userData.folders || [];
+    renderFoldersBar();
+}
+
+function renderFoldersBar() {
+    const bar = document.getElementById('foldersBar');
+    let html = `<div class="folder-tab ${currentFolder === 'all' ? 'active' : ''}" data-folder="all" onclick="selectFolder('all')">Все чаты</div>`;
+    
+    userFolders.forEach(folder => {
+        html += `<div class="folder-tab ${currentFolder === folder.id ? 'active' : ''}" data-folder="${folder.id}" onclick="selectFolder('${folder.id}')">
+            ${esc(folder.name)}
+            <span class="delete-folder-icon" onclick="event.stopPropagation(); deleteFolder('${folder.id}')"><i class="fas fa-times-circle"></i></span>
+        </div>`;
+    });
+    
+    if (userFolders.length < 10) {
+        html += `<div class="folder-tab add-folder-btn" onclick="showCreateFolderModal()"><i class="fas fa-plus"></i> Папка</div>`;
+    }
+    
+    bar.innerHTML = html;
+}
+
+function selectFolder(folderId) {
+    currentFolder = folderId;
+    renderFoldersBar();
+    loadChats(); // Перезагружаем чаты с фильтрацией по папке
+}
+
+function showCreateFolderModal() {
+    document.getElementById('folderModalTitle').innerText = 'Новая папка';
+    document.getElementById('folderNameInput').value = '';
+    renderFolderChatsList();
+    document.getElementById('folderModal').classList.add('show');
+}
+
+function closeFolderModal() {
+    document.getElementById('folderModal').classList.remove('show');
+}
+
+async function renderFolderChatsList() {
+    const container = document.getElementById('folderChatsList');
+    const snap = await db.collection('chats').get();
+    let chats = [];
+    for (const doc of snap.docs) {
+        const chat = doc.data();
+        if (!chat.participants?.includes(currentUser.uid)) continue;
+        let name = '';
+        if (chat.isGroup) name = chat.name;
+        else if (chat.isSaved) name = 'Избранное';
+        else if (chat.isSystem) name = 'Contegg';
+        else {
+            const otherId = chat.participants.find(id => id !== currentUser.uid);
+            if (otherId) {
+                const user = await getUserInfo(otherId);
+                name = user.displayName || user.username;
+            } else name = 'Чат';
+        }
+        chats.push({ id: doc.id, name });
+    }
+    
+    container.innerHTML = chats.map(chat => `
+        <div class="folder-chat-item" onclick="toggleChatInFolder('${chat.id}')">
+            <input type="checkbox" id="folderChat_${chat.id}" value="${chat.id}">
+            <label for="folderChat_${chat.id}" style="flex:1; cursor: pointer;">${esc(chat.name)}</label>
+        </div>
+    `).join('');
+}
+
+function toggleChatInFolder(chatId) {
+    const checkbox = document.getElementById(`folderChat_${chatId}`);
+    if (checkbox) checkbox.checked = !checkbox.checked;
+}
+
+async function saveFolder() {
+    const name = document.getElementById('folderNameInput').value.trim();
+    if (!name) {
+        toast('Введите название папки');
+        return;
+    }
+    
+    if (userFolders.length >= 10) {
+        toast('Максимум 10 папок');
+        return;
+    }
+    
+    const selectedChats = Array.from(document.querySelectorAll('#folderChatsList input:checked')).map(cb => cb.value);
+    
+    const folderId = 'folder_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    
+    userFolders.push({
+        id: folderId,
+        name: name,
+        chatIds: selectedChats
+    });
+    
+    await db.collection('users').doc(currentUser.uid).update({ folders: userFolders });
+    userData.folders = userFolders;
+    
+    closeFolderModal();
+    loadUserFolders();
+    toast('Папка создана');
+}
+
+async function deleteFolder(folderId) {
+    if (!confirm('Удалить папку? Чаты останутся на месте.')) return;
+    
+    userFolders = userFolders.filter(f => f.id !== folderId);
+    await db.collection('users').doc(currentUser.uid).update({ folders: userFolders });
+    userData.folders = userFolders;
+    
+    if (currentFolder === folderId) {
+        currentFolder = 'all';
+    }
+    
+    loadUserFolders();
+    loadChats();
+    toast('Папка удалена');
+}
+
+// ========== НОВОЕ: СКРЫВАЕМАЯ СТРОКА ПОИСКА ==========
+function initSearchScroll() {
+    const chatsPage = document.getElementById('pageChats');
+    const searchContainer = document.getElementById('searchContainer');
+    let startY = 0;
+    let lastScrollY = 0;
+    
+    searchContainer.classList.add('visible');
+    
+    chatsPage.addEventListener('touchstart', (e) => {
+        startY = e.touches[0].clientY;
+    });
+    
+    chatsPage.addEventListener('scroll', () => {
+        const currentScrollY = chatsPage.scrollTop;
+        
+        if (currentScrollY > 20 && currentScrollY > lastScrollY) {
+            searchContainer.classList.remove('visible');
+        } else if (currentScrollY <= 5) {
+            searchContainer.classList.add('visible');
+        } else if (currentScrollY < lastScrollY && currentScrollY < 10) {
+            searchContainer.classList.add('visible');
+        }
+        
+        lastScrollY = currentScrollY;
+    });
+    
+    chatsPage.addEventListener('touchend', () => {
+        if (chatsPage.scrollTop <= 10) {
+            searchContainer.classList.add('visible');
+        }
+        startY = 0;
+    });
+}
+
 auth.onAuthStateChanged(async user => {
     if (!user) { 
-        // Не перенаправляем на index при переключении аккаунтов
         if (!isSwitchingAccount) {
             location.href = 'index.html';
         }
@@ -1830,11 +2061,13 @@ auth.onAuthStateChanged(async user => {
     await loadAdminUsers();
     await getOrCreateSavedChat();
     await getOrCreateSystemChat(currentUser.uid);
+    await loadUserFolders(); // НОВОЕ: загружаем папки
     await loadChats();
     startGlobalChatsListener();
     loadAllUsers();
     loadLinkedAccounts();
     checkAutoOpen();
+    initSearchScroll(); // НОВОЕ: инициализируем скрываемый поиск
     isSwitchingAccount = false;
 });
 
@@ -1850,13 +2083,15 @@ async function loadUserData() {
             avatarBase64: null,
             blockedUsers: [],
             pinnedChats: [],
-            isAdmin: false
+            isAdmin: false,
+            folders: [] // НОВОЕ: поле для папок
         };
         await db.collection('users').doc(currentUser.uid).set(userData);
     } else {
         userData = snap.data();
         userData.blockedUsers = userData.blockedUsers || [];
         userData.pinnedChats = userData.pinnedChats || [];
+        userData.folders = userData.folders || []; // НОВОЕ: инициализируем папки
     }
     blockedUsers = userData.blockedUsers;
     pinnedChats = userData.pinnedChats;
@@ -1906,26 +2141,7 @@ function switchTab(tab) {
     if (tab === 'profile') renderProfile();
 }
 
-function initSearchScroll() {
-    const chatsPage = document.getElementById('pageChats');
-    const searchContainer = document.getElementById('searchContainer');
-    let lastScrollY = 0;
-    
-    if (chatsPage && searchContainer) {
-        chatsPage.addEventListener('scroll', function() {
-            const currentScrollY = this.scrollTop;
-            
-            if (currentScrollY > 50 && currentScrollY > lastScrollY) {
-                searchContainer.classList.add('hidden');
-            } else if (currentScrollY < 30 || currentScrollY < lastScrollY) {
-                searchContainer.classList.remove('hidden');
-            }
-            
-            lastScrollY = currentScrollY;
-        });
-    }
-}
-
+// Модифицированная функция loadChats с поддержкой папок и поиска
 async function loadChats() {
     const list = document.getElementById('chatsList');
     try {
@@ -1935,6 +2151,12 @@ async function loadChats() {
         for (const doc of snap.docs) {
             const chat = doc.data();
             if (!chat.participants?.includes(currentUser.uid)) continue;
+            
+            // Фильтрация по папке
+            if (currentFolder !== 'all') {
+                const folder = userFolders.find(f => f.id === currentFolder);
+                if (folder && !folder.chatIds.includes(doc.id)) continue;
+            }
             
             if (chat.isSaved) {
                 chats.push({ id: doc.id, ...chat, type: 'saved' });
@@ -2509,7 +2731,8 @@ function updateMessageReactions(id, reactions) {
 async function sendMessage() {
     const input = document.getElementById('chatInput');
     const text = input.value.trim();
-    if (!text || !currentChatId) return;
+    if (!text && !currentChatId) return;
+    if (!text) return;
     
     const btn = document.getElementById('sendBtn');
     const uploadBtn = document.getElementById('imageUploadBtn');
@@ -2562,7 +2785,6 @@ function showMsgContext(e, id, msg) {
     selectedMsgId = id;
     selectedMsgData = msg;
     
-    // Check if user can delete for all
     const deleteForAllItem = document.getElementById('ctxDeleteForAll');
     if (isCurrentUserDeveloper || (currentChatIsGroup && isGroupAdmin(currentChatId, currentUser.uid))) {
         deleteForAllItem.style.display = 'flex';
@@ -2935,7 +3157,6 @@ async function addNewAccount() {
             saveLinkedAccounts();
         }
         
-        // Сохраняем учетные данные
         saveAccountCredentials(newUser.uid, email, password);
         
         closeAddAccountModal();
@@ -2958,7 +3179,6 @@ async function switchToAccount(index) {
     isSwitchingAccount = true;
     
     try {
-        // Получаем сохраненные учетные данные
         let creds = getAccountCredentials(account.uid);
         
         if (!creds || !creds.password) {
@@ -2971,7 +3191,6 @@ async function switchToAccount(index) {
             creds = { email: account.email, password };
         }
         
-        // Отключаем слушатели
         if (chatsGlobalListener) {
             chatsGlobalListener();
             chatsGlobalListener = null;
@@ -2981,7 +3200,6 @@ async function switchToAccount(index) {
             chatMessagesListener = null;
         }
         
-        // Выходим и входим в новый аккаунт
         await auth.signOut();
         await auth.signInWithEmailAndPassword(creds.email, creds.password);
         
@@ -2993,7 +3211,6 @@ async function switchToAccount(index) {
         isSwitchingAccount = false;
         toast('Ошибка переключения: ' + error.message);
         
-        // Если не удалось войти автоматически, пробуем снова с запросом пароля
         const password = prompt(`Не удалось войти автоматически. Введите пароль для ${account.email}:`);
         if (password) {
             saveAccountCredentials(account.uid, account.email, password);
@@ -3734,10 +3951,6 @@ function logout() {
     }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-    initSearchScroll();
-});
-
 document.getElementById('imageInput').addEventListener('change', function(e) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -3820,11 +4033,12 @@ document.addEventListener('keydown', e => {
         document.getElementById('groupCropSettingsModal').classList.remove('show');
         document.getElementById('accountSwitcherModal').classList.remove('show');
         document.getElementById('addAccountModal').classList.remove('show');
+        document.getElementById('folderModal').classList.remove('show');
         document.getElementById('reactionsPanel').style.display = 'none';
     }
 });
 
-console.log('✅ Contegg Messenger · Исправленная версия с корректным переключением аккаунтов');
+console.log('✅ Contegg Messenger · Полная версия с папками и скрываемым поиском');
 </script>
 </body>
 </html>
