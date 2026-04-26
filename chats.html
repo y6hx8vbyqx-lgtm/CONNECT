@@ -3679,24 +3679,31 @@ async function searchUsersAndChats(q) {
     // Поиск пользователей
     try {
         const usersSnap = await db.collection('users')
-            .where('username', '>=', searchTerm)
-            .where('username', '<=', searchTerm + '\uf8ff')
-            .limit(10).get();
+            .orderBy('username')
+            .startAt(searchTerm)
+            .endAt(searchTerm + '\uf8ff')
+            .limit(20).get();
         
         usersSnap.forEach(doc => {
             if (doc.id !== currentUser.uid) {
-                hasUsers = true;
                 const u = doc.data();
-                const avHTML = u.avatarBase64 ? `<img src="${u.avatarBase64}">` : (u.displayName?.[0] || 'U');
-                html += `
-                    <div class="search-result-item" onclick="startChatWith('${doc.id}', '${esc(u.username)}')">
-                        <div class="chat-avatar" style="width:40px;height:40px;font-size:16px;">${avHTML}</div>
-                        <div>
-                            <div style="font-size:15px;">${esc(u.displayName || 'Пользователь')}</div>
-                            <div style="font-size:13px;color:var(--text-secondary);">@${esc(u.username)}</div>
+                const username = (u.username || '').toLowerCase();
+                const displayName = (u.displayName || '').toLowerCase();
+                
+                // Проверяем частичное совпадение
+                if (username.includes(searchTerm) || displayName.includes(searchTerm)) {
+                    hasUsers = true;
+                    const avHTML = u.avatarBase64 ? `<img src="${u.avatarBase64}">` : (u.displayName?.[0] || 'U');
+                    html += `
+                        <div class="search-result-item" onclick="startChatWith('${doc.id}', '${esc(u.username)}')">
+                            <div class="chat-avatar" style="width:40px;height:40px;font-size:16px;">${avHTML}</div>
+                            <div>
+                                <div style="font-size:15px;">${esc(u.displayName || 'Пользователь')}</div>
+                                <div style="font-size:13px;color:var(--text-secondary);">@${esc(u.username)}</div>
+                            </div>
                         </div>
-                    </div>
-                `;
+                    `;
+                }
             }
         });
     } catch(e) { console.error('Ошибка поиска пользователей:', e); }
@@ -3705,18 +3712,19 @@ async function searchUsersAndChats(q) {
         html = '<div style="padding:8px 16px; font-size:12px; color:var(--text-secondary);">👥 ПОЛЬЗОВАТЕЛИ</div>' + html;
     }
     
-    // Поиск групп
+    // Поиск групп - загружаем все группы пользователя и фильтруем
     try {
         const groupsSnap = await db.collection('chats')
             .where('isGroup', '==', true)
-            .where('name', '>=', q)
-            .where('name', '<=', q + '\uf8ff')
-            .limit(10).get();
+            .where('participants', 'array-contains', currentUser.uid)
+            .get();
         
         let groupsHtml = '';
         for (const doc of groupsSnap.docs) {
             const chat = doc.data();
-            if (chat.participants && chat.participants.includes(currentUser.uid)) {
+            const chatName = (chat.name || '').toLowerCase();
+            
+            if (chatName.includes(searchTerm)) {
                 hasGroups = true;
                 const avHTML = chat.avatarBase64 ? `<img src="${chat.avatarBase64}">` : '👥';
                 groupsHtml += `
@@ -3743,6 +3751,7 @@ async function searchUsersAndChats(q) {
     res.innerHTML = html;
     res.style.display = 'block';
 }
+
 async function startChatWith(uid, username) {
     document.getElementById('searchResults').style.display = 'none';
     document.getElementById('searchInput').value = '';
