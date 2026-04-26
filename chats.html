@@ -602,6 +602,19 @@
             transform: scale(0.98);
         }
         
+        .msg-video {
+            max-width: 250px;
+            max-height: 250px;
+            border-radius: 12px;
+            margin: 4px 0;
+        }
+        
+        .msg-audio {
+            max-width: 250px;
+            border-radius: 20px;
+            margin: 4px 0;
+        }
+        
         .image-upload-btn {
             width: 34px;
             height: 34px;
@@ -621,6 +634,32 @@
         .image-upload-btn:active {
             transform: scale(0.9);
             background: rgba(0, 122, 255, 0.2);
+        }
+        
+        .media-btn {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            border: none;
+            color: var(--accent);
+            font-size: 16px;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: 0.2s;
+        }
+        
+        .media-btn:active { transform: scale(0.9); background: rgba(0, 122, 255, 0.2); }
+        .media-btn.recording { background: var(--danger); color: white; animation: pulse 1s infinite; }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        
+        .media-buttons {
+            display: flex;
+            gap: 4px;
         }
         
         .image-preview-overlay {
@@ -1095,9 +1134,17 @@
                 </div>
             </div>
             <div style="display:flex;gap:8px;align-items:flex-end;">
-                <button class="image-upload-btn" id="imageUploadBtn" onclick="document.getElementById('imageInput').click()">
-                    <i class="fas fa-image"></i>
-                </button>
+                <div class="media-buttons">
+                    <button class="media-btn" id="imageUploadBtn" onclick="document.getElementById('imageInput').click()">
+                        <i class="fas fa-image"></i>
+                    </button>
+                    <button class="media-btn" id="videoUploadBtn" onclick="document.getElementById('videoInput').click()">
+                        <i class="fas fa-video"></i>
+                    </button>
+                    <button class="media-btn" id="audioRecordBtn" onclick="toggleRecording()">
+                        <i class="fas fa-microphone"></i>
+                    </button>
+                </div>
                 <textarea class="chat-input" id="chatInput" placeholder="Сообщение" rows="1"></textarea>
                 <button class="chat-send" id="sendBtn" onclick="sendMessage()">
                     <i class="fas fa-arrow-up"></i>
@@ -1322,6 +1369,7 @@
 <input type="file" id="avatarInput" accept="image/*" style="display:none;">
 <input type="file" id="groupAvatarInput" accept="image/*" style="display:none;">
 <input type="file" id="imageInput" accept="image/*" style="display:none;" multiple>
+<input type="file" id="videoInput" accept="video/*" style="display:none;">
 <input type="file" id="editGroupAvatarInput" accept="image/*" style="display:none;">
 
 <div class="toast" id="toast"></div>
@@ -1389,6 +1437,9 @@ let isCurrentUserDeveloper = false;
 let linkedAccounts = [];
 let currentAccountIndex = 0;
 let isSwitchingAccount = false;
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
 
 const MAX_IMAGE_WIDTH = 1280;
 const MAX_IMAGE_HEIGHT = 1280;
@@ -1404,6 +1455,194 @@ const DEVELOPER_EMAILS = ['hidehrouden@gmail.com', 'wostdi@icloud.com'];
     const url = await snapshot.ref.getDownloadURL();
     
     return url;
+}
+
+async function uploadVideoToStorage(file) {
+    return await uploadFileToStorage(file, 'videos');
+}
+
+async function uploadAudioToStorage(file) {
+    return await uploadFileToStorage(file, 'audio');
+}
+
+async function sendImages(files) {
+    if (!currentChatId || !files || files.length === 0) return;
+
+    const sendBtn = document.getElementById('sendBtn');
+    const uploadBtn = document.getElementById('imageUploadBtn');
+
+    sendBtn.disabled = true;
+    uploadBtn.disabled = true;
+
+    try {
+        for (const file of files) {
+            if (!file.type.startsWith('image/')) {
+                toast('Можно только изображения');
+                continue;
+            }
+
+            const url = await uploadFileToStorage(file, 'images');
+
+            const msgData = {
+                text: '',
+                imageUrl: url,
+                senderId: currentUser.uid,
+                timestamp: new Date(),
+                read: false,
+                type: 'image'
+            };
+
+            await db.collection('chats').doc(currentChatId)
+                .collection('messages').add(msgData);
+
+            await db.collection('chats').doc(currentChatId).update({
+                lastMessage: '📷 Фото',
+                lastSender: currentUser.uid,
+                lastMessageTime: new Date()
+            });
+        }
+        toast('Фото отправлены');
+    } catch (e) {
+        console.error(e);
+        toast('Ошибка загрузки');
+    }
+
+    sendBtn.disabled = false;
+    uploadBtn.disabled = false;
+}
+
+async function sendVideo(file) {
+    if (!currentChatId || !file) return;
+    
+    if (!file.type.startsWith('video/')) {
+        toast('Можно только видео');
+        return;
+    }
+    
+    if (file.size > 50 * 1024 * 1024) {
+        toast('Видео не более 50MB');
+        return;
+    }
+    
+    const sendBtn = document.getElementById('sendBtn');
+    const videoBtn = document.getElementById('videoUploadBtn');
+    
+    sendBtn.disabled = true;
+    videoBtn.disabled = true;
+    
+    try {
+        const url = await uploadVideoToStorage(file);
+        
+        await db.collection('chats').doc(currentChatId).collection('messages').add({
+            videoUrl: url,
+            senderId: currentUser.uid,
+            timestamp: new Date(),
+            type: 'video'
+        });
+        
+        await db.collection('chats').doc(currentChatId).update({
+            lastMessage: '🎥 Видео',
+            lastSender: currentUser.uid,
+            lastMessageTime: new Date()
+        });
+        
+        toast('Видео отправлено');
+    } catch(e) { 
+        console.error(e);
+        toast('Ошибка загрузки видео'); 
+    }
+    
+    sendBtn.disabled = false;
+    videoBtn.disabled = false;
+}
+
+async function sendAudio(blob) {
+    if (!currentChatId || !blob) return;
+    
+    const sendBtn = document.getElementById('sendBtn');
+    const audioBtn = document.getElementById('audioRecordBtn');
+    
+    sendBtn.disabled = true;
+    audioBtn.disabled = true;
+    
+    try {
+        const file = new File([blob], `voice_${Date.now()}.webm`, { type: 'audio/webm' });
+        const url = await uploadAudioToStorage(file);
+        
+        await db.collection('chats').doc(currentChatId).collection('messages').add({
+            audioUrl: url,
+            senderId: currentUser.uid,
+            timestamp: new Date(),
+            type: 'audio'
+        });
+        
+        await db.collection('chats').doc(currentChatId).update({
+            lastMessage: '🎤 Голосовое',
+            lastSender: currentUser.uid,
+            lastMessageTime: new Date()
+        });
+        
+        toast('Голосовое отправлено');
+    } catch(e) { 
+        console.error(e);
+        toast('Ошибка загрузки аудио'); 
+    }
+    
+    sendBtn.disabled = false;
+    audioBtn.disabled = false;
+}
+
+async function toggleRecording() {
+    if (isRecording) {
+        stopRecording();
+    } else {
+        startRecording();
+    }
+}
+
+async function startRecording() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        
+        mediaRecorder.ondataavailable = (e) => {
+            audioChunks.push(e.data);
+        };
+        
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            await sendAudio(audioBlob);
+            stream.getTracks().forEach(track => track.stop());
+        };
+        
+        mediaRecorder.start();
+        isRecording = true;
+        
+        const btn = document.getElementById('audioRecordBtn');
+        btn.classList.add('recording');
+        btn.innerHTML = '<i class="fas fa-stop"></i>';
+        toast('Запись...');
+        
+        setTimeout(() => {
+            if (isRecording) stopRecording();
+        }, 60000);
+        
+    } catch(e) {
+        console.error(e);
+        toast('Нет доступа к микрофону');
+    }
+}
+
+function stopRecording() {
+    if (mediaRecorder && isRecording) {
+        mediaRecorder.stop();
+        isRecording = false;
+        const btn = document.getElementById('audioRecordBtn');
+        btn.classList.remove('recording');
+        btn.innerHTML = '<i class="fas fa-microphone"></i>';
+        toast('Отправка...');
+    }
 }
 
 function toast(msg) {
@@ -1696,54 +1935,6 @@ async function compressImage(file) {
     });
 }
 
-async function sendImages(files) {
-    if (!currentChatId || !files || files.length === 0) return;
-
-    const sendBtn = document.getElementById('sendBtn');
-    const uploadBtn = document.getElementById('imageUploadBtn');
-
-    sendBtn.disabled = true;
-    uploadBtn.disabled = true;
-
-    try {
-        for (const file of files) {
-
-            // ❗ только картинки
-            if (!file.type.startsWith('image/')) {
-                toast('Можно только изображения');
-                continue;
-            }
-
-            // загрузка в Firebase Storage
-            const url = await uploadFileToStorage(file, 'images');
-
-            const msgData = {
-                text: '',
-                imageUrl: url, // ✅ вместо base64
-                senderId: currentUser.uid,
-                timestamp: new Date(),
-                read: false
-            };
-
-            await db.collection('chats').doc(currentChatId)
-                .collection('messages').add(msgData);
-
-            await db.collection('chats').doc(currentChatId).update({
-                lastMessage: '📷 Фото',
-                lastSender: currentUser.uid,
-                lastMessageTime: new Date()
-            });
-        }
-
-    } catch (e) {
-        console.error(e);
-        toast('Ошибка загрузки');
-    }
-
-    sendBtn.disabled = false;
-    uploadBtn.disabled = false;
-}
-
 function viewImage(src) {
     const overlay = document.getElementById('imagePreviewOverlay');
     const img = document.getElementById('imagePreviewImg');
@@ -1797,76 +1988,6 @@ async function openSavedChat() {
     await openSavedChatUI();
 }
 
-    async function sendVideo(file) {
-
-    const MAX_SIZE = 15 * 1024 * 1024; // 15MB
-
-    if (file.size > MAX_SIZE) {
-        toast('Видео больше 15MB');
-        return;
-    }
-
-    const url = await uploadFileToStorage(file, 'videos');
-
-    await db.collection('chats').doc(currentChatId)
-        .collection('messages').add({
-            text: '',
-            videoUrl: url,
-            senderId: currentUser.uid,
-            timestamp: new Date()
-        });
-
-    await db.collection('chats').doc(currentChatId).update({
-        lastMessage: '🎥 Видео',
-        lastMessageTime: new Date()
-    });
-}
-
-    document.getElementById('videoInput').addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    if (file) sendVideo(file);
-});
-
-    let mediaRecorder;
-let audioChunks = [];
-
-async function startRecording() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-    mediaRecorder = new MediaRecorder(stream);
-
-    mediaRecorder.ondataavailable = e => {
-        audioChunks.push(e.data);
-    };
-
-    mediaRecorder.start();
-}
-    async function stopRecording() {
-    return new Promise(resolve => {
-
-        mediaRecorder.onstop = async () => {
-
-            const blob = new Blob(audioChunks, { type: 'audio/webm' });
-            audioChunks = [];
-
-            const file = new File([blob], 'voice.webm');
-
-            const url = await uploadFileToStorage(file, 'voices');
-
-            await db.collection('chats').doc(currentChatId)
-                .collection('messages').add({
-                    audioUrl: url,
-                    senderId: currentUser.uid,
-                    timestamp: new Date()
-                });
-
-            resolve();
-        };
-
-        mediaRecorder.stop();
-    });
-}
-
 async function openSavedChatUI() {
     const avatar = document.getElementById('chatAvatar');
     avatar.innerHTML = '<i class="fas fa-bookmark" style="font-size:20px;"></i>';
@@ -1882,6 +2003,8 @@ async function openSavedChatUI() {
     document.getElementById('chatInput').disabled = false;
     document.getElementById('sendBtn').disabled = false;
     document.getElementById('imageUploadBtn').disabled = false;
+    document.getElementById('videoUploadBtn').disabled = false;
+    document.getElementById('audioRecordBtn').disabled = false;
     document.getElementById('chatInputBar').style.display = 'flex';
     await loadMessages();
     
@@ -1891,9 +2014,17 @@ async function openSavedChatUI() {
 async function saveMessageToFavorites(messageId, messageData) {
     try {
         const savedChatId = await getOrCreateSavedChat();
-        const textToSave = messageData.imageBase64 
-            ? `📷 Фото` 
-            : `📌 ${messageData.text || ''}`;
+        let textToSave = '';
+        
+        if (messageData.imageUrl) {
+            textToSave = `📷 Фото`;
+        } else if (messageData.videoUrl) {
+            textToSave = `🎥 Видео`;
+        } else if (messageData.audioUrl) {
+            textToSave = `🎤 Голосовое`;
+        } else {
+            textToSave = `📌 ${messageData.text || ''}`;
+        }
         
         const msgToSave = {
             text: textToSave,
@@ -1904,8 +2035,14 @@ async function saveMessageToFavorites(messageId, messageData) {
             read: false
         };
         
-        if (messageData.imageBase64) {
-            msgToSave.imageBase64 = messageData.imageBase64;
+        if (messageData.imageUrl) {
+            msgToSave.imageUrl = messageData.imageUrl;
+        }
+        if (messageData.videoUrl) {
+            msgToSave.videoUrl = messageData.videoUrl;
+        }
+        if (messageData.audioUrl) {
+            msgToSave.audioUrl = messageData.audioUrl;
         }
         
         await db.collection('chats').doc(savedChatId).collection('messages').add(msgToSave);
@@ -1930,7 +2067,6 @@ function ctxSaveToFavorites() {
 
 auth.onAuthStateChanged(async user => {
     if (!user) { 
-        // Не перенаправляем на index при переключении аккаунтов
         if (!isSwitchingAccount) {
             location.href = 'index.html';
         }
@@ -2028,12 +2164,10 @@ function initSearchScroll() {
     chatsPage.addEventListener('scroll', () => {
         const currentScrollY = chatsPage.scrollTop;
         
-        // Прячем при скролле вниз (если не в самом верху)
         if (currentScrollY > 5 && currentScrollY > lastScrollY) {
             searchContainer.classList.add('hidden');
         }
         
-        // Показываем ТОЛЬКО когда доскроллили до самого верха
         if (currentScrollY <= 5) {
             searchContainer.classList.remove('hidden');
         }
@@ -2373,6 +2507,8 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
         document.getElementById('chatInput').disabled = false;
         document.getElementById('sendBtn').disabled = false;
         document.getElementById('imageUploadBtn').disabled = false;
+        document.getElementById('videoUploadBtn').disabled = false;
+        document.getElementById('audioRecordBtn').disabled = false;
     } else if (chatData?.isSystem) {
         avatar.innerHTML = '<i class="fas fa-check-circle" style="font-size:20px;"></i>';
         avatar.style.background = 'linear-gradient(135deg, #007aff, #5856d6)';
@@ -2385,6 +2521,20 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
         document.getElementById('chatInput').disabled = true;
         document.getElementById('sendBtn').disabled = true;
         document.getElementById('imageUploadBtn').disabled = true;
+        document.getElementById('videoUploadBtn').disabled = true;
+        document.getElementById('audioRecordBtn').disabled = true;
+        currentChatUser = null;
+    } else if (chatData?.isSaved) {
+        avatar.innerHTML = '<i class="fas fa-bookmark" style="font-size:20px;"></i>';
+        avatar.style.background = 'linear-gradient(135deg, #ff9f0a, #ff4d4d)';
+        document.getElementById('chatName').textContent = 'Избранное';
+        document.getElementById('chatStatus').textContent = 'Сохранённые сообщения';
+        document.getElementById('chatInputBar').style.display = 'flex';
+        document.getElementById('chatInput').disabled = false;
+        document.getElementById('sendBtn').disabled = false;
+        document.getElementById('imageUploadBtn').disabled = false;
+        document.getElementById('videoUploadBtn').disabled = false;
+        document.getElementById('audioRecordBtn').disabled = false;
         currentChatUser = null;
     } else {
         const user = await getUserInfo(userId);
@@ -2401,6 +2551,8 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
         document.getElementById('chatInput').disabled = false;
         document.getElementById('sendBtn').disabled = false;
         document.getElementById('imageUploadBtn').disabled = false;
+        document.getElementById('videoUploadBtn').disabled = false;
+        document.getElementById('audioRecordBtn').disabled = false;
     }
     
     document.getElementById('chatOverlay').classList.add('show');
@@ -2424,6 +2576,7 @@ function closeChat() {
     currentChatParticipants = [];
     cancelReply();
     document.getElementById('chatInputBar').style.display = 'flex';
+    if (isRecording) stopRecording();
 }
 
 async function markAsRead() {
@@ -2497,19 +2650,7 @@ async function loadMessages() {
         });
 }
 
-function renderMessage(id, msg)
-
-    if (msg.imageUrl) {
-    html += `<img src="${msg.imageUrl}" class="msg-image">`;
-}
-    if (msg.videoUrl) {
-    html += `<video src="${msg.videoUrl}" controls style="max-width:250px;border-radius:10px;"></video>`;
-}
-    if (msg.audioUrl) {
-    html += `<audio src="${msg.audioUrl}" controls></audio>`;
-}
-
-{
+function renderMessage(id, msg) {
     const container = document.getElementById('chatMessages');
     const isOut = msg.senderId === currentUser.uid;
     const d = msg.timestamp?.toDate?.() || new Date();
@@ -2541,8 +2682,16 @@ function renderMessage(id, msg)
         html += `<span class="msg-sender" style="font-size:12px;color:var(--accent);font-weight:500;"></span>`;
     }
     
-    if (msg.imageBase64) {
-        html += `<img src="${msg.imageBase64}" class="msg-image" onclick="event.stopPropagation(); viewImage('${msg.imageBase64}')" alt="Photo" loading="lazy">`;
+    if (msg.imageUrl) {
+        html += `<img src="${msg.imageUrl}" class="msg-image" onclick="event.stopPropagation(); viewImage('${msg.imageUrl}')" alt="Photo" loading="lazy">`;
+    }
+    
+    if (msg.videoUrl) {
+        html += `<video src="${msg.videoUrl}" class="msg-video" controls preload="metadata" onclick="event.stopPropagation();"></video>`;
+    }
+    
+    if (msg.audioUrl) {
+        html += `<audio src="${msg.audioUrl}" class="msg-audio" controls preload="metadata"></audio>`;
     }
     
     if (msg.text) {
@@ -2576,13 +2725,13 @@ function renderMessage(id, msg)
     });
     
     div.addEventListener('click', (e) => {
-        if (e.target.closest('.reaction-badge') || e.target.closest('.msg-image')) return;
+        if (e.target.closest('.reaction-badge') || e.target.closest('.msg-image') || e.target.closest('.msg-video') || e.target.closest('.msg-audio')) return;
         showReactionsPanelForMsg(id, msg, e);
     });
     
     let timer;
     div.addEventListener('touchstart', (e) => {
-        if (e.target.closest('.msg-image')) return;
+        if (e.target.closest('.msg-image') || e.target.closest('.msg-video') || e.target.closest('.msg-audio')) return;
         timer = setTimeout(() => showMsgContext(e, id, msg), 500);
     });
     div.addEventListener('touchend', () => clearTimeout(timer));
@@ -2642,8 +2791,12 @@ async function sendMessage() {
     
     const btn = document.getElementById('sendBtn');
     const uploadBtn = document.getElementById('imageUploadBtn');
+    const videoBtn = document.getElementById('videoUploadBtn');
+    const audioBtn = document.getElementById('audioRecordBtn');
     btn.disabled = true;
     uploadBtn.disabled = true;
+    videoBtn.disabled = true;
+    audioBtn.disabled = true;
     input.value = '';
     input.style.height = 'auto';
     
@@ -2651,7 +2804,8 @@ async function sendMessage() {
         text,
         senderId: currentUser.uid,
         timestamp: new Date(),
-        read: false
+        read: false,
+        type: 'text'
     };
     
     if (replyingTo) {
@@ -2683,6 +2837,8 @@ async function sendMessage() {
     
     btn.disabled = false;
     uploadBtn.disabled = false;
+    videoBtn.disabled = false;
+    audioBtn.disabled = false;
     document.getElementById('chatInput').focus();
 }
 
@@ -2691,7 +2847,6 @@ function showMsgContext(e, id, msg) {
     selectedMsgId = id;
     selectedMsgData = msg;
     
-    // Check if user can delete for all
     const deleteForAllItem = document.getElementById('ctxDeleteForAll');
     if (isCurrentUserDeveloper || (currentChatIsGroup && isGroupAdmin(currentChatId, currentUser.uid))) {
         deleteForAllItem.style.display = 'flex';
@@ -3064,7 +3219,6 @@ async function addNewAccount() {
             saveLinkedAccounts();
         }
         
-        // Сохраняем учетные данные
         saveAccountCredentials(newUser.uid, email, password);
         
         closeAddAccountModal();
@@ -3087,7 +3241,6 @@ async function switchToAccount(index) {
     isSwitchingAccount = true;
     
     try {
-        // Получаем сохраненные учетные данные
         let creds = getAccountCredentials(account.uid);
         
         if (!creds || !creds.password) {
@@ -3100,7 +3253,6 @@ async function switchToAccount(index) {
             creds = { email: account.email, password };
         }
         
-        // Отключаем слушатели
         if (chatsGlobalListener) {
             chatsGlobalListener();
             chatsGlobalListener = null;
@@ -3110,7 +3262,6 @@ async function switchToAccount(index) {
             chatMessagesListener = null;
         }
         
-        // Выходим и входим в новый аккаунт
         await auth.signOut();
         await auth.signInWithEmailAndPassword(creds.email, creds.password);
         
@@ -3122,7 +3273,6 @@ async function switchToAccount(index) {
         isSwitchingAccount = false;
         toast('Ошибка переключения: ' + error.message);
         
-        // Если не удалось войти автоматически, пробуем снова с запросом пароля
         const password = prompt(`Не удалось войти автоматически. Введите пароль для ${account.email}:`);
         if (password) {
             saveAccountCredentials(account.uid, account.email, password);
@@ -3803,7 +3953,6 @@ async function searchUsersAndChats(q) {
     let hasUsers = false;
     let hasGroups = false;
     
-    // Поиск пользователей - берем всех и фильтруем
     try {
         const usersSnap = await db.collection('users').get();
         
@@ -3814,7 +3963,6 @@ async function searchUsersAndChats(q) {
             const username = (u.username || '').toLowerCase();
             const displayName = (u.displayName || '').toLowerCase();
             
-            // Ищем по любому совпадению
             if (username.includes(searchTerm) || displayName.includes(searchTerm)) {
                 hasUsers = true;
                 const avHTML = u.avatarBase64 ? `<img src="${u.avatarBase64}">` : (displayName[0] || 'U');
@@ -3838,7 +3986,6 @@ async function searchUsersAndChats(q) {
         html = '<div style="padding:8px 16px; font-size:12px; color:var(--text-secondary); background:var(--bg-tertiary);">👥 ПОЛЬЗОВАТЕЛИ</div>' + html;
     }
     
-    // Поиск групп
     try {
         const groupsSnap = await db.collection('chats')
             .where('isGroup', '==', true)
@@ -3934,6 +4081,11 @@ document.getElementById('imageInput').addEventListener('change', function(e) {
     this.value = '';
 });
 
+document.getElementById('videoInput').addEventListener('change', function(e) {
+    if (e.target.files[0]) sendVideo(e.target.files[0]);
+    this.value = '';
+});
+
 document.addEventListener('paste', function(e) {
     const chatInput = document.getElementById('chatInput');
     if (document.activeElement !== chatInput) return;
@@ -4013,7 +4165,7 @@ document.addEventListener('keydown', e => {
     }
 });
 
-console.log('✅ Contegg Messenger · Исправленная версия с корректным переключением аккаунтов');
+console.log('✅ Contegg Messenger · Полная версия с фото, видео и голосовыми');
 </script>
 </body>
 </html>
