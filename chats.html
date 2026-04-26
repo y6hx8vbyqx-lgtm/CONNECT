@@ -1,8 +1,6 @@
 <head>
     <meta charset="UTF-8">
 
-    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-storage-compat.js"></script>
-
     <!-- ✅ ВАЖНО: фикс зума -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 
@@ -24,10 +22,12 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
     
+    <!-- Firebase (ВСЕ 4 компонента в правильном порядке) -->
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
-
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-storage-compat.js"></script>  <!-- 👈 ДОБАВЛЕНО! -->
+    
     <!-- ✅ ФИКС ДЛЯ INPUT -->
     <style>
       input, textarea {
