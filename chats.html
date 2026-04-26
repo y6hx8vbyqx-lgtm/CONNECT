@@ -1909,54 +1909,44 @@ function switchTab(tab) {
 function initSearchScroll() {
     const chatsPage = document.getElementById('pageChats');
     const searchContainer = document.getElementById('searchContainer');
-    let lastScrollY = 0;
-    
-    if (chatsPage && searchContainer) {
-        chatsPage.addEventListener('scroll', function() {
-            const currentScrollY = this.scrollTop;
-            
-            function initSearchScroll() {
-    const chatsPage = document.getElementById('pageChats');
-    const searchContainer = document.getElementById('searchContainer');
 
     let lastScrollY = 0;
     let ticking = false;
-    let hidden = false;
 
-    const threshold = 10; // чувствительность
+    if (chatsPage && searchContainer) {
+        chatsPage.addEventListener('scroll', function () {
 
-    chatsPage.addEventListener('scroll', () => {
-        if (!ticking) {
-            window.requestAnimationFrame(() => {
-                const currentScrollY = chatsPage.scrollTop;
-                const diff = currentScrollY - lastScrollY;
+            if (!ticking) {
+                window.requestAnimationFrame(() => {
 
-                // Скролл вниз (контент вверх) → скрыть
-                if (diff > threshold && !hidden) {
-                    searchContainer.classList.add('hidden');
-                    hidden = true;
-                }
+                    const currentScrollY = chatsPage.scrollTop;
 
-                // Скролл вверх → показать
-                if (diff < -threshold && hidden) {
-                    searchContainer.classList.remove('hidden');
-                    hidden = false;
-                }
+                    // ⬆️ тянем вниз (как в Telegram)
+                    if (currentScrollY < lastScrollY) {
+                        searchContainer.classList.remove('hidden');
+                    }
+                    // ⬇️ скроллим вверх списка
+                    else if (currentScrollY > lastScrollY && currentScrollY > 20) {
+                        searchContainer.classList.add('hidden');
+                    }
 
-                lastScrollY = currentScrollY;
-                ticking = false;
-            });
+                    // если в самом верху — всегда показываем
+                    if (currentScrollY <= 0) {
+                        searchContainer.classList.remove('hidden');
+                    }
 
-            ticking = true;
-        }
-    });
-}
-            
-            lastScrollY = currentScrollY;
+                    lastScrollY = currentScrollY;
+                    ticking = false;
+
+                });
+
+                ticking = true;
+            }
+
         });
     }
 }
-
+    
 async function loadChats() {
     const list = document.getElementById('chatsList');
     try {
@@ -3858,4 +3848,4 @@ document.addEventListener('keydown', e => {
 console.log('✅ Contegg Messenger · Исправленная версия с корректным переключением аккаунтов');
 </script>
 </body>
-</html> 
+</html>
