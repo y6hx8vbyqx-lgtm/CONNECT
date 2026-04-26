@@ -25,6 +25,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-storage-compat.js"></script>
 
     <!-- ✅ ФИКС ДЛЯ INPUT -->
     <style>
@@ -37,6 +38,89 @@
     </style>
     
     <!-- ОСНОВНЫЕ СТИЛИ -->
+    /* ДОБАВИТЬ ЭТОТ КОД перед .msg-image */
+.msg-video {
+    max-width: 280px;
+    max-height: 280px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: 0.2s;
+    background: #000;
+}
+
+.msg-video:active {
+    transform: scale(0.98);
+}
+
+.msg-file {
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 4px 0;
+    cursor: pointer;
+}
+
+.msg-file-icon {
+    font-size: 32px;
+    color: var(--accent);
+}
+
+.msg-file-info {
+    flex: 1;
+}
+
+.msg-file-name {
+    font-size: 13px;
+    font-weight: 500;
+    word-break: break-all;
+}
+
+.msg-file-size {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.media-progress {
+    margin-bottom: 8px;
+    padding: 8px;
+    background: var(--bg-tertiary);
+    border-radius: 10px;
+}
+
+.progress-bar {
+    height: 4px;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.3s;
+}
+
+.recording-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 59, 48, 0.2);
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    color: var(--danger);
+}
+
+.recording-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--danger);
+    border-radius: 50%;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+    
     <style>
         * {
             margin: 0;
@@ -1081,29 +1165,49 @@
     <div class="chat-messages" id="chatMessages">
         <div class="loader"><div class="spinner"></div></div>
     </div>
-    <div class="chat-input-bar" id="chatInputBar">
-        <div style="flex:1;display:flex;flex-direction:column;">
-            <div class="reply-preview" id="replyPreview" style="display:none;">
-                <div style="flex:1;">
-                    <div class="reply-preview-name" id="replyName"></div>
-                    <div class="reply-preview-text" id="replyText"></div>
-                </div>
-                <div class="reply-preview-close" onclick="cancelReply()">
-                    <i class="fas fa-times"></i>
-                </div>
+  <div class="chat-input-bar" id="chatInputBar">
+    <div style="flex:1;display:flex;flex-direction:column;">
+        <div class="reply-preview" id="replyPreview" style="display:none;">
+            <div style="flex:1;">
+                <div class="reply-preview-name" id="replyName"></div>
+                <div class="reply-preview-text" id="replyText"></div>
             </div>
-            <div style="display:flex;gap:8px;align-items:flex-end;">
-                <button class="image-upload-btn" id="imageUploadBtn" onclick="document.getElementById('imageInput').click()">
-                    <i class="fas fa-image"></i>
-                </button>
-                <textarea class="chat-input" id="chatInput" placeholder="Сообщение" rows="1"></textarea>
-                <button class="chat-send" id="sendBtn" onclick="sendMessage()">
-                    <i class="fas fa-arrow-up"></i>
-                </button>
+            <div class="reply-preview-close" onclick="cancelReply()">
+                <i class="fas fa-times"></i>
             </div>
+        </div>
+        
+        <!-- Индикатор загрузки -->
+        <div id="mediaProgress" style="display:none; margin-bottom: 8px;">
+            <div style="background: var(--bg-tertiary); border-radius: 10px; height: 4px; overflow: hidden;">
+                <div id="uploadProgressBar" style="width: 0%; height: 100%; background: var(--accent); transition: width 0.3s;"></div>
+            </div>
+            <div style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;" id="uploadStatus"></div>
+        </div>
+        
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+            <!-- Кнопка для прикрепления файлов -->
+            <button class="image-upload-btn" id="attachBtn" onclick="showAttachMenu()">
+                <i class="fas fa-paperclip"></i>
+            </button>
+            
+            <!-- Кнопка для записи голоса -->
+            <button class="image-upload-btn" id="micBtn" onclick="toggleVoiceRecording()">
+                <i class="fas fa-microphone"></i>
+            </button>
+            
+            <textarea class="chat-input" id="chatInput" placeholder="Сообщение" rows="1"></textarea>
+            <button class="chat-send" id="sendBtn" onclick="sendMessage()">
+                <i class="fas fa-arrow-up"></i>
+            </button>
         </div>
     </div>
 </div>
+
+<!-- Скрытые инпуты для разных типов файлов -->
+<input type="file" id="photoInput" accept="image/*" style="display:none;" multiple>
+<input type="file" id="videoInput" accept="video/*" style="display:none;">
+<input type="file" id="fileInput" style="display:none;">
 
 <div class="modal-overlay" id="accountSwitcherModal">
     <div class="modal-sheet">
@@ -1386,6 +1490,20 @@ let isCurrentUserDeveloper = false;
 let linkedAccounts = [];
 let currentAccountIndex = 0;
 let isSwitchingAccount = false;
+
+    // ДОБАВИТЬ ПОСЛЕ существующих переменных
+const storage = firebase.storage();
+
+// Конфигурация размеров файлов
+const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_PHOTO_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+
+// Для записи голоса
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+let recordingStartTime = null;
 
 const MAX_IMAGE_WIDTH = 1280;
 const MAX_IMAGE_HEIGHT = 1280;
@@ -2427,6 +2545,10 @@ async function loadMessages() {
         });
 }
 
+renderMessage// НАЙДИТЕ ЭТУ СТРОКУ (после loadMessages):
+renderMessage
+
+// ЗАМЕНИТЕ на ЭТО:
 function renderMessage(id, msg) {
     const container = document.getElementById('chatMessages');
     const isOut = msg.senderId === currentUser.uid;
@@ -2445,7 +2567,7 @@ function renderMessage(id, msg) {
     if (msg.replyTo) {
         html += `<div class="msg-reply">
             <div class="msg-reply-name">${msg.replyTo.senderId === currentUser.uid ? 'Вы' : 'Пользователь'}</div>
-            <div class="msg-reply-text">${esc(msg.replyTo.text || 'Фото')}</div>
+            <div class="msg-reply-text">${esc(msg.replyTo.text || 'Сообщение')}</div>
         </div>`;
     }
     
@@ -2459,7 +2581,30 @@ function renderMessage(id, msg) {
         html += `<span class="msg-sender" style="font-size:12px;color:var(--accent);font-weight:500;"></span>`;
     }
     
-    if (msg.imageBase64) {
+    // Медиа контент
+    if (msg.mediaType === 'photo' && msg.mediaUrl) {
+        html += `<img src="${msg.mediaUrl}" class="msg-image" onclick="event.stopPropagation(); viewImage('${msg.mediaUrl}')" alt="Photo" loading="lazy">`;
+    } 
+    else if (msg.mediaType === 'video' && msg.mediaUrl) {
+        html += `<video class="msg-video" controls preload="metadata" onclick="event.stopPropagation()">
+                    <source src="${msg.mediaUrl}" type="video/mp4">
+                    Ваш браузер не поддерживает видео
+                </video>`;
+    }
+    else if (msg.mediaType === 'file' && msg.mediaUrl) {
+        const fileSize = msg.fileSize ? formatFileSize(msg.fileSize) : '';
+        html += `<div class="msg-file" onclick="event.stopPropagation(); downloadFile('${msg.mediaUrl}', '${esc(msg.fileName || 'file')}')">
+                    <div class="msg-file-icon"><i class="fas fa-file"></i></div>
+                    <div class="msg-file-info">
+                        <div class="msg-file-name">${esc(msg.fileName || 'Файл')}</div>
+                        ${fileSize ? `<div class="msg-file-size">${fileSize}</div>` : ''}
+                    </div>
+                    <button class="download-btn" onclick="event.stopPropagation(); downloadFile('${msg.mediaUrl}', '${esc(msg.fileName || 'file')}')">
+                        <i class="fas fa-download"></i>
+                    </button>
+                </div>`;
+    }
+    else if (msg.imageBase64) {
         html += `<img src="${msg.imageBase64}" class="msg-image" onclick="event.stopPropagation(); viewImage('${msg.imageBase64}')" alt="Photo" loading="lazy">`;
     }
     
@@ -2487,20 +2632,18 @@ function renderMessage(id, msg) {
     div.querySelectorAll('.reaction-badge').forEach(badge => {
         badge.addEventListener('click', (e) => {
             e.stopPropagation();
-            const msgId = badge.dataset.msgId;
-            const emoji = badge.dataset.emoji;
-            toggleReaction(msgId, emoji);
+            toggleReaction(badge.dataset.msgId, badge.dataset.emoji);
         });
     });
     
     div.addEventListener('click', (e) => {
-        if (e.target.closest('.reaction-badge') || e.target.closest('.msg-image')) return;
+        if (e.target.closest('.reaction-badge') || e.target.closest('.msg-image') || e.target.closest('.msg-video') || e.target.closest('.msg-file')) return;
         showReactionsPanelForMsg(id, msg, e);
     });
     
     let timer;
     div.addEventListener('touchstart', (e) => {
-        if (e.target.closest('.msg-image')) return;
+        if (e.target.closest('.msg-image') || e.target.closest('.msg-video')) return;
         timer = setTimeout(() => showMsgContext(e, id, msg), 500);
     });
     div.addEventListener('touchend', () => clearTimeout(timer));
@@ -2511,6 +2654,15 @@ function renderMessage(id, msg) {
     });
     
     container.appendChild(div);
+}
+
+// Добавьте эту вспомогательную функцию
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 function updateMessageReactions(id, reactions) {
@@ -3930,6 +4082,292 @@ document.addEventListener('keydown', e => {
         document.getElementById('reactionsPanel').style.display = 'none';
     }
 });
+
+    // ========== НОВЫЕ ФУНКЦИИ ДЛЯ ФОТО И ВИДЕО ==========
+
+// Показать меню выбора файлов
+function showAttachMenu() {
+    const result = prompt("Выберите тип файла:\n1 - Фото\n2 - Видео\n3 - Документ", "1");
+    
+    if (!result) return;
+    
+    if (result === "1") {
+        document.getElementById('photoInput').click();
+    } else if (result === "2") {
+        document.getElementById('videoInput').click();
+    } else if (result === "3") {
+        document.getElementById('fileInput').click();
+    }
+}
+
+// Загрузка файла в Firebase Storage
+async function uploadToStorage(file, type) {
+    if (!currentChatId) {
+        toast("Сначала откройте чат");
+        return null;
+    }
+    
+    const timestamp = Date.now();
+    const safeFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const filePath = `chats/${currentChatId}/${type}/${timestamp}_${safeFileName}`;
+    const storageRef = storage.ref(filePath);
+    
+    // Показываем прогресс загрузки
+    const progressDiv = document.getElementById('mediaProgress');
+    const progressBar = document.getElementById('uploadProgressBar');
+    const statusDiv = document.getElementById('uploadStatus');
+    progressDiv.style.display = 'block';
+    progressBar.style.width = '0%';
+    
+    try {
+        const uploadTask = storageRef.put(file);
+        
+        return new Promise((resolve, reject) => {
+            uploadTask.on('state_changed',
+                (snapshot) => {
+                    const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                    progressBar.style.width = progress + '%';
+                    statusDiv.textContent = `Загрузка: ${Math.round(progress)}%`;
+                },
+                (error) => {
+                    console.error('Ошибка загрузки:', error);
+                    toast('Ошибка загрузки: ' + error.message);
+                    progressDiv.style.display = 'none';
+                    reject(error);
+                },
+                async () => {
+                    const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+                    progressDiv.style.display = 'none';
+                    
+                    resolve({
+                        url: downloadURL,
+                        name: file.name,
+                        size: file.size,
+                        type: type,
+                        mimeType: file.type
+                    });
+                }
+            );
+        });
+    } catch (error) {
+        progressDiv.style.display = 'none';
+        toast('Ошибка: ' + error.message);
+        return null;
+    }
+}
+
+// Отправка медиа сообщения
+async function sendMediaMessage(mediaData, mediaType) {
+    if (!currentChatId || !mediaData) return;
+    
+    const msgData = {
+        senderId: currentUser.uid,
+        timestamp: new Date(),
+        read: false,
+        mediaType: mediaType,
+        mediaUrl: mediaData.url,
+        fileName: mediaData.name,
+        fileSize: mediaData.size
+    };
+    
+    if (replyingTo) {
+        msgData.replyTo = {
+            messageId: replyingTo.id,
+            senderId: replyingTo.senderId,
+            text: replyingTo.text
+        };
+        cancelReply();
+    }
+    
+    try {
+        await db.collection('chats').doc(currentChatId).collection('messages').add(msgData);
+        
+        let previewText = '';
+        if (mediaType === 'photo') previewText = '📷 Фото';
+        else if (mediaType === 'video') previewText = '🎥 Видео';
+        else previewText = `📎 ${mediaData.name}`;
+        
+        // Обновляем последнее сообщение в чате
+        let unreadFor = [];
+        if (currentChatIsGroup) {
+            unreadFor = currentChatParticipants.filter(id => id !== currentUser.uid);
+        } else if (currentChatUser && !currentChatIsSaved && !currentChatIsSystem) {
+            unreadFor = [currentChatUser.uid];
+        }
+        
+        await db.collection('chats').doc(currentChatId).update({
+            lastMessage: previewText,
+            lastSender: currentUser.uid,
+            lastMessageTime: new Date(),
+            unreadFor: firebase.firestore.FieldValue.arrayUnion(...unreadFor)
+        });
+        
+        toast('Отправлено!');
+    } catch (e) {
+        console.error('Ошибка отправки:', e);
+        toast('Ошибка отправки');
+    }
+}
+
+// Обработчик для фото
+document.getElementById('photoInput').addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    
+    const sendBtn = document.getElementById('sendBtn');
+    sendBtn.disabled = true;
+    
+    for (const file of files) {
+        if (!file.type.startsWith('image/')) {
+            toast('Можно отправлять только изображения');
+            continue;
+        }
+        
+        if (file.size > MAX_PHOTO_SIZE) {
+            toast(`Файл слишком большой (макс. 10MB)`);
+            continue;
+        }
+        
+        toast(`Загрузка фото: ${file.name}...`);
+        const uploaded = await uploadToStorage(file, 'photos');
+        
+        if (uploaded) {
+            await sendMediaMessage(uploaded, 'photo');
+        }
+    }
+    
+    sendBtn.disabled = false;
+    e.target.value = '';
+});
+
+// Обработчик для видео
+document.getElementById('videoInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (!file.type.startsWith('video/')) {
+        toast('Можно отправлять только видео');
+        return;
+    }
+    
+    if (file.size > MAX_VIDEO_SIZE) {
+        toast(`Видео слишком большое (макс. 50MB)`);
+        return;
+    }
+    
+    const sendBtn = document.getElementById('sendBtn');
+    sendBtn.disabled = true;
+    
+    toast(`Загрузка видео: ${file.name}...`);
+    const uploaded = await uploadToStorage(file, 'videos');
+    
+    if (uploaded) {
+        await sendMediaMessage(uploaded, 'video');
+    }
+    
+    sendBtn.disabled = false;
+    e.target.value = '';
+});
+
+// Обработчик для файлов
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (file.size > MAX_FILE_SIZE) {
+        toast(`Файл слишком большой (макс. 20MB)`);
+        return;
+    }
+    
+    const sendBtn = document.getElementById('sendBtn');
+    sendBtn.disabled = true;
+    
+    toast(`Загрузка файла: ${file.name}...`);
+    const uploaded = await uploadToStorage(file, 'files');
+    
+    if (uploaded) {
+        await sendMediaMessage(uploaded, 'file');
+    }
+    
+    sendBtn.disabled = false;
+    e.target.value = '';
+});
+
+// Запись голоса
+async function toggleVoiceRecording() {
+    if (isRecording) {
+        stopRecording();
+    } else {
+        startRecording();
+    }
+}
+
+async function startRecording() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        
+        mediaRecorder.ondataavailable = (event) => {
+            audioChunks.push(event.data);
+        };
+        
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const audioFile = new File([audioBlob], `voice_${Date.now()}.webm`, { type: 'audio/webm' });
+            
+            stream.getTracks().forEach(track => track.stop());
+            
+            toast('Отправка голосового сообщения...');
+            const uploaded = await uploadToStorage(audioFile, 'audio');
+            
+            if (uploaded) {
+                await sendMediaMessage(uploaded, 'audio');
+            }
+            
+            updateMicButton(false);
+        };
+        
+        mediaRecorder.start();
+        isRecording = true;
+        updateMicButton(true);
+        toast('🎙️ Запись... Нажмите снова для отправки');
+        
+    } catch (error) {
+        console.error('Ошибка микрофона:', error);
+        toast('Ошибка доступа к микрофону');
+    }
+}
+
+function stopRecording() {
+    if (mediaRecorder && isRecording) {
+        mediaRecorder.stop();
+        isRecording = false;
+    }
+}
+
+function updateMicButton(recording) {
+    const micBtn = document.getElementById('micBtn');
+    if (recording) {
+        micBtn.innerHTML = '<i class="fas fa-stop-circle" style="color: #ff3b30;"></i>';
+        micBtn.style.background = 'rgba(255, 59, 48, 0.2)';
+    } else {
+        micBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+        micBtn.style.background = '';
+    }
+}
+
+// Скачивание файла
+async function downloadFile(url, fileName) {
+    try {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.click();
+    } catch (error) {
+        toast('Ошибка скачивания');
+    }
+}
 
 console.log('✅ Contegg Messenger · Исправленная версия с корректным переключением аккаунтов');
 </script>
