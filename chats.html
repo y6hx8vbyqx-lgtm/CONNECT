@@ -3669,50 +3669,52 @@ document.getElementById('searchInput').addEventListener('input', function() {
 
 async function searchUsersAndChats(q) {
     const res = document.getElementById('searchResults');
+    const searchTerm = q.toLowerCase().trim();
+    
+    if (searchTerm.length < 2) return;
+    
     res.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;"></div> Поиск...</div>';
     
-    const searchTerm = q.toLowerCase();
     let html = '';
     let hasUsers = false;
     let hasGroups = false;
     
-    // Поиск пользователей
+    // Поиск пользователей - берем всех и фильтруем
     try {
-        const usersSnap = await db.collection('users')
-            .orderBy('username')
-            .startAt(searchTerm)
-            .endAt(searchTerm + '\uf8ff')
-            .limit(20).get();
+        const usersSnap = await db.collection('users').get();
         
-        usersSnap.forEach(doc => {
-            if (doc.id !== currentUser.uid) {
-                const u = doc.data();
-                const username = (u.username || '').toLowerCase();
-                const displayName = (u.displayName || '').toLowerCase();
-                
-                // Проверяем частичное совпадение
-                if (username.includes(searchTerm) || displayName.includes(searchTerm)) {
-                    hasUsers = true;
-                    const avHTML = u.avatarBase64 ? `<img src="${u.avatarBase64}">` : (u.displayName?.[0] || 'U');
-                    html += `
-                        <div class="search-result-item" onclick="startChatWith('${doc.id}', '${esc(u.username)}')">
-                            <div class="chat-avatar" style="width:40px;height:40px;font-size:16px;">${avHTML}</div>
-                            <div>
-                                <div style="font-size:15px;">${esc(u.displayName || 'Пользователь')}</div>
-                                <div style="font-size:13px;color:var(--text-secondary);">@${esc(u.username)}</div>
-                            </div>
+        for (const doc of usersSnap.docs) {
+            if (doc.id === currentUser.uid) continue;
+            
+            const u = doc.data();
+            const username = (u.username || '').toLowerCase();
+            const displayName = (u.displayName || '').toLowerCase();
+            
+            // Ищем по любому совпадению
+            if (username.includes(searchTerm) || displayName.includes(searchTerm)) {
+                hasUsers = true;
+                const avHTML = u.avatarBase64 ? `<img src="${u.avatarBase64}">` : (displayName[0] || 'U');
+                html += `
+                    <div class="search-result-item" onclick="startChatWith('${doc.id}', '${esc(u.username)}')">
+                        <div class="chat-avatar" style="width:40px;height:40px;font-size:16px;">${avHTML}</div>
+                        <div>
+                            <div style="font-size:15px;">${esc(u.displayName || 'Пользователь')}</div>
+                            <div style="font-size:13px;color:var(--text-secondary);">@${esc(u.username)}</div>
                         </div>
-                    `;
-                }
+                    </div>
+                `;
             }
-        });
-    } catch(e) { console.error('Ошибка поиска пользователей:', e); }
-    
-    if (hasUsers) {
-        html = '<div style="padding:8px 16px; font-size:12px; color:var(--text-secondary);">👥 ПОЛЬЗОВАТЕЛИ</div>' + html;
+        }
+    } catch(e) { 
+        console.error('Ошибка поиска пользователей:', e);
+        html += '<div style="padding:8px 16px;color:var(--danger);">Ошибка поиска пользователей</div>';
     }
     
-    // Поиск групп - загружаем все группы пользователя и фильтруем
+    if (hasUsers) {
+        html = '<div style="padding:8px 16px; font-size:12px; color:var(--text-secondary); background:var(--bg-tertiary);">👥 ПОЛЬЗОВАТЕЛИ</div>' + html;
+    }
+    
+    // Поиск групп
     try {
         const groupsSnap = await db.collection('chats')
             .where('isGroup', '==', true)
@@ -3740,9 +3742,12 @@ async function searchUsersAndChats(q) {
         }
         
         if (hasGroups) {
-            html = '<div style="padding:8px 16px; font-size:12px; color:var(--text-secondary);">💬 ГРУППЫ</div>' + groupsHtml + html;
+            groupsHtml = '<div style="padding:8px 16px; font-size:12px; color:var(--text-secondary); background:var(--bg-tertiary);">💬 ГРУППЫ</div>' + groupsHtml;
+            html = groupsHtml + html;
         }
-    } catch(e) { console.error('Ошибка поиска групп:', e); }
+    } catch(e) { 
+        console.error('Ошибка поиска групп:', e);
+    }
     
     if (!hasUsers && !hasGroups) {
         html = '<div style="padding:16px;text-align:center;color:var(--text-secondary);">Ничего не найдено</div>';
