@@ -3664,36 +3664,79 @@ document.getElementById('searchInput').addEventListener('input', function() {
         document.getElementById('searchResults').style.display = 'none';
         return;
     }
-    searchTimeout = setTimeout(() => searchUsers(q), 400);
+    searchTimeout = setTimeout(() => searchUsersAndChats(q), 400);
 });
 
-async function searchUsers(q) {
+async function searchUsersAndChats(q) {
     const res = document.getElementById('searchResults');
-    const snap = await db.collection('users')
+    res.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-secondary);"><div class="spinner" style="width:20px;height:20px;"></div> Поиск...</div>';
+    
+    // Поиск пользователей
+    const usersSnap = await db.collection('users')
         .where('username', '>=', q.toLowerCase())
         .where('username', '<=', q.toLowerCase() + '\uf8ff')
-        .limit(15).get();
+        .limit(10).get();
     
-    const users = [];
-    snap.forEach(doc => {
-        if (doc.id !== currentUser.uid) users.push({ uid: doc.id, ...doc.data() });
+    // Поиск групп
+    const groupsSnap = await db.collection('chats')
+        .where('isGroup', '==', true)
+        .where('name', '>=', q)
+        .where('name', '<=', q + '\uf8ff')
+        .limit(10).get();
+    
+    let html = '';
+    
+    // Пользователи
+    let hasUsers = false;
+    usersSnap.forEach(doc => {
+        if (doc.id !== currentUser.uid) {
+            hasUsers = true;
+            const u = doc.data();
+            const avHTML = u.avatarBase64 ? `<img src="${u.avatarBase64}">` : (u.displayName?.[0] || 'U');
+            html += `
+                <div class="search-result-item" onclick="startChatWith('${doc.id}', '${esc(u.username)}')">
+                    <div class="chat-avatar" style="width:40px;height:40px;font-size:16px;">${avHTML}</div>
+                    <div>
+                        <div style="font-size:15px;">${esc(u.displayName || 'Пользователь')}</div>
+                        <div style="font-size:13px;color:var(--text-secondary);">@${esc(u.username)}</div>
+                    </div>
+                </div>
+            `;
+        }
     });
     
-    if (users.length === 0) {
-        res.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-secondary);">Ничего не найдено</div>';
-    } else {
-        res.innerHTML = users.map(u => `
-            <div class="search-result-item" onclick="startChatWith('${u.uid}', '${esc(u.username)}')">
-                <div class="chat-avatar" style="width:40px;height:40px;font-size:16px;">
-                    ${u.avatarBase64 ? `<img src="${u.avatarBase64}">` : (u.displayName?.[0] || 'U')}
-                </div>
-                <div>
-                    <div style="font-size:15px;">${esc(u.displayName || 'Пользователь')}</div>
-                    <div style="font-size:13px;color:var(--text-secondary);">@${esc(u.username)}</div>
-                </div>
-            </div>
-        `).join('');
+    if (hasUsers) {
+        html += `<div style="padding:8px 16px; font-size:12px; color:var(--text-secondary); border-top:0.5px solid var(--separator);">👥 ПОЛЬЗОВАТЕЛИ</div>`;
     }
+    
+    // Группы
+    let hasGroups = false;
+    for (const doc of groupsSnap.docs) {
+        const chat = doc.data();
+        if (chat.participants?.includes(currentUser.uid)) {
+            hasGroups = true;
+            const avHTML = chat.avatarBase64 ? `<img src="${chat.avatarBase64}">` : '👥';
+            html += `
+                <div class="search-result-item" onclick="openGroupChat('${doc.id}')">
+                    <div class="chat-avatar group" style="width:40px;height:40px;font-size:16px;">${avHTML}</div>
+                    <div>
+                        <div style="font-size:15px;">${esc(chat.name)}</div>
+                        <div style="font-size:13px;color:var(--text-secondary);">Группа · ${chat.participants?.length || 0} участников</div>
+                    </div>
+                </div>
+            `;
+        }
+    }
+    
+    if (hasGroups) {
+        html = `<div style="padding:8px 16px; font-size:12px; color:var(--text-secondary);">💬 ГРУППЫ</div>` + html;
+    }
+    
+    if (!hasUsers && !hasGroups) {
+        html = '<div style="padding:16px;text-align:center;color:var(--text-secondary);">Ничего не найдено</div>';
+    }
+    
+    res.innerHTML = html;
     res.style.display = 'block';
 }
 
