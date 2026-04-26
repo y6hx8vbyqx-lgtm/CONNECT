@@ -1909,42 +1909,31 @@ function switchTab(tab) {
 function initSearchScroll() {
     const chatsPage = document.getElementById('pageChats');
     const searchContainer = document.getElementById('searchContainer');
+    if (!chatsPage || !searchContainer) return;
 
     let lastScrollY = 0;
     let ticking = false;
 
-    if (chatsPage && searchContainer) {
-        chatsPage.addEventListener('scroll', function () {
-
-            if (!ticking) {
-                window.requestAnimationFrame(() => {
-
-                    const currentScrollY = chatsPage.scrollTop;
-
-                    // ⬆️ тянем вниз (как в Telegram)
-                    if (currentScrollY < lastScrollY) {
-                        searchContainer.classList.remove('hidden');
-                    }
-                    // ⬇️ скроллим вверх списка
-                    else if (currentScrollY > lastScrollY && currentScrollY > 20) {
-                        searchContainer.classList.add('hidden');
-                    }
-
-                    // если в самом верху — всегда показываем
-                    if (currentScrollY <= 0) {
-                        searchContainer.classList.remove('hidden');
-                    }
-
-                    lastScrollY = currentScrollY;
-                    ticking = false;
-
-                });
-
-                ticking = true;
-            }
-
-        });
-    }
+    chatsPage.addEventListener('scroll', () => {
+        if (!ticking) {
+            requestAnimationFrame(() => {
+                const currentScrollY = chatsPage.scrollTop;
+                
+                // Прячем при скролле вниз (когда проскроллили больше 10px)
+                if (currentScrollY > 10 && currentScrollY > lastScrollY) {
+                    searchContainer.classList.add('hidden');
+                } 
+                // Показываем при скролле вверх ИЛИ в самом верху
+                else if (currentScrollY < lastScrollY || currentScrollY <= 10) {
+                    searchContainer.classList.remove('hidden');
+                }
+                
+                lastScrollY = currentScrollY;
+                ticking = false;
+            });
+            ticking = true;
+        }
+    });
 }
     
 async function loadChats() {
