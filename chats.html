@@ -1060,6 +1060,111 @@
             transition: 0.2s;
         }
         .add-participant-item:active { background: var(--bg-tertiary); }
+
+            .add-participant-item:active { background: var(--bg-tertiary); }
+    
+    /* ========== СТИЛИ ДЛЯ ГОЛОСОВЫХ СООБЩЕНИЙ (ВСТАВИТЬ СЮДА) ========== */
+    
+    /* Голосовые сообщения в стиле Telegram */
+    .msg-audio {
+        min-width: 260px;
+        max-width: 300px;
+        background: var(--bg-tertiary);
+        border-radius: 16px;
+        padding: 8px 12px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 4px 0;
+    }
+
+    .msg-out .msg-audio {
+        background: rgba(0, 122, 255, 0.15);
+    }
+
+    .audio-play-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: var(--accent);
+        border: none;
+        color: white;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: transform 0.1s;
+    }
+
+    .audio-play-btn:active {
+        transform: scale(0.92);
+    }
+
+    .audio-waveform {
+        flex: 1;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        cursor: pointer;
+    }
+
+    .wave-bar {
+        width: 3px;
+        background: var(--text-secondary);
+        border-radius: 2px;
+        transition: height 0.1s, background 0.1s;
+        flex-shrink: 0;
+    }
+
+    .wave-bar.active {
+        background: var(--accent);
+        height: 20px !important;
+    }
+
+    .msg-out .wave-bar.active {
+        background: #fff;
+    }
+
+    .audio-duration {
+        font-size: 11px;
+        color: var(--text-secondary);
+        text-align: right;
+    }
+
+    .audio-time-current {
+        font-size: 10px;
+        color: var(--text-tertiary);
+        text-align: right;
+        margin-top: 2px;
+    }
+
+    .audio-progress {
+        position: relative;
+        width: 100%;
+        height: 3px;
+        background: rgba(255,255,255,0.15);
+        border-radius: 3px;
+        cursor: pointer;
+        margin-top: 6px;
+        overflow: hidden;
+    }
+
+    .audio-progress-fill {
+        width: 0%;
+        height: 100%;
+        background: var(--accent);
+        border-radius: 3px;
+        transition: width 0.05s linear;
+    }
+
+    .msg-out .audio-progress-fill {
+        background: white;
+    }
+    
+    /* ========== КОНЕЦ СТИЛЕЙ ДЛЯ ГОЛОСОВЫХ ========== */
+    
     </style>
 </head>
 <body>
@@ -1569,8 +1674,12 @@ async function sendAudio(blob) {
         const file = new File([blob], `voice_${Date.now()}.webm`, { type: 'audio/webm' });
         const url = await uploadAudioToStorage(file);
         
+        // ПОЛУЧАЕМ ДЛИТЕЛЬНОСТЬ
+        const duration = await getAudioDuration(blob);
+        
         await db.collection('chats').doc(currentChatId).collection('messages').add({
             audioUrl: url,
+            audioDuration: duration,  // 👈 ВАЖНО!
             senderId: currentUser.uid,
             timestamp: new Date(),
             type: 'audio'
@@ -1590,6 +1699,23 @@ async function sendAudio(blob) {
     
     sendBtn.disabled = false;
     audioBtn.disabled = false;
+}
+
+// Функция получения длительности
+function getAudioDuration(blob) {
+    return new Promise((resolve) => {
+        const audio = new Audio();
+        const url = URL.createObjectURL(blob);
+        audio.addEventListener('loadedmetadata', () => {
+            URL.revokeObjectURL(url);
+            resolve(Math.round(audio.duration));
+        });
+        audio.addEventListener('error', () => {
+            URL.revokeObjectURL(url);
+            resolve(0);
+        });
+        audio.src = url;
+    });
 }
 
 async function toggleRecording() {
@@ -2650,6 +2776,98 @@ async function loadMessages() {
         });
 }
 
+// ========== ФУНКЦИИ ДЛЯ ГОЛОСОВЫХ СООБЩЕНИЙ (ДОБАВИТЬ) ==========
+
+// Форматирование времени
+function formatTime(seconds) {
+    if (isNaN(seconds)) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Генерация волновой формы
+function generateWaveform() {
+    let bars = '';
+    for (let i = 0; i < 30; i++) {
+        const height = 4 + Math.random() * 16;
+        bars += `<div class="wave-bar" style="height: ${height}px;"></div>`;
+    }
+    return bars;
+}
+
+// Глобальные переменные для аудио
+let currentAudio = null;
+let currentAudioMsgId = null;
+
+// Воспроизведение аудио
+function playAudio(audioUrl, msgId, duration) {
+    if (currentAudio && currentAudioMsgId !== msgId) {
+        currentAudio.pause();
+        const prevBtn = document.querySelector(`[data-msg-id="${currentAudioMsgId}"] .audio-play-btn i`);
+        if (prevBtn) prevBtn.className = 'fas fa-play';
+        currentAudio = null;
+    }
+    
+    const msgElement = document.querySelector(`[data-msg-id="${msgId}"]`);
+    if (!msgElement) return;
+    
+    const playBtn = msgElement.querySelector('.audio-play-btn i');
+    const progressFill = msgElement.querySelector('.audio-progress-fill');
+    const timeCurrent = msgElement.querySelector('.audio-time-current');
+    
+    if (currentAudio && currentAudioMsgId === msgId && !currentAudio.paused) {
+        currentAudio.pause();
+        if (playBtn) playBtn.className = 'fas fa-play';
+        return;
+    }
+    
+    if (currentAudio && currentAudioMsgId === msgId) {
+        currentAudio.play();
+        if (playBtn) playBtn.className = 'fas fa-pause';
+        return;
+    }
+    
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+    
+    const audio = new Audio(audioUrl);
+    currentAudio = audio;
+    currentAudioMsgId = msgId;
+    
+    audio.onplay = () => { if (playBtn) playBtn.className = 'fas fa-pause'; };
+    audio.onpause = () => { if (playBtn) playBtn.className = 'fas fa-play'; };
+    audio.onended = () => {
+        if (playBtn) playBtn.className = 'fas fa-play';
+        if (progressFill) progressFill.style.width = '0%';
+        if (timeCurrent) timeCurrent.textContent = '0:00';
+        currentAudio = null;
+        currentAudioMsgId = null;
+    };
+    audio.ontimeupdate = () => {
+        if (progressFill && duration) {
+            const percent = (audio.currentTime / duration) * 100;
+            progressFill.style.width = percent + '%';
+        }
+        if (timeCurrent) timeCurrent.textContent = formatTime(audio.currentTime);
+    };
+    
+    audio.play();
+}
+
+// Перемотка аудио
+function seekAudio(event, msgId, duration) {
+    if (!currentAudio || currentAudioMsgId !== msgId) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const percent = Math.min(1, Math.max(0, x / rect.width));
+    currentAudio.currentTime = percent * duration;
+}
+
+// ========== КОНЕЦ ФУНКЦИЙ ДЛЯ ГОЛОСОВЫХ ==========
+    
 function renderMessage(id, msg) {
     const container = document.getElementById('chatMessages');
     const isOut = msg.senderId === currentUser.uid;
@@ -2690,9 +2908,29 @@ function renderMessage(id, msg) {
         html += `<video src="${msg.videoUrl}" class="msg-video" controls preload="metadata" onclick="event.stopPropagation();"></video>`;
     }
     
-    if (msg.audioUrl) {
-        html += `<audio src="${msg.audioUrl}" class="msg-audio" controls preload="metadata"></audio>`;
-    }
+if (msg.audioUrl) {
+    const duration = msg.audioDuration || 0;
+    const waveform = generateWaveform();
+    html += `
+        <div class="msg-audio">
+            <button class="audio-play-btn" onclick="playAudio('${msg.audioUrl}', '${id}', ${duration})">
+                <i class="fas fa-play"></i>
+            </button>
+            <div style="flex:1;">
+                <div class="audio-waveform" onclick="seekAudio(event, '${id}', ${duration})">
+                    ${waveform}
+                </div>
+                <div class="audio-progress">
+                    <div class="audio-progress-fill"></div>
+                </div>
+            </div>
+            <div>
+                <div class="audio-duration">${formatTime(duration)}</div>
+                <div class="audio-time-current">0:00</div>
+            </div>
+        </div>
+    `;
+}
     
     if (msg.text) {
         html += esc(msg.text);
