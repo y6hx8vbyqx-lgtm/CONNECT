@@ -1,22 +1,22 @@
-<!DOCTYPE html>
-<html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
+    <!-- ✅ ВАЖНО: фикс зума -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+
     <title>Contegg · Messenger</title>
     
     <meta name="theme-color" content="#000000">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="application-name" content="Contegg">
     
     <!-- PWA иконки -->
-<link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/LOGO.png">
-<link rel="icon" type="image/png" href="/LOGO.png">
-<link rel="shortcut icon" href="/favicon.ico">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/LOGO.png">
+    <link rel="icon" type="image/png" href="/LOGO.png">
+    <link rel="shortcut icon" href="/favicon.ico">
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css" />
@@ -25,7 +25,18 @@
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
+
+    <!-- ✅ ФИКС ДЛЯ INPUT -->
+    <style>
+      input, textarea {
+        font-size: 16px;
+        transform: scale(1);
+        -webkit-user-select: text !important;
+        user-select: text !important;
+      }
+    </style>
     
+    <!-- ОСНОВНЫЕ СТИЛИ -->
     <style>
         * {
             margin: 0;
