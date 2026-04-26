@@ -2,7 +2,7 @@
   "name": "Contegg Messenger",
   "short_name": "Contegg",
   "description": "Современный мессенджер",
-  "start_url": "/chats.html",
+  "start_url": "/",
   "display": "standalone",
   "theme_color": "#000000",
   "background_color": "#000000",
