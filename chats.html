@@ -1912,27 +1912,21 @@ function initSearchScroll() {
     if (!chatsPage || !searchContainer) return;
 
     let lastScrollY = 0;
-    let ticking = false;
 
     chatsPage.addEventListener('scroll', () => {
-        if (!ticking) {
-            requestAnimationFrame(() => {
-                const currentScrollY = chatsPage.scrollTop;
-                
-                // Прячем при скролле вниз (когда проскроллили больше 10px)
-                if (currentScrollY > 10 && currentScrollY > lastScrollY) {
-                    searchContainer.classList.add('hidden');
-                } 
-                // Показываем при скролле вверх ИЛИ в самом верху
-                else if (currentScrollY < lastScrollY || currentScrollY <= 10) {
-                    searchContainer.classList.remove('hidden');
-                }
-                
-                lastScrollY = currentScrollY;
-                ticking = false;
-            });
-            ticking = true;
+        const currentScrollY = chatsPage.scrollTop;
+        
+        // Прячем при скролле вниз (если не в самом верху)
+        if (currentScrollY > 5 && currentScrollY > lastScrollY) {
+            searchContainer.classList.add('hidden');
         }
+        
+        // Показываем ТОЛЬКО когда доскроллили до самого верха
+        if (currentScrollY <= 5) {
+            searchContainer.classList.remove('hidden');
+        }
+        
+        lastScrollY = currentScrollY;
     });
 }
 
