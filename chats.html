@@ -19,7 +19,7 @@
     <link rel="shortcut icon" href="/favicon.ico">
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css" />f
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
     
     <!-- Firebase (ВСЕ 4 компонента в правильном порядке) -->
@@ -2389,41 +2389,48 @@ async function sendImages(files) {
 
             const url = await uploadFileToStorage(file, 'images');
 
-            const msgData = {
-                text: '',
-                imageUrl: url,
-                senderId: currentUser.uid,
-                timestamp: new Date(),
-                read: false,
-                type: 'image'
+            await db.collection('chats').doc(currentChatId)
+                .collection('messages')
+                .add({
+                    text: '',
+                    imageUrl: url,
+                    senderId: currentUser.uid,
+                    timestamp: new Date(),
+                    read: false,
+                    type: 'image'
+                });
+
+            let unreadFor = [];
+
+            if (currentChatIsGroup) {
+                unreadFor = currentChatParticipants.filter(id => id !== currentUser.uid);
+            } else if (currentChatUser && !currentChatIsSaved && !currentChatIsSystem) {
+                unreadFor = [currentChatUser.uid];
+            }
+
+            const updateData = {
+                lastMessage: '📷 Фото',
+                lastSender: currentUser.uid,
+                lastMessageTime: new Date()
             };
 
-            await db.collection('chats').doc(currentChatId)
-                .collection('messages').add(msgData);
+            if (unreadFor.length > 0) {
+                updateData.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
+            }
 
-const updateData = {
-    lastMessage: text,
-    lastSender: currentUser.uid,
-    lastMessageTime: new Date()
-};
-
-if (unreadFor.length > 0) {
-    updateData.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
-}
-
-await db.collection('chats').doc(currentChatId).update(updateData);
-            
+            await db.collection('chats').doc(currentChatId).update(updateData);
         }
-        toast('Фото отправлены');
+
+        toast(files.length === 1 ? 'Фото отправлено' : 'Фото отправлены');
     } catch (e) {
-        console.error(e);
-        toast('Ошибка загрузки');
+        console.error('sendImages error:', e);
+        toast('Ошибка загрузки фото');
+    } finally {
+        sendBtn.disabled = false;
+        uploadBtn.disabled = false;
     }
-
-    sendBtn.disabled = false;
-    uploadBtn.disabled = false;
 }
-
+    
 async function sendVideo(file) {
     if (!currentChatId || !file) return;
     
@@ -3663,8 +3670,6 @@ if (!chatData?.isSystem) {
 }
 
 function closeChat() {
-
-function closeChat() {
     
     if (chatUserPresenceListener) {
     chatUserPresenceListener();
@@ -4234,19 +4239,22 @@ function updateMessageReactions(id, reactions) {
 async function sendMessage() {
     const input = document.getElementById('chatInput');
     const text = input.value.trim();
+
     if (!text || !currentChatId) return;
-    
+
     const btn = document.getElementById('sendBtn');
     const uploadBtn = document.getElementById('imageUploadBtn');
     const videoBtn = document.getElementById('videoUploadBtn');
     const audioBtn = document.getElementById('audioRecordBtn');
+
     btn.disabled = true;
     uploadBtn.disabled = true;
     videoBtn.disabled = true;
     audioBtn.disabled = true;
+
     input.value = '';
     input.style.height = 'auto';
-    
+
     const msgData = {
         text,
         senderId: currentUser.uid,
@@ -4254,53 +4262,51 @@ async function sendMessage() {
         read: false,
         type: 'text'
     };
-    
+
     if (replyingTo) {
         msgData.replyTo = {
             messageId: replyingTo.id,
             senderId: replyingTo.senderId,
             text: replyingTo.text
         };
+
         cancelReply();
     }
-    
+
     try {
-        await db.collection('chats').doc(currentChatId).collection('messages').add(msgData);
-        
+        await db.collection('chats').doc(currentChatId)
+            .collection('messages')
+            .add(msgData);
+
         let unreadFor = [];
+
         if (currentChatIsGroup) {
             unreadFor = currentChatParticipants.filter(id => id !== currentUser.uid);
         } else if (currentChatUser && !currentChatIsSaved && !currentChatIsSystem) {
             unreadFor = [currentChatUser.uid];
         }
-        
-let unreadFor = [];
 
-if (currentChatIsGroup) {
-    unreadFor = currentChatParticipants.filter(id => id !== currentUser.uid);
-} else if (currentChatUser && !currentChatIsSaved && !currentChatIsSystem) {
-    unreadFor = [currentChatUser.uid];
-}
+        const updateData = {
+            lastMessage: text,
+            lastSender: currentUser.uid,
+            lastMessageTime: new Date()
+        };
 
-const updateData = {
-    lastMessage: '📷 Фото',
-    lastSender: currentUser.uid,
-    lastMessageTime: new Date()
-};
+        if (unreadFor.length > 0) {
+            updateData.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
+        }
 
-if (unreadFor.length > 0) {
-    updateData.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
-}
-
-await db.collection('chats').doc(currentChatId).update(updateData);
-        
-    } catch (e) { toast('Ошибка отправки'); }
-    
-    btn.disabled = false;
-    uploadBtn.disabled = false;
-    videoBtn.disabled = false;
-    audioBtn.disabled = false;
-    focusChatInput();
+        await db.collection('chats').doc(currentChatId).update(updateData);
+    } catch (e) {
+        console.error('sendMessage error:', e);
+        toast('Ошибка отправки');
+    } finally {
+        btn.disabled = false;
+        uploadBtn.disabled = false;
+        videoBtn.disabled = false;
+        audioBtn.disabled = false;
+        focusChatInput();
+    }
 }
 
 function showMsgContext(e, id, msg) {
