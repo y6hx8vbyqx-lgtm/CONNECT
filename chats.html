@@ -2641,6 +2641,32 @@ body.keyboard-open .chat-input-bar {
     </div>
 </div>
 
+<div class="modal-overlay" id="postCommentsModal">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Комментарии</div>
+
+        <div class="modal-content">
+            <div id="postCommentsList" style="max-height:45vh;overflow-y:auto;margin-bottom:12px;"></div>
+
+            <div class="chat-input-row" id="postCommentInputRow">
+                <textarea 
+                    class="chat-input" 
+                    id="postCommentInput" 
+                    placeholder="Комментарий" 
+                    rows="1"
+                ></textarea>
+
+                <button class="chat-send" type="button" onclick="sendPostComment()">
+                    <i class="fas fa-arrow-up"></i>
+                </button>
+            </div>
+
+            <button class="btn btn-secondary" onclick="closePostComments()">Закрыть</button>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="channelCropSettingsModal">
     <div class="modal-sheet">
         <div class="modal-handle"></div>
@@ -2895,7 +2921,10 @@ let isSwitchingAccount = false;
 let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
-
+let currentCommentsPostId = null;
+let commentsListener = null;
+let currentChannelCommentsEnabled = true;
+    
 const MAX_IMAGE_WIDTH = 1280;
 const MAX_IMAGE_HEIGHT = 1280;
 const MAX_IMAGE_SIZE_MB = 5;
@@ -3199,7 +3228,14 @@ function toast(msg) {
     setTimeout(() => t.classList.remove('show'), 2500);
 }
 
-function esc(s) { return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function esc(s) {
+    return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
 
 function timeAgo(d) {
     if (!d) return '';
@@ -4265,6 +4301,8 @@ async function openChannel(chatId) {
         toast('Канал не найден');
         return;
     }
+    
+    currentChannelCommentsEnabled = chat.commentsEnabled !== false;
 
     await openChatUI(null, chat.name, false, chat);
 }
@@ -4584,6 +4622,12 @@ if (change.type === 'modified') {
         timeEl.textContent = buildMessageTimeText(msg, isOut, d);
     }
 
+    const commentsCountEl = document.getElementById(`commentsCount_${change.doc.id}`);
+
+if (commentsCountEl) {
+    commentsCountEl.textContent = msg.commentsCount || 0;
+}
+
     updateMessageReactions(change.doc.id, msg.reactions);
 }
 
@@ -4883,6 +4927,19 @@ if (msg.text) {
         html += '</div>';
     }
     
+    if (currentChatIsChannel && currentChannelCommentsEnabled && !msg.isSystemMessage) {
+    html += `
+        <button 
+            class="post-comments-btn" 
+            onclick="event.stopPropagation(); openPostComments('${id}')"
+        >
+            <i class="fas fa-comment"></i>
+            Комментарии
+            <span id="commentsCount_${id}">${msg.commentsCount || 0}</span>
+        </button>
+    `;
+}
+    
     html += `<div class="msg-time ${hasVisualMedia && !hasCaption ? 'msg-time-overlay' : ''}">${buildMessageTimeText(msg, isOut, d)}</div>`;
     div.innerHTML = html;
     
@@ -5158,6 +5215,183 @@ function updateMessageReactions(id, reactions) {
         };
         rc.appendChild(span);
     });
+}
+
+    async function openPostComments(postId) {
+    if (!currentChatId || !currentChatIsChannel || !postId) return;
+
+    currentCommentsPostId = postId;
+
+    const modal = document.getElementById('postCommentsModal');
+    const list = document.getElementById('postCommentsList');
+    const input = document.getElementById('postCommentInput');
+
+    if (!modal || !list || !input) return;
+
+    list.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка...</span></div>';
+    input.value = '';
+
+    modal.classList.add('show');
+
+    if (commentsListener) {
+        commentsListener();
+        commentsListener = null;
+    }
+
+    commentsListener = db.collection('chats')
+        .doc(currentChatId)
+        .collection('messages')
+        .doc(postId)
+        .collection('comments')
+        .orderBy('timestamp', 'asc')
+        .onSnapshot(async snap => {
+            list.innerHTML = '';
+
+            if (snap.empty) {
+                list.innerHTML = `
+                    <div class="empty-state" style="padding:30px 10px;">
+                        <div class="empty-state-icon">💬</div>
+                        <div class="empty-state-title">Комментариев нет</div>
+                        <div class="empty-state-desc">Будьте первым, кто напишет комментарий</div>
+                    </div>
+                `;
+                return;
+            }
+
+            for (const doc of snap.docs) {
+                const comment = doc.data();
+                await renderPostComment(doc.id, comment);
+            }
+
+            list.scrollTop = list.scrollHeight;
+        }, error => {
+            console.error('comments listener error:', error);
+            list.innerHTML = `
+                <div style="padding:16px;text-align:center;color:var(--danger);">
+                    Ошибка загрузки комментариев
+                </div>
+            `;
+        });
+}
+
+function closePostComments() {
+    document.getElementById('postCommentsModal')?.classList.remove('show');
+
+    if (commentsListener) {
+        commentsListener();
+        commentsListener = null;
+    }
+
+    currentCommentsPostId = null;
+}
+
+async function renderPostComment(commentId, comment) {
+    const list = document.getElementById('postCommentsList');
+    if (!list) return;
+
+    const user = await getUserInfo(comment.senderId);
+    const d = comment.timestamp?.toDate?.() || new Date();
+
+    const avatarHTML = user.avatarBase64
+        ? `<img src="${user.avatarBase64}">`
+        : esc((user.displayName || user.username || 'U')[0]?.toUpperCase());
+
+    const div = document.createElement('div');
+    div.className = 'comment-item';
+    div.setAttribute('data-comment-id', commentId);
+
+    div.innerHTML = `
+        <div class="comment-avatar" onclick="openCommentUserProfile('${comment.senderId}')">
+            ${avatarHTML}
+        </div>
+
+        <div class="comment-body">
+            <div class="comment-author" onclick="openCommentUserProfile('${comment.senderId}')">
+                ${esc(user.displayName || user.username || 'Пользователь')}
+                ${user.isAdmin ? '<i class="fas fa-check-circle verified-icon"></i>' : ''}
+            </div>
+
+            <div class="comment-text">${esc(comment.text || '')}</div>
+            <div class="comment-time">${timeFormat(d)}</div>
+        </div>
+    `;
+
+    list.appendChild(div);
+}
+
+async function sendPostComment() {
+    if (!currentChatId || !currentCommentsPostId) return;
+
+    const input = document.getElementById('postCommentInput');
+    const text = input.value.trim();
+
+    if (!text) return;
+
+    try {
+        input.value = '';
+
+        const postRef = db.collection('chats')
+            .doc(currentChatId)
+            .collection('messages')
+            .doc(currentCommentsPostId);
+
+        await postRef.collection('comments').add({
+            text,
+            senderId: currentUser.uid,
+            timestamp: new Date()
+        });
+
+        await postRef.update({
+            commentsCount: firebase.firestore.FieldValue.increment(1)
+        });
+
+        const countEl = document.getElementById(`commentsCount_${currentCommentsPostId}`);
+        if (countEl) {
+            const oldCount = parseInt(countEl.textContent || '0', 10);
+            countEl.textContent = oldCount + 1;
+        }
+
+    } catch (e) {
+        console.error('sendPostComment error:', e);
+        toast('Ошибка отправки комментария');
+    }
+}
+
+async function openCommentUserProfile(userId) {
+    if (!userId || userId === 'system') return;
+
+    const user = await getUserInfo(userId);
+
+    const avHTML = user.avatarBase64
+        ? `<img src="${user.avatarBase64}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;">`
+        : `<div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#007aff,#5856d6);display:flex;align-items:center;justify-content:center;font-size:32px;color:white;margin:0 auto;">${esc((user.displayName || user.username || 'U')[0]?.toUpperCase())}</div>`;
+
+    document.getElementById('userProfileContent').innerHTML = `
+        <div style="padding-top:20px;">
+            ${avHTML}
+
+            <div style="font-size:20px;font-weight:600;margin-top:12px;">
+                ${esc(user.displayName || 'Пользователь')}
+                ${user.isAdmin ? '<i class="fas fa-check-circle" style="color:var(--accent);font-size:16px;margin-left:4px;"></i>' : ''}
+            </div>
+
+            <div style="font-size:15px;color:var(--text-secondary);">@${esc(user.username || '')}</div>
+
+            <div style="font-size:14px;color:var(--text-secondary);margin-top:8px;line-height:1.4;">
+                ${esc(user.bio || 'Нет описания')}
+            </div>
+
+            <div style="font-size:13px;color:var(--text-tertiary);margin-top:8px;">
+                ID: ${(user.uid || userId).slice(-8)}
+            </div>
+
+            <button class="btn btn-secondary" onclick="closeUserProfile()" style="margin-top:20px;">
+                Закрыть
+            </button>
+        </div>
+    `;
+
+    document.getElementById('userProfileModal').classList.add('show');
 }
 
 async function sendMessage() {
@@ -5979,36 +6213,34 @@ function closeProfileEdit() {
 async function saveProfile() {
     const name = document.getElementById('editName').value.trim();
     const bio = document.getElementById('editBio').value.trim();
-    
-    if (!name) { toast('Введите имя'); return; }
-    
-    const oldUsername = userData.username;
-    
+
+    if (!name) {
+        toast('Введите имя');
+        return;
+    }
+
     try {
-        const newUsername = 'user' + Date.now().toString(36);
-        await db.collection('users').doc(currentUser.uid).update({ 
-            displayName: name, 
-            bio,
-            username: newUsername
+        await db.collection('users').doc(currentUser.uid).update({
+            displayName: name,
+            bio
         });
+
         userData.displayName = name;
         userData.bio = bio;
-        
-        if (oldUsername !== newUsername) {
-            userData.username = newUsername;
-            await sendSystemNotification(currentUser.uid, 'username_changed', { newUsername });
-        } else {
-            await sendSystemNotification(currentUser.uid, 'profile_updated', {});
-        }
-        
+
+        await sendSystemNotification(currentUser.uid, 'profile_updated', {});
+
         loadLinkedAccounts();
         closeProfileEdit();
         renderProfile();
         usersCache = {};
         toast('Профиль обновлён');
-    } catch (e) { toast('Ошибка сохранения'); }
+    } catch (e) {
+        console.error('saveProfile error:', e);
+        toast('Ошибка сохранения');
+    }
 }
-
+    
 function openChangePasswordModal() {
     document.getElementById('oldPassword').value = '';
     document.getElementById('newPassword').value = '';
@@ -6583,13 +6815,20 @@ function setupChannelSettingsSearches(chat) {
             );
 
             adminResults.innerHTML = users.map(u => `
-                <div class="add-participant-item" onclick="addChannelAdmin('${u.uid}')">
+                <div class="add-participant-item channel-admin-result" data-user-id="${u.uid}">
                     <div class="chat-avatar" style="width:30px;height:30px;font-size:12px;">
-                        ${u.avatarBase64 ? `<img src="${u.avatarBase64}">` : (u.displayName?.[0] || 'U')}
+                        ${u.avatarBase64 ? `<img src="${u.avatarBase64}">` : esc((u.displayName?.[0] || 'U').toUpperCase())}
                     </div>
-                    <span>${esc(u.displayName || u.username)}</span>
+                    <span>${esc(u.displayName || u.username || 'Пользователь')}</span>
                 </div>
             `).join('');
+
+            adminResults.querySelectorAll('.channel-admin-result').forEach(item => {
+                item.addEventListener('click', async () => {
+                    const userId = item.dataset.userId;
+                    await addChannelAdmin(userId);
+                });
+            });
         });
     }
 
@@ -6616,13 +6855,20 @@ function setupChannelSettingsSearches(chat) {
             );
 
             subResults.innerHTML = users.map(u => `
-                <div class="add-participant-item" onclick="addChannelSubscriber('${u.uid}')">
+                <div class="add-participant-item channel-subscriber-result" data-user-id="${u.uid}">
                     <div class="chat-avatar" style="width:30px;height:30px;font-size:12px;">
-                        ${u.avatarBase64 ? `<img src="${u.avatarBase64}">` : (u.displayName?.[0] || 'U')}
+                        ${u.avatarBase64 ? `<img src="${u.avatarBase64}">` : esc((u.displayName?.[0] || 'U').toUpperCase())}
                     </div>
-                    <span>${esc(u.displayName || u.username)}</span>
+                    <span>${esc(u.displayName || u.username || 'Пользователь')}</span>
                 </div>
             `).join('');
+
+            subResults.querySelectorAll('.channel-subscriber-result').forEach(item => {
+                item.addEventListener('click', async () => {
+                    const userId = item.dataset.userId;
+                    await addChannelSubscriber(userId);
+                });
+            });
         });
     }
 
@@ -6634,17 +6880,17 @@ function setupChannelSettingsSearches(chat) {
             privateBlock.style.display = this.value === 'private' ? 'block' : 'none';
 
             const codeInput = document.getElementById('editChannelPrivateCode');
+
             if (this.value === 'private' && codeInput && !codeInput.value) {
                 codeInput.value = generateChannelCode();
             }
         });
     }
 }
-
 function closeChannelSettings() {
     document.getElementById('channelSettingsModal').classList.remove('show');
 }
-
+    
 function regenerateChannelPrivateCode() {
     const input = document.getElementById('editChannelPrivateCode');
     if (!input) return;
@@ -6703,9 +6949,12 @@ async function saveChannelSettings() {
             avatar.style.background = 'linear-gradient(135deg,#ff9f0a,#ff3b30)';
         }
 
-        toast('Канал обновлён');
-        closeChannelSettings();
-        loadChats();
+       toast('Канал обновлён');
+
+document.getElementById('chatStatus').textContent = `${chat.subscribersCount || 0} подписчиков`;
+
+await loadChats();
+await openChannelSettings();
     } catch (e) {
         console.error(e);
         toast('Ошибка сохранения канала');
@@ -6715,42 +6964,52 @@ async function saveChannelSettings() {
 async function addChannelAdmin(userId) {
     if (!currentChatId) return;
 
-    const chatDoc = await db.collection('chats').doc(currentChatId).get();
-    const chat = chatDoc.data();
-
-    if (!chat) return;
-
-    const rights = getChannelRights(chat);
-
-    if (!rights.isOwner && !rights.isDeveloper) {
-        toast('Только владелец может назначать админов');
-        return;
-    }
-
-    const subscribers = chat.subscribers || [];
-    const isSubscriber = subscribers.includes(userId);
-
-    const updateData = {
-        admins: firebase.firestore.FieldValue.arrayUnion(userId),
-        participants: firebase.firestore.FieldValue.arrayUnion(userId),
-        [`adminPermissions.${userId}`]: {
-            canPost: true,
-            canViewSubscribers: false,
-            canEditChannel: false
-        }
-    };
-
-    if (!isSubscriber) {
-        updateData.subscribers = firebase.firestore.FieldValue.arrayUnion(userId);
-        updateData.subscribersCount = firebase.firestore.FieldValue.increment(1);
-    }
-
     try {
+        const chatDoc = await db.collection('chats').doc(currentChatId).get();
+        const chat = chatDoc.data();
+
+        if (!chat) {
+            toast('Канал не найден');
+            return;
+        }
+
+        const rights = getChannelRights(chat);
+
+        if (!rights.isOwner && !rights.isDeveloper) {
+            toast('Только владелец может назначать админов');
+            return;
+        }
+
+        if ((chat.admins || []).includes(userId)) {
+            toast('Пользователь уже админ');
+            return;
+        }
+
+        const updateData = {
+            admins: firebase.firestore.FieldValue.arrayUnion(userId),
+            participants: firebase.firestore.FieldValue.arrayUnion(userId),
+            [`adminPermissions.${userId}`]: {
+                canPost: true,
+                canViewSubscribers: false,
+                canEditChannel: false
+            }
+        };
+
+        if (!(chat.subscribers || []).includes(userId)) {
+            updateData.subscribers = firebase.firestore.FieldValue.arrayUnion(userId);
+            updateData.subscribersCount = firebase.firestore.FieldValue.increment(1);
+        }
+
         await db.collection('chats').doc(currentChatId).update(updateData);
+
+        usersCache = {};
+
         toast('Админ добавлен');
-        openChannelSettings();
+
+        await openChannelSettings();
+
     } catch (e) {
-        console.error(e);
+        console.error('addChannelAdmin error:', e);
         toast('Ошибка добавления админа');
     }
 }
@@ -7984,6 +8243,79 @@ body.keyboard-open #chatInputBar.chat-input-bar {
     min-width: 0 !important;
     max-width: 100% !important;
 }
+.comment-item {
+    display: flex;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 0.5px solid var(--separator);
+}
+
+.comment-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #007aff, #5856d6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 14px;
+    flex-shrink: 0;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.comment-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.comment-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.comment-author {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.comment-text {
+    font-size: 14px;
+    line-height: 1.35;
+    white-space: pre-wrap;
+    margin-top: 2px;
+}
+
+.comment-time {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 3px;
+}
+
+.post-comments-btn {
+    margin-top: 7px;
+    border: none;
+    background: rgba(255,255,255,0.10);
+    color: rgba(255,255,255,0.85);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.msg-in .post-comments-btn {
+    background: rgba(10,132,255,0.14);
+    color: var(--accent);
+}
+
+.post-comments-btn:active {
+    transform: scale(0.96);
+}
+        
 </style>
 
 <script id="contegg-real-final-keyboard-js">
