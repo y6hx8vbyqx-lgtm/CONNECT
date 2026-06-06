@@ -1802,6 +1802,72 @@ body {
         font-size: 16px;
     }
 }
+
+.chat-input-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    width: 100%;
+}
+
+.chat-input-bar {
+    background: rgba(0,0,0,0.88);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 8px 10px;
+    padding-bottom: calc(6px + var(--chat-input-bottom));
+    display: flex;
+    align-items: flex-end;
+    border-top: 0.5px solid var(--separator);
+    flex-shrink: 0;
+}
+
+.chat-input {
+    flex: 1;
+    min-width: 0;
+    height: 34px;
+    min-height: 34px;
+    max-height: 100px;
+    line-height: 18px;
+    overflow-y: auto;
+    background: var(--bg-input);
+    border: 0.5px solid var(--separator);
+    border-radius: 18px;
+    padding: 8px 14px;
+    color: var(--text-primary);
+    font-size: 16px;
+    font-family: inherit;
+    resize: none;
+    outline: none;
+}
+
+.media-buttons {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.media-btn,
+.chat-send {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: none;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.media-btn {
+    background: var(--bg-tertiary);
+    color: var(--accent);
+    font-size: 16px;
+}
+
+.chat-send {
+    background: var(--accent);
+    color: white;
+    font-size: 14px;
+}
         
     /* ========== КОНЕЦ СТИЛЕЙ ДЛЯ ГОЛОСОВЫХ ========== */
     
@@ -1873,10 +1939,11 @@ body {
 <div class="chat-input-bar" id="chatInputBar">
     <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
         <div class="reply-preview" id="replyPreview" style="display:none;">
-            <div style="flex:1;">
+            <div style="flex:1;min-width:0;">
                 <div class="reply-preview-name" id="replyName"></div>
                 <div class="reply-preview-text" id="replyText"></div>
             </div>
+
             <div class="reply-preview-close" onclick="cancelReply()">
                 <i class="fas fa-times"></i>
             </div>
@@ -1887,39 +1954,26 @@ body {
                 <button class="media-btn" id="imageUploadBtn" type="button" onclick="document.getElementById('imageInput').click()">
                     <i class="fas fa-image"></i>
                 </button>
+
                 <button class="media-btn" id="videoUploadBtn" type="button" onclick="document.getElementById('videoInput').click()">
                     <i class="fas fa-video"></i>
                 </button>
+
                 <button class="media-btn" id="audioRecordBtn" type="button" onclick="toggleRecording()">
                     <i class="fas fa-microphone"></i>
                 </button>
             </div>
 
-    <textarea class="chat-input" id="chatInput" placeholder="Сообщение" rows="1"></textarea>
+            <textarea class="chat-input" id="chatInput" placeholder="Сообщение" rows="1"></textarea>
 
-    <button class="chat-send" id="sendBtn" type="button">
-        <i class="fas fa-arrow-up"></i>
-    </button>
-</div>
-                <div class="media-buttons">
-                    <button class="media-btn" id="imageUploadBtn" onclick="document.getElementById('imageInput').click()">
-                        <i class="fas fa-image"></i>
-                    </button>
-                    <button class="media-btn" id="videoUploadBtn" onclick="document.getElementById('videoInput').click()">
-                        <i class="fas fa-video"></i>
-                    </button>
-                    <button class="media-btn" id="audioRecordBtn" onclick="toggleRecording()">
-                        <i class="fas fa-microphone"></i>
-                    </button>
-                </div>
-<button class="chat-send" id="sendBtn" type="button">
-    <i class="fas fa-arrow-up"></i>
-</button>
-                </button>
-            </div>
+            <button class="chat-send" id="sendBtn" type="button">
+                <i class="fas fa-arrow-up"></i>
+            </button>
         </div>
     </div>
 </div>
+</div>
+    
 
 <div class="modal-overlay" id="accountSwitcherModal">
     <div class="modal-sheet">
@@ -4424,7 +4478,7 @@ function showAccountSwitcher() {
     
     content.innerHTML += `
         <button class="btn btn-secondary" onclick="closeAccountSwitcher()">Закрыть</button>
-    `;
+    `; 
     
     document.getElementById('accountSwitcherModal').classList.add('show');
 }
