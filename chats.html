@@ -1454,15 +1454,18 @@
         max-width: min(82vw, 315px);
     }
 
-.msg-image {
-    max-width: min(84vw, 315px);
-    max-height: 62vh;
+    .msg-image {
+        max-width: min(84vw, 315px);
+        max-height: 62vh;
+    }
+
+    .msg-video {
+        width: min(84vw, 315px);
+        max-height: 62vh;
+    }
 }
 
-.msg-video {
-    width: min(84vw, 315px);
-    max-height: 62vh;
-}
+/* ========== КОНЕЦ СТИЛЕЙ ДЛЯ ГОЛОСОВЫХ ========== */
     
     /* ========== КОНЕЦ СТИЛЕЙ ДЛЯ ГОЛОСОВЫХ ========== */
     
@@ -1826,6 +1829,8 @@ let currentChatIsSystem = false;
 let currentChatParticipants = [];
 let chatMessagesListener = null;
 let chatsGlobalListener = null;
+let chatUserPresenceListener = null;
+let presenceInterval = null;
 let replyingTo = null;
 let selectedMsgId = null;
 let selectedMsgData = null;
@@ -2135,6 +2140,67 @@ function dateDivider(d) {
     return d.toLocaleDateString('ru', { day: 'numeric', month: 'long' });
 }
 
+function formatLastSeen(date) {
+    if (!date) return 'был(а) недавно';
+
+    const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+
+    if (diff < 60) return 'был(а) только что';
+    if (diff < 3600) return `был(а) ${Math.floor(diff / 60)} мин назад`;
+    if (diff < 86400) return `был(а) ${Math.floor(diff / 3600)} ч назад`;
+
+    return 'был(а) ' + date.toLocaleDateString('ru', {
+        day: 'numeric',
+        month: 'long'
+    });
+}
+
+async function setMyPresence(isOnline) {
+    if (!currentUser) return;
+
+    try {
+        await db.collection('users').doc(currentUser.uid).update({
+            online: isOnline,
+            lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    } catch (e) {
+        console.error('Ошибка обновления онлайна:', e);
+    }
+}
+
+function watchChatUserPresence(userId) {
+    if (chatUserPresenceListener) {
+        chatUserPresenceListener();
+        chatUserPresenceListener = null;
+    }
+
+    const statusEl = document.getElementById('chatStatus');
+    statusEl.textContent = 'загрузка...';
+
+    chatUserPresenceListener = db.collection('users').doc(userId).onSnapshot(doc => {
+        if (!doc.exists) {
+            statusEl.textContent = 'был(а) недавно';
+            return;
+        }
+
+       const user = doc.data();
+const lastSeenDate = user.lastSeen?.toDate?.();
+
+const isOnline =
+    user.online === true &&
+    lastSeenDate &&
+    Date.now() - lastSeenDate.getTime() < 70000;
+
+if (isOnline) {
+            statusEl.textContent = 'онлайн';
+            statusEl.style.color = 'var(--online)';
+        } else {
+            statusEl.textContent = formatLastSeen(lastSeenDate);
+            statusEl.style.color = 'var(--text-secondary)';
+        }
+    });
+}
+    
 function checkIsDeveloper() {
     if (currentUser && currentUser.email) {
         isCurrentUserDeveloper = DEVELOPER_EMAILS.includes(currentUser.email.toLowerCase());
@@ -2521,6 +2587,26 @@ function ctxSaveToFavorites() {
     saveMessageToFavorites(selectedMsgId, selectedMsgData);
 }
 
+function startPresenceTracking() {
+    if (!currentUser) return;
+
+    setMyPresence(true);
+
+    if (presenceInterval) clearInterval(presenceInterval);
+
+    presenceInterval = setInterval(() => {
+        setMyPresence(true);
+    }, 30000);
+
+    window.addEventListener('focus', () => {
+        setMyPresence(true);
+    });
+
+    window.addEventListener('beforeunload', () => {
+        setMyPresence(false);
+    });
+}
+
 auth.onAuthStateChanged(async user => {
     if (!user) { 
         if (!isSwitchingAccount) {
@@ -2528,20 +2614,27 @@ auth.onAuthStateChanged(async user => {
         }
         return; 
     }
+
     currentUser = user;
-    checkIsDeveloper();
+
     await loadUserData();
+
+    checkIsDeveloper();
+    startPresenceTracking();
+
     await loadAdminUsers();
     await getOrCreateSavedChat();
     await getOrCreateSystemChat(currentUser.uid);
     await loadChats();
+
     startGlobalChatsListener();
     loadAllUsers();
     loadLinkedAccounts();
     checkAutoOpen();
+
     isSwitchingAccount = false;
 });
-
+    
 async function loadUserData() {
     const snap = await db.collection('users').doc(currentUser.uid).get();
     if (!snap.exists) {
@@ -3001,7 +3094,7 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
             avatar.style.background = 'linear-gradient(135deg, #007aff, #5856d6)';
         }
         document.getElementById('chatName').textContent = user.displayName || user.username;
-        document.getElementById('chatStatus').textContent = 'онлайн';
+       watchChatUserPresence(userId);
         currentChatUser = { uid: userId, username: name };
         document.getElementById('chatInputBar').style.display = 'flex';
         document.getElementById('chatInput').disabled = false;
@@ -3021,6 +3114,13 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
 }
 
 function closeChat() {
+    
+    if (chatUserPresenceListener) {
+    chatUserPresenceListener();
+    chatUserPresenceListener = null;
+}
+
+document.getElementById('chatStatus').style.color = 'var(--text-secondary)';
     document.getElementById('chatOverlay').classList.remove('show');
     if (chatMessagesListener) { chatMessagesListener(); chatMessagesListener = null; }
     clearChatNavbarActions();
@@ -4815,30 +4915,52 @@ function checkAutoOpen() {
 }
 
 function logout() {
-    if (confirm('Выйти из аккаунта?')) {
-        if (chatsGlobalListener) chatsGlobalListener();
-        if (chatMessagesListener) chatMessagesListener();
-        
+    
+async function logout() {
+    if (!confirm('Выйти из аккаунта?')) return;
+
+    try {
+        await setMyPresence(false);
+
+        if (chatsGlobalListener) {
+            chatsGlobalListener();
+            chatsGlobalListener = null;
+        }
+
+        if (chatMessagesListener) {
+            chatMessagesListener();
+            chatMessagesListener = null;
+        }
+
+        if (chatUserPresenceListener) {
+            chatUserPresenceListener();
+            chatUserPresenceListener = null;
+        }
+
         linkedAccounts = linkedAccounts.filter(a => a.uid !== currentUser.uid);
         saveLinkedAccounts();
-        
+
         if (linkedAccounts.length > 0) {
             const nextAccount = linkedAccounts[0];
             const creds = getAccountCredentials(nextAccount.uid);
-            
+
             if (creds && creds.password) {
-                auth.signOut().then(async () => {
-                    await auth.signInWithEmailAndPassword(creds.email, creds.password);
-                });
+                await auth.signOut();
+                await auth.signInWithEmailAndPassword(creds.email, creds.password);
             } else {
-                auth.signOut().then(() => location.reload());
+                await auth.signOut();
+                location.reload();
             }
         } else {
-            auth.signOut().then(() => location.reload());
+            await auth.signOut();
+            location.reload();
         }
+    } catch (e) {
+        console.error(e);
+        toast('Ошибка выхода');
     }
 }
-
+    
 window.addEventListener('DOMContentLoaded', () => {
     initSearchScroll();
 });
