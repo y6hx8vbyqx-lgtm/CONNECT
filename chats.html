@@ -1842,12 +1842,16 @@ body {
     <div class="tab-item active" data-tab="chats" onclick="switchTab('chats')">
         <i class="fas fa-comment-dots"></i>
         <span>Чаты</span>
+        
     </div>
     <div class="tab-item" data-tab="profile" onclick="switchTab('profile')">
         <i class="fas fa-user"></i>
         <span>Профиль</span>
     </div>
 </div>
+
+    </div> <!-- закрывает app-container -->
+    
     
 <div class="chat-overlay" id="chatOverlay">
     <div class="chat-navbar" id="chatNavbar">
@@ -1878,6 +1882,24 @@ body {
                 </div>
             </div>
             <div style="display:flex;gap:8px;align-items:flex-end;">
+    <div class="media-buttons">
+        <button class="media-btn" id="imageUploadBtn" type="button" onclick="document.getElementById('imageInput').click()">
+            <i class="fas fa-image"></i>
+        </button>
+        <button class="media-btn" id="videoUploadBtn" type="button" onclick="document.getElementById('videoInput').click()">
+            <i class="fas fa-video"></i>
+        </button>
+        <button class="media-btn" id="audioRecordBtn" type="button" onclick="toggleRecording()">
+            <i class="fas fa-microphone"></i>
+        </button>
+    </div>
+
+    <textarea class="chat-input" id="chatInput" placeholder="Сообщение" rows="1"></textarea>
+
+    <button class="chat-send" id="sendBtn" type="button">
+        <i class="fas fa-arrow-up"></i>
+    </button>
+</div>
                 <div class="media-buttons">
                     <button class="media-btn" id="imageUploadBtn" onclick="document.getElementById('imageInput').click()">
                         <i class="fas fa-image"></i>
@@ -3678,8 +3700,6 @@ async function playAudio(audioUrl, msgId, duration) {
     };
     
     // ВАЖНО ДЛЯ IPHONE: нужно вызвать play() в ответ на действие пользователя
-ffocusChatInput
-window.addEventListener('DOMContentLoaded', setupKeyboardFix);
     
     try {
         await audio.play();
@@ -3779,7 +3799,7 @@ if (msg.audioUrl) {
         <div class="msg-audio voice-card" data-audio-url="${msg.audioUrl}" data-msg-id="${id}" data-duration="${duration}">
           <button class="audio-play-btn" data-playing="false">
     <i class="fas fa-play"></i>
-</button>f
+</button>
 
             <div class="voice-body">
                 <div class="voice-top">
@@ -5419,6 +5439,19 @@ document.addEventListener('keydown', e => {
     }
 });
 
+function setupKeyboardFix() {
+    if (!window.visualViewport) return;
+
+    function updateKeyboardState() {
+        const keyboardOpen = window.innerHeight - window.visualViewport.height > 120;
+        document.body.classList.toggle('keyboard-open', keyboardOpen);
+    }
+
+    window.visualViewport.addEventListener('resize', updateKeyboardState);
+    window.visualViewport.addEventListener('scroll', updateKeyboardState);
+    updateKeyboardState();
+}
+
 function focusChatInput() {
     const input = document.getElementById('chatInput');
     if (!input) return;
@@ -5429,6 +5462,11 @@ function focusChatInput() {
         input.focus();
     }
 }
+
+window.addEventListener('DOMContentLoaded', () => {
+    initSearchScroll();
+    setupKeyboardFix();
+});
 
 const sendBtnElement = document.getElementById('sendBtn');
 
@@ -5448,29 +5486,6 @@ if (sendBtnElement) {
         setTimeout(focusChatInput, 80);
     });
 }
-
-sendBtnElement.addEventListener('click', async function(e) {
-    e.preventDefault();
-
-    function setupKeyboardFix() {
-    if (!window.visualViewport) return;
-
-    function updateKeyboardState() {
-        const keyboardOpen = window.innerHeight - window.visualViewport.height > 120;
-        document.body.classList.toggle('keyboard-open', keyboardOpen);
-    }
-
-    window.visualViewport.addEventListener('resize', updateKeyboardState);
-    window.visualViewport.addEventListener('scroll', updateKeyboardState);
-    updateKeyboardState();
-}
-
-    focusChatInput();
-    await sendMessage();
-
-    requestAnimationFrame(focusChatInput);
-    setTimeout(focusChatInput, 80);
-});
 
 console.log('✅ Contegg Messenger · Полная версия с фото, видео и голосовыми');
 </script>
