@@ -3013,6 +3013,46 @@ let photoEditorMode = 'crop';
 let photoIsDrawing = false;
 let photoLastPoint = null;
 
+    async function handleSelectedImages(files) {
+    const fileArray = Array.from(files || []);
+
+    if (!currentChatId) {
+        toast('Сначала откройте чат');
+        return;
+    }
+
+    if (fileArray.length === 0) {
+        toast('Фото не выбрано');
+        return;
+    }
+
+    if (!(await canSendToCurrentChat())) {
+        toast('Нет права публиковать в канал');
+        return;
+    }
+
+    const images = fileArray.filter(file => isProbablyImageFile(file));
+
+    if (images.length === 0) {
+        toast('Файл не похож на фото');
+        return;
+    }
+
+    photoEditQueue = images;
+    openNextPhotoEditor();
+}
+
+function openNextPhotoEditor() {
+    const nextFile = photoEditQueue.shift();
+
+    if (!nextFile) {
+        closePhotoEditor(true);
+        return;
+    }
+
+    openPhotoEditor(nextFile);
+}
+
     function isProbablyImageFile(file) {
     if (!file) return false;
 
@@ -8594,10 +8634,11 @@ async function logout() {
 }
 
 document.getElementById('imageInput').addEventListener('change', function(e) {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    sendImages(files);
+    const files = Array.from(e.target.files || []);
+
     this.value = '';
+
+    handleSelectedImages(files);
 });
 
 document.getElementById('videoInput').addEventListener('change', function(e) {
@@ -8607,21 +8648,25 @@ document.getElementById('videoInput').addEventListener('change', function(e) {
 
 document.addEventListener('paste', function(e) {
     const chatInput = document.getElementById('chatInput');
+
     if (document.activeElement !== chatInput) return;
-    
-    const items = e.clipboardData.items;
+    if (!e.clipboardData || !e.clipboardData.items) return;
+
     const files = [];
-    
-    for (const item of items) {
-        if (item.type.indexOf('image') !== -1) {
+
+    for (const item of e.clipboardData.items) {
+        if (item.type && item.type.indexOf('image') !== -1) {
             const file = item.getAsFile();
-            files.push(file);
+
+            if (file) {
+                files.push(file);
+            }
         }
     }
-    
+
     if (files.length > 0) {
         e.preventDefault();
-        sendImages(files);
+        handleSelectedImages(files);
     }
 });
 
@@ -8633,10 +8678,14 @@ document.getElementById('chatOverlay').addEventListener('dragover', function(e) 
 document.getElementById('chatOverlay').addEventListener('drop', function(e) {
     e.preventDefault();
     e.stopPropagation();
-    
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-    if (files.length > 0) {
-        sendImages(files);
+
+    const files = Array.from(e.dataTransfer.files || []);
+    const images = files.filter(file => isProbablyImageFile(file));
+
+    if (images.length > 0) {
+        handleSelectedImages(images);
+    } else {
+        toast('Файл не похож на фото');
     }
 });
 
