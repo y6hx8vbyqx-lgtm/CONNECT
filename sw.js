@@ -1,47 +1,54 @@
-const CACHE_NAME = 'contegg-v1';
-const urlsToCache = [
-    '/',
-    '/index.html',
-    '/chats.html',
-    '/chat.html',
-    '/manifest.json',
-    'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css',
-    'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/webfonts/fa-solid-900.woff2',
-    'https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js',
-    'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js',
-    'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js'
-];
+const CACHE_NAME = 'contegg-pwa-v2';
 
 self.addEventListener('install', event => {
-    event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then(cache => cache.addAll(urlsToCache))
-    );
-});
-
-self.addEventListener('fetch', event => {
-    // Для Firebase запросов не кэшируем
-    if (event.request.url.includes('firebase')) {
-        event.respondWith(fetch(event.request));
-        return;
-    }
-    
-    event.respondWith(
-        caches.match(event.request)
-            .then(response => response || fetch(event.request))
-    );
+    self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys().then(cacheNames => {
             return Promise.all(
-                cacheNames.map(cacheName => {
-                    if (cacheName !== CACHE_NAME) {
-                        return caches.delete(cacheName);
-                    }
-                })
+                cacheNames
+                    .filter(cacheName => cacheName !== CACHE_NAME)
+                    .map(cacheName => caches.delete(cacheName))
             );
-        })
+        }).then(() => self.clients.claim())
+    );
+});
+
+self.addEventListener('fetch', event => {
+    const request = event.request;
+
+    if (request.method !== 'GET') return;
+
+    const url = new URL(request.url);
+
+    // Firebase / Google / внешние CDN не трогаем service worker'ом
+    if (url.origin !== self.location.origin) {
+        event.respondWith(fetch(request));
+        return;
+    }
+
+    // HTML-страницы всегда сначала из сети, чтобы не залипала старая версия
+    if (request.mode === 'navigate') {
+        event.respondWith(
+            fetch(request).catch(() => caches.match('/'))
+        );
+        return;
+    }
+
+    // Остальные локальные файлы: сеть -> кэш
+    event.respondWith(
+        fetch(request)
+            .then(response => {
+                const copy = response.clone();
+
+                caches.open(CACHE_NAME).then(cache => {
+                    cache.put(request, copy);
+                });
+
+                return response;
+            })
+            .catch(() => caches.match(request))
     );
 });
