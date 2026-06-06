@@ -5979,6 +5979,9 @@ function setupKeyboardFix() {
         }, 400);
     });
 }
+    }
+
+function focusChatInput() {
     const input = document.getElementById('chatInput');
     if (!input) return;
 
@@ -5989,6 +5992,7 @@ function setupKeyboardFix() {
     }
 }
 
+window.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('DOMContentLoaded', () => {
     initSearchScroll();
     setupKeyboardFix();
