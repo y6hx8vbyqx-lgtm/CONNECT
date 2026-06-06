@@ -1483,10 +1483,7 @@
 
 /* общий фон */
 body {
-    background:
-        radial-gradient(circle at 50% -10%, rgba(10,132,255,0.16), transparent 36%),
-        radial-gradient(circle at 100% 20%, rgba(88,86,214,0.12), transparent 32%),
-        #000;
+    background: #000;
 }
 
 .app-container {
@@ -1835,18 +1832,17 @@ body {
         </div>
     </div>
 
-    <div class="tabbar">
-        <div class="tab-item active" data-tab="chats" onclick="switchTab('chats')">
-            <i class="fas fa-comment"></i>
-            <span>Чаты</span>
-        </div>
-        <div class="tab-item" data-tab="profile" onclick="switchTab('profile')">
-            <i class="fas fa-user"></i>
-            <span>Профиль</span>
-        </div>
+<div class="tabbar">
+    <div class="tab-item active" data-tab="chats" onclick="switchTab('chats')">
+        <i class="fas fa-message"></i>
+        <span>Чаты</span>
+    </div>
+    <div class="tab-item" data-tab="profile" onclick="switchTab('profile')">
+        <i class="fas fa-circle-user"></i>
+        <span>Профиль</span>
     </div>
 </div>
-
+    
 <div class="chat-overlay" id="chatOverlay">
     <div class="chat-navbar" id="chatNavbar">
         <button class="chat-back" onclick="closeChat()">
