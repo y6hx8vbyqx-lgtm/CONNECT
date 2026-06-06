@@ -1870,29 +1870,39 @@ body {
     <div class="chat-messages" id="chatMessages">
         <div class="loader"><div class="spinner"></div></div>
     </div>
-    <div class="chat-input-bar" id="chatInputBar">
-        <div style="flex:1;display:flex;flex-direction:column;">
-            <div class="reply-preview" id="replyPreview" style="display:none;">
-                <div style="flex:1;">
-                    <div class="reply-preview-name" id="replyName"></div>
-                    <div class="reply-preview-text" id="replyText"></div>
-                </div>
-                <div class="reply-preview-close" onclick="cancelReply()">
-                    <i class="fas fa-times"></i>
-                </div>
+<div class="chat-input-bar" id="chatInputBar">
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
+        <div class="reply-preview" id="replyPreview" style="display:none;">
+            <div style="flex:1;">
+                <div class="reply-preview-name" id="replyName"></div>
+                <div class="reply-preview-text" id="replyText"></div>
             </div>
-            <div style="display:flex;gap:8px;align-items:flex-end;">
-    <div class="media-buttons">
-        <button class="media-btn" id="imageUploadBtn" type="button" onclick="document.getElementById('imageInput').click()">
-            <i class="fas fa-image"></i>
-        </button>
-        <button class="media-btn" id="videoUploadBtn" type="button" onclick="document.getElementById('videoInput').click()">
-            <i class="fas fa-video"></i>
-        </button>
-        <button class="media-btn" id="audioRecordBtn" type="button" onclick="toggleRecording()">
-            <i class="fas fa-microphone"></i>
-        </button>
+            <div class="reply-preview-close" onclick="cancelReply()">
+                <i class="fas fa-times"></i>
+            </div>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+            <div class="media-buttons">
+                <button class="media-btn" id="imageUploadBtn" type="button" onclick="document.getElementById('imageInput').click()">
+                    <i class="fas fa-image"></i>
+                </button>
+                <button class="media-btn" id="videoUploadBtn" type="button" onclick="document.getElementById('videoInput').click()">
+                    <i class="fas fa-video"></i>
+                </button>
+                <button class="media-btn" id="audioRecordBtn" type="button" onclick="toggleRecording()">
+                    <i class="fas fa-microphone"></i>
+                </button>
+            </div>
+
+            <textarea class="chat-input" id="chatInput" placeholder="Сообщение" rows="1"></textarea>
+
+            <button class="chat-send" id="sendBtn" type="button">
+                <i class="fas fa-arrow-up"></i>
+            </button>
+        </div>
     </div>
+</div>
 
     <textarea class="chat-input" id="chatInput" placeholder="Сообщение" rows="1"></textarea>
 
