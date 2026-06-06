@@ -37,7 +37,6 @@
         user-select: text !important;
       }
     </style>
-
  
     <!-- ОСНОВНЫЕ СТИЛИ -->
     
@@ -2003,6 +2002,92 @@ body.keyboard-open .chat-messages {
 }
         
     /* ========== КОНЕЦ СТИЛЕЙ ДЛЯ ГОЛОСОВЫХ ========== */
+
+/* ===== REAL FINAL CHAT LAYOUT FIX ===== */
+
+:root {
+    --vv-height: 100svh;
+    --vv-offset-top: 0px;
+    --chat-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.chat-overlay {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: var(--vv-height) !important;
+    max-height: var(--vv-height) !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+.chat-overlay.show {
+    top: var(--vv-offset-top) !important;
+    height: var(--vv-height) !important;
+    max-height: var(--vv-height) !important;
+    transform: translateX(0) !important;
+}
+
+.chat-navbar {
+    flex: 0 0 auto !important;
+}
+
+.chat-messages {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    padding-bottom: 8px !important;
+}
+
+.chat-input-bar {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+
+    padding-top: 8px !important;
+    padding-left: max(10px, env(safe-area-inset-left)) !important;
+    padding-right: max(10px, env(safe-area-inset-right)) !important;
+    padding-bottom: calc(8px + var(--chat-safe-bottom)) !important;
+
+    margin: 0 !important;
+    transform: none !important;
+}
+
+body.keyboard-open .chat-input-bar {
+    padding-top: 6px !important;
+    padding-bottom: 8px !important;
+}
+
+body.keyboard-open .chat-input-row,
+body.keyboard-open #chatInputBar > div,
+body.keyboard-open .chat-input,
+body.keyboard-open .media-buttons,
+body.keyboard-open .chat-send {
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+.chat-input-row {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+}
+
+#chatInputBar > div {
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.chat-input {
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
     
     </style>
 </head>
@@ -3073,15 +3158,15 @@ async function openSavedChatUI() {
     document.getElementById('chatInputBar').style.display = 'flex';
     await loadMessages();
     
-    setTimeout(() => document.getElementById('chatInput').focus(), 300);setTimeout(() => {
-    focusChatInput();
-
+setTimeout(() => {
     if (window.visualViewport) {
         document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
         document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
     }
+
+    const messages = document.getElementById('chatMessages');
+    if (messages) messages.scrollTop = messages.scrollHeight;
 }, 350);
-}
 
 async function saveMessageToFavorites(messageId, messageData) {
     try {
@@ -3567,28 +3652,42 @@ async function openDirectChat(userId, username) {
 }
     
 async function openGroupChat(chatId) {
+    const token = ++openChatToken;
+
     currentChatId = chatId;
     currentChatIsGroup = true;
     currentChatIsSaved = false;
     currentChatIsSystem = false;
+    currentChatUser = null;
+
     clearChatNavbarActions();
-    
+
     const doc = await db.collection('chats').doc(chatId).get();
+
+    if (token !== openChatToken) return;
+
     const chat = doc.data();
+    if (!chat) return;
+
     currentChatParticipants = chat.participants || [];
-    
+
     const isAdmin = await isGroupAdmin(chatId, currentUser.uid);
     const isOwner = await isGroupOwner(chatId, currentUser.uid);
-    
+
+    if (token !== openChatToken) return;
+
+    const container = document.getElementById('chatNavbarActions');
+    if (container) container.innerHTML = '';
+
     if (isAdmin || isOwner || isCurrentUserDeveloper) {
-        const container = document.getElementById('chatNavbarActions');
         const btn = document.createElement('button');
         btn.className = 'group-settings-btn';
+        btn.id = 'groupSettingsBtn';
         btn.innerHTML = '<i class="fas fa-cog"></i>';
         btn.onclick = openGroupSettings;
         container.appendChild(btn);
     }
-    
+
     await openChatUI(null, chat.name, true, chat);
 }
 
@@ -3690,17 +3789,16 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
     
 if (!chatData?.isSystem) {
     setTimeout(() => {
-        focusChatInput();
-
         if (window.visualViewport) {
             document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
             document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
         }
 
+        document.body.classList.remove('keyboard-open');
+
         const messages = document.getElementById('chatMessages');
         if (messages) messages.scrollTop = messages.scrollHeight;
     }, 350);
-}
 }
 
 function closeChat() {
@@ -5691,21 +5789,91 @@ function setupKeyboardFix() {
 
     function updateViewportVars() {
         if (window.visualViewport) {
-            document.documentElement.style.setProperty(
-                '--vv-height',
-                `${window.visualViewport.height}px`
-            );
-
-            document.documentElement.style.setProperty(
-                '--vv-offset-top',
-                `${window.visualViewport.offsetTop}px`
-            );
+            document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
+            document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
         } else {
             document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
             document.documentElement.style.setProperty('--vv-offset-top', `0px`);
         }
     }
 
+    function keyboardIsOpen() {
+        const vv = window.visualViewport;
+        if (!vv) return false;
+
+        return (
+            baseViewportHeight - vv.height > 80 ||
+            vv.offsetTop > 0
+        );
+    }
+
+    function updateKeyboardState() {
+        updateViewportVars();
+
+        const isOpen = keyboardIsOpen();
+        document.body.classList.toggle('keyboard-open', isOpen);
+
+        requestAnimationFrame(() => {
+            const messages = document.getElementById('chatMessages');
+            if (messages && currentChatId) {
+                messages.scrollTop = messages.scrollHeight;
+            }
+        });
+    }
+
+    updateViewportVars();
+
+    if (input) {
+        input.addEventListener('focus', () => {
+            updateViewportVars();
+
+            setTimeout(updateKeyboardState, 80);
+            setTimeout(updateKeyboardState, 250);
+            setTimeout(updateKeyboardState, 500);
+        });
+
+        input.addEventListener('blur', () => {
+            setTimeout(() => {
+                document.body.classList.remove('keyboard-open');
+
+                if (window.visualViewport) {
+                    baseViewportHeight = window.visualViewport.height;
+                } else {
+                    baseViewportHeight = window.innerHeight;
+                }
+
+                updateViewportVars();
+            }, 200);
+        });
+    }
+
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', updateKeyboardState);
+        window.visualViewport.addEventListener('scroll', updateKeyboardState);
+    }
+
+    window.addEventListener('resize', () => {
+        if (document.activeElement !== input) {
+            baseViewportHeight = window.visualViewport
+                ? window.visualViewport.height
+                : window.innerHeight;
+        }
+
+        updateKeyboardState();
+    });
+
+    window.addEventListener('orientationchange', () => {
+        setTimeout(() => {
+            baseViewportHeight = window.visualViewport
+                ? window.visualViewport.height
+                : window.innerHeight;
+
+            updateKeyboardState();
+        }, 400);
+    });
+
+    updateKeyboardState();
+}
     function isInputFocused() {
         return document.activeElement === input;
     }
