@@ -6238,5 +6238,312 @@ if (sendBtnElement) {
 
 console.log('✅ Contegg Messenger · Полная версия с фото, видео и голосовыми');
 </script>
+    <style id="contegg-real-final-keyboard-fix">
+:root {
+    --contegg-layout-height: 100vh;
+    --contegg-keyboard-height: 0px;
+    --contegg-input-height: 64px;
+}
+
+/* перебиваем ВСЕ старые .chat-overlay через ID */
+#chatOverlay.chat-overlay {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: auto !important;
+
+    width: 100% !important;
+    height: var(--contegg-layout-height) !important;
+    max-height: var(--contegg-layout-height) !important;
+
+    z-index: 99999 !important;
+    background: #000 !important;
+
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+
+    transform: translate3d(100%, 0, 0) !important;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+#chatOverlay.chat-overlay.show {
+    transform: translate3d(0, 0, 0) !important;
+}
+
+body.keyboard-open #chatOverlay.chat-overlay,
+body.keyboard-closing #chatOverlay.chat-overlay {
+    transition: none !important;
+}
+
+#chatNavbar.chat-navbar {
+    flex: 0 0 auto !important;
+    position: relative !important;
+    z-index: 5 !important;
+}
+
+/* сообщения получают место снизу, потому что input теперь absolute */
+#chatMessages.chat-messages {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+    scroll-behavior: auto !important;
+    overflow-anchor: none !important;
+
+    padding: 12px 12px calc(
+        var(--contegg-input-height) + var(--contegg-keyboard-height) + 12px
+    ) !important;
+}
+
+/* ВАЖНО: ID перебивает твой старый position:relative + transform:none */
+#chatInputBar.chat-input-bar {
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+
+    flex: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+
+    z-index: 20 !important;
+
+    transform: translate3d(0, calc(-1 * var(--contegg-keyboard-height)), 0) !important;
+    transition: none !important;
+
+    margin: 0 !important;
+
+    padding-top: 8px !important;
+    padding-left: max(10px, env(safe-area-inset-left)) !important;
+    padding-right: max(10px, env(safe-area-inset-right)) !important;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom)) !important;
+}
+
+body.keyboard-open #chatInputBar.chat-input-bar {
+    padding-bottom: 8px !important;
+}
+
+#chatInputBar > div {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+#chatInputBar .chat-input-row {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+#chatInputBar .chat-input {
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+</style>
+
+<script id="contegg-real-final-keyboard-js">
+(function () {
+    const root = document.documentElement;
+
+    let layoutHeight = 0;
+    let rafId = null;
+    let installed = false;
+
+    function vv() {
+        return window.visualViewport || null;
+    }
+
+    function getStableHeight() {
+        const v = vv();
+
+        return Math.round(Math.max(
+            layoutHeight || 0,
+            window.innerHeight || 0,
+            document.documentElement.clientHeight || 0,
+            v ? v.height + v.offsetTop : 0
+        ));
+    }
+
+    function setInputHeight() {
+        const bar = document.getElementById('chatInputBar');
+        if (!bar) return;
+
+        const h = Math.ceil(bar.getBoundingClientRect().height || 64);
+        root.style.setProperty('--contegg-input-height', h + 'px');
+    }
+
+    function scrollMessagesBottom() {
+        const messages = document.getElementById('chatMessages');
+        if (!messages) return;
+
+        requestAnimationFrame(() => {
+            messages.scrollTop = messages.scrollHeight;
+        });
+    }
+
+    function applyKeyboardState() {
+        const v = vv();
+
+        setInputHeight();
+
+        if (!layoutHeight) {
+            layoutHeight = getStableHeight();
+        }
+
+        root.style.setProperty('--contegg-layout-height', layoutHeight + 'px');
+
+        if (!v) {
+            root.style.setProperty('--contegg-keyboard-height', '0px');
+            document.body.classList.remove('keyboard-open');
+            return;
+        }
+
+        const visibleBottom = v.height + v.offsetTop;
+        let keyboardHeight = Math.max(0, layoutHeight - visibleBottom);
+
+        if (keyboardHeight < 80) {
+            keyboardHeight = 0;
+        }
+
+        root.style.setProperty('--contegg-keyboard-height', Math.round(keyboardHeight) + 'px');
+
+        if (keyboardHeight > 0) {
+            document.body.classList.add('keyboard-open');
+            document.body.classList.remove('keyboard-closing');
+            scrollMessagesBottom();
+        } else {
+            document.body.classList.remove('keyboard-open');
+            document.body.classList.remove('keyboard-closing');
+            root.style.setProperty('--contegg-keyboard-height', '0px');
+
+            if (document.activeElement !== document.getElementById('chatInput')) {
+                layoutHeight = getStableHeight();
+                root.style.setProperty('--contegg-layout-height', layoutHeight + 'px');
+            }
+        }
+    }
+
+    function requestApply() {
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(applyKeyboardState);
+    }
+
+    window.showChatOverlay = function () {
+        const overlay = document.getElementById('chatOverlay');
+        if (!overlay) return;
+
+        layoutHeight = getStableHeight();
+
+        root.style.setProperty('--contegg-layout-height', layoutHeight + 'px');
+        root.style.setProperty('--contegg-keyboard-height', '0px');
+
+        document.body.classList.add('chat-open');
+        document.body.classList.remove('keyboard-open');
+        document.body.classList.remove('keyboard-closing');
+
+        overlay.classList.add('show');
+
+        requestApply();
+        setTimeout(requestApply, 80);
+        setTimeout(requestApply, 220);
+        setTimeout(requestApply, 450);
+    };
+
+    window.hideChatOverlay = function () {
+        const overlay = document.getElementById('chatOverlay');
+        if (!overlay) return;
+
+        overlay.classList.remove('show');
+
+        document.body.classList.remove('chat-open');
+        document.body.classList.remove('keyboard-open');
+        document.body.classList.remove('keyboard-closing');
+
+        root.style.setProperty('--contegg-keyboard-height', '0px');
+
+        layoutHeight = getStableHeight();
+        root.style.setProperty('--contegg-layout-height', layoutHeight + 'px');
+    };
+
+    window.setupKeyboardFix = function () {
+        if (installed) return;
+        installed = true;
+
+        const input = document.getElementById('chatInput');
+        const bar = document.getElementById('chatInputBar');
+
+        layoutHeight = getStableHeight();
+
+        root.style.setProperty('--contegg-layout-height', layoutHeight + 'px');
+        root.style.setProperty('--contegg-keyboard-height', '0px');
+
+        setInputHeight();
+
+        if (input) {
+            input.addEventListener('focus', () => {
+                layoutHeight = getStableHeight();
+
+                requestApply();
+                setTimeout(requestApply, 50);
+                setTimeout(requestApply, 160);
+                setTimeout(requestApply, 320);
+                setTimeout(requestApply, 600);
+            });
+
+            input.addEventListener('blur', () => {
+                document.body.classList.add('keyboard-closing');
+                document.body.classList.remove('keyboard-open');
+                root.style.setProperty('--contegg-keyboard-height', '0px');
+
+                setTimeout(() => {
+                    document.body.classList.remove('keyboard-closing');
+                    layoutHeight = getStableHeight();
+                    root.style.setProperty('--contegg-layout-height', layoutHeight + 'px');
+                    requestApply();
+                }, 250);
+            });
+        }
+
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', requestApply);
+            window.visualViewport.addEventListener('scroll', requestApply);
+        }
+
+        window.addEventListener('resize', () => {
+            if (document.activeElement !== input) {
+                layoutHeight = getStableHeight();
+                root.style.setProperty('--contegg-layout-height', layoutHeight + 'px');
+            }
+
+            requestApply();
+        });
+
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => {
+                layoutHeight = getStableHeight();
+                root.style.setProperty('--contegg-layout-height', layoutHeight + 'px');
+                root.style.setProperty('--contegg-keyboard-height', '0px');
+                requestApply();
+            }, 500);
+        });
+
+        if (window.ResizeObserver && bar) {
+            new ResizeObserver(requestApply).observe(bar);
+        }
+
+        requestApply();
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', window.setupKeyboardFix);
+    } else {
+        window.setupKeyboardFix();
+    }
+})();
+    
+</script>
 </body>
 </html>
