@@ -2633,6 +2633,30 @@ body.keyboard-open .chat-input-bar {
     </div>
 </div>
 
+    <div class="modal-overlay" id="channelSettingsModal">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Настройки канала</div>
+        <div class="modal-content" id="channelSettingsContent"></div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="channelCropSettingsModal">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Обрезать фото канала</div>
+        <div class="modal-content">
+            <div style="max-height:350px;border-radius:12px;overflow:hidden;margin-bottom:16px;">
+                <img id="channelCropSettingsImageTarget" style="max-width:100%;display:block;">
+            </div>
+            <div style="display:flex;gap:10px;">
+                <button class="btn btn-secondary" onclick="closeChannelCropSettings()" style="flex:1;">Отмена</button>
+                <button class="btn btn-primary" onclick="saveChannelCropSettings()" style="flex:1;">Готово</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="profileEditModal">
     <div class="modal-sheet">
         <div class="modal-handle"></div>
@@ -2809,6 +2833,7 @@ body.keyboard-open .chat-input-bar {
 <input type="file" id="videoInput" accept="video/*" style="display:none;">
 <input type="file" id="editGroupAvatarInput" accept="image/*" style="display:none;">
 <input type="file" id="channelAvatarInput" accept="image/*" style="display:none;">
+<input type="file" id="editChannelAvatarInput" accept="image/*" style="display:none;">
 
 <div class="toast" id="toast"></div>
 
@@ -2838,6 +2863,7 @@ let loadChatsTimer = null;
 let currentChatIsGroup = false;
 let currentChatIsSaved = false;
 let currentChatIsSystem = false;
+let currentChatIsChannel = false;
 let currentChatUser = null;
 let currentChatParticipants = [];
 let chatMessagesListener = null;
@@ -2854,6 +2880,8 @@ let selectedGroupUsers = new Set();
 let groupAvatarBase64 = null;
 let channelAvatarBase64 = null;
 let channelCropper = null;
+let channelSettingsAvatarBase64 = null;
+let channelSettingsCropper = null;
 let cropper = null;
 let groupCropper = null;
 let groupSettingsCropper = null;
@@ -2894,6 +2922,11 @@ async function uploadAudioToStorage(file) {
 
 async function sendImages(files) {
     if (!currentChatId || !files || files.length === 0) return;
+
+    if (!(await canSendToCurrentChat())) {
+        toast('Нет права публиковать в канал');
+        return;
+    }
 
     const sendBtn = document.getElementById('sendBtn');
     const uploadBtn = document.getElementById('imageUploadBtn');
@@ -2954,6 +2987,10 @@ async function sendImages(files) {
     
 async function sendVideo(file) {
     if (!currentChatId || !file) return;
+    if (!(await canSendToCurrentChat())) {
+    toast('Нет права публиковать в канал');
+    return;
+}
 
     if (!file.type.startsWith('video/')) {
         toast('Можно только видео');
@@ -3014,6 +3051,10 @@ async function sendVideo(file) {
 
 async function sendAudio(blob) {
     if (!currentChatId || !blob) return;
+    if (!(await canSendToCurrentChat())) {
+    toast('Нет права публиковать в канал');
+    return;
+}
     
     const sendBtn = document.getElementById('sendBtn');
     const audioBtn = document.getElementById('audioRecordBtn');
@@ -4164,19 +4205,49 @@ function hideChatOverlay() {
     }
 }
 
-    function canCurrentUserPostInChannel(chat) {
-    if (!currentUser || !chat) return false;
+  function getChannelRights(chat) {
+    const permissions = chat?.adminPermissions || {};
+    const myPerms = permissions[currentUser?.uid] || {};
+    const admins = chat?.admins || [];
 
-    if (chat.ownerId === currentUser.uid) return true;
+    const isOwner = chat?.ownerId === currentUser?.uid;
+    const isAdmin = admins.includes(currentUser?.uid);
+    const isDeveloper = isCurrentUserDeveloper === true;
 
-    const admins = chat.admins || [];
-    const permissions = chat.adminPermissions || {};
-
-    if (!admins.includes(currentUser.uid)) return false;
-
-    return permissions[currentUser.uid]?.canPost === true;
+    return {
+        isOwner,
+        isAdmin,
+        isDeveloper,
+        permissions: myPerms,
+        canPost: isOwner || isDeveloper || (isAdmin && myPerms.canPost === true),
+        canViewSubscribers: isOwner || isDeveloper || (isAdmin && myPerms.canViewSubscribers === true),
+        canEditChannel: isOwner || isDeveloper || (isAdmin && myPerms.canEditChannel === true)
+    };
 }
 
+function canCurrentUserPostInChannel(chat) {
+    return getChannelRights(chat).canPost;
+}
+
+function canCurrentUserViewChannelSubscribers(chat) {
+    return getChannelRights(chat).canViewSubscribers;
+}
+
+function canCurrentUserEditChannel(chat) {
+    return getChannelRights(chat).canEditChannel;
+}
+
+async function canSendToCurrentChat() {
+    if (!currentChatIsChannel) return true;
+
+    const doc = await db.collection('chats').doc(currentChatId).get();
+    const chat = doc.data();
+
+    if (!chat) return false;
+
+    return canCurrentUserPostInChannel(chat);
+}
+    
 async function openChannel(chatId) {
     currentChatId = chatId;
     currentChatIsChannel = true;
@@ -5094,6 +5165,10 @@ async function sendMessage() {
     const text = input.value.trim();
 
     if (!text || !currentChatId) return;
+    if (!(await canSendToCurrentChat())) {
+    toast('Нет права публиковать в канал');
+    return;
+}
 
     if (editingMessage) {
     await saveEditedMessage(text);
@@ -6243,6 +6318,684 @@ function saveChannelCrop() {
     toast('Фото канала готово');
 }
 
+    async function openChannelSettings() {
+    if (!currentChatId || !currentChatIsChannel) return;
+
+    await loadAllUsers();
+
+    const chatDoc = await db.collection('chats').doc(currentChatId).get();
+    const chat = chatDoc.data();
+
+    if (!chat) {
+        toast('Канал не найден');
+        return;
+    }
+
+    const rights = getChannelRights(chat);
+    const subscribers = chat.subscribers || [];
+    const admins = chat.admins || [];
+    const adminPermissions = chat.adminPermissions || {};
+
+    channelSettingsAvatarBase64 = chat.avatarBase64 || null;
+
+    const avatarHTML = chat.avatarBase64
+        ? `<img src="${chat.avatarBase64}" style="width:100%;height:100%;object-fit:cover;">`
+        : '<i class="fas fa-bullhorn"></i>';
+
+let html = `
+    <div style="text-align:center;margin-bottom:18px;">
+        <div 
+            id="channelSettingsAvatarPreview"
+            style="width:82px;height:82px;border-radius:50%;margin:0 auto 10px;background:linear-gradient(135deg,#ff9f0a,#ff3b30);display:flex;align-items:center;justify-content:center;font-size:30px;color:white;overflow:hidden;${rights.canEditChannel ? 'cursor:pointer;' : ''}"
+            ${rights.canEditChannel ? `onclick="document.getElementById('editChannelAvatarInput').click()"` : ''}
+        >
+            ${avatarHTML}
+        </div>
+
+        ${rights.canEditChannel ? `
+            <div style="color:var(--accent);font-size:14px;cursor:pointer;" onclick="document.getElementById('editChannelAvatarInput').click()">
+                Изменить фото
+            </div>
+        ` : ''}
+
+        <div style="font-size:13px;color:var(--text-secondary);margin-top:6px;">
+            ${chat.subscribersCount || subscribers.length || 0} подписчиков
+        </div>
+    </div>
+`;
+
+    if (rights.canEditChannel) {
+        html += `
+            <div class="input-row">
+                <label>Название канала</label>
+                <input type="text" id="editChannelName" value="${esc(chat.name || '')}" maxlength="50">
+            </div>
+
+            <div class="input-row">
+                <label>Тип канала</label>
+                <select id="editChannelVisibility" style="width:100%;background:none;border:none;color:var(--text-primary);font-size:16px;outline:none;">
+                    <option value="public" ${chat.visibility === 'public' ? 'selected' : ''}>Публичный</option>
+                    <option value="private" ${chat.visibility === 'private' ? 'selected' : ''}>Частный</option>
+                </select>
+            </div>
+
+            <div id="editChannelPrivateBlock" style="${chat.visibility === 'private' ? '' : 'display:none;'}">
+                <div class="input-row">
+                    <label>Приватный код</label>
+                    <input type="text" id="editChannelPrivateCode" value="${esc(chat.privateCode || generateChannelCode())}" readonly>
+                </div>
+
+                <button class="btn btn-secondary" onclick="regenerateChannelPrivateCode()">
+                    Сменить приватный код
+                </button>
+            </div>
+
+            <div class="profile-section" style="padding:14px 16px;margin-bottom:14px;">
+                <label style="display:flex;align-items:center;justify-content:space-between;font-size:15px;">
+                    <span>Комментарии под постами</span>
+                    <input type="checkbox" id="editChannelCommentsEnabled" ${chat.commentsEnabled !== false ? 'checked' : ''}>
+                </label>
+            </div>
+        `;
+    } else {
+        html += `
+            <div class="profile-section" style="padding:16px;text-align:center;">
+                <div style="font-size:20px;font-weight:600;margin-bottom:4px;">${esc(chat.name || 'Канал')}</div>
+                <div style="font-size:14px;color:var(--text-secondary);">
+                    ${chat.visibility === 'private' ? 'Частный канал' : 'Публичный канал'}
+                </div>
+            </div>
+        `;
+    }
+
+    if (rights.isOwner || rights.isDeveloper) {
+        html += `
+            <div class="profile-section" style="padding:14px 16px;margin-bottom:14px;">
+                <div style="font-size:16px;font-weight:600;margin-bottom:12px;">
+                    Админы
+                </div>
+
+                <input type="text" id="channelAdminSearch" class="add-participant-search" placeholder="Добавить админа...">
+                <div id="channelAdminSearchResults" class="add-participant-results"></div>
+        `;
+
+        if (admins.length === 0) {
+            html += `
+                <div style="font-size:13px;color:var(--text-secondary);padding:8px 0;">
+                    Админов пока нет
+                </div>
+            `;
+        }
+
+        for (const adminId of admins) {
+            const user = await getUserInfo(adminId);
+            const perms = adminPermissions[adminId] || {};
+
+            html += `
+                <div class="participant-item" style="align-items:flex-start;flex-direction:column;gap:10px;">
+                    <div style="display:flex;align-items:center;gap:10px;width:100%;">
+                        <div class="chat-avatar" style="width:38px;height:38px;font-size:14px;">
+                            ${user.avatarBase64 ? `<img src="${user.avatarBase64}">` : (user.displayName?.[0] || 'U')}
+                        </div>
+
+                        <div style="flex:1;">
+                            <div style="font-size:14px;">${esc(user.displayName || user.username)}</div>
+                            <div style="font-size:12px;color:var(--text-secondary);">@${esc(user.username)}</div>
+                        </div>
+
+                        <button class="btn btn-danger btn-small" onclick="removeChannelAdmin('${adminId}')">
+                            Убрать
+                        </button>
+                    </div>
+
+                    <label style="font-size:13px;display:flex;justify-content:space-between;width:100%;">
+                        <span>Публиковать посты</span>
+                        <input type="checkbox" ${perms.canPost ? 'checked' : ''} onchange="updateChannelAdminPermission('${adminId}', 'canPost', this.checked)">
+                    </label>
+
+                    <label style="font-size:13px;display:flex;justify-content:space-between;width:100%;">
+                        <span>Смотреть подписчиков</span>
+                        <input type="checkbox" ${perms.canViewSubscribers ? 'checked' : ''} onchange="updateChannelAdminPermission('${adminId}', 'canViewSubscribers', this.checked)">
+                    </label>
+
+                    <label style="font-size:13px;display:flex;justify-content:space-between;width:100%;">
+                        <span>Менять название и аватарку</span>
+                        <input type="checkbox" ${perms.canEditChannel ? 'checked' : ''} onchange="updateChannelAdminPermission('${adminId}', 'canEditChannel', this.checked)">
+                    </label>
+                </div>
+            `;
+        }
+
+        html += `</div>`;
+    }
+
+    if (rights.canViewSubscribers) {
+        html += `
+            <div class="profile-section" style="padding:14px 16px;margin-bottom:14px;">
+                <div style="font-size:16px;font-weight:600;margin-bottom:12px;">
+                    Подписчики
+                </div>
+
+                <input type="text" id="channelSubscriberSearch" class="add-participant-search" placeholder="Добавить подписчика...">
+                <div id="channelSubscriberSearchResults" class="add-participant-results"></div>
+        `;
+
+        if (subscribers.length === 0) {
+            html += `
+                <div style="font-size:13px;color:var(--text-secondary);padding:8px 0;">
+                    Подписчиков пока нет
+                </div>
+            `;
+        }
+
+        for (const subId of subscribers) {
+            const user = await getUserInfo(subId);
+            const isOwner = chat.ownerId === subId;
+            const isAdmin = admins.includes(subId);
+
+            html += `
+                <div class="participant-item">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <div class="chat-avatar" style="width:38px;height:38px;font-size:14px;">
+                            ${user.avatarBase64 ? `<img src="${user.avatarBase64}">` : (user.displayName?.[0] || 'U')}
+                        </div>
+
+                        <div>
+                            <div style="font-size:14px;">
+                                ${esc(user.displayName || user.username)}
+                                ${isOwner ? '<span class="role-badge owner">Владелец</span>' : ''}
+                                ${isAdmin ? '<span class="role-badge admin">Админ</span>' : ''}
+                            </div>
+                            <div style="font-size:12px;color:var(--text-secondary);">@${esc(user.username)}</div>
+                        </div>
+                    </div>
+
+                    ${!isOwner ? `
+                        <button class="btn btn-danger btn-small" onclick="removeChannelSubscriber('${subId}')">
+                            Удалить
+                        </button>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        html += `</div>`;
+    }
+
+    if (rights.canEditChannel) {
+        html += `
+            <button class="btn btn-primary" onclick="saveChannelSettings()">
+                Сохранить
+            </button>
+        `;
+    }
+
+    if (!rights.isOwner && subscribers.includes(currentUser.uid)) {
+        html += `
+            <button class="btn btn-danger" onclick="unsubscribeFromChannel()">
+                Отписаться от канала
+            </button>
+        `;
+    }
+
+    if (rights.isOwner || rights.isDeveloper) {
+        html += `
+            <button class="btn btn-danger" onclick="deleteChannel()">
+                Удалить канал
+            </button>
+        `;
+    }
+
+    html += `
+        <button class="btn btn-secondary" onclick="closeChannelSettings()">
+            Закрыть
+        </button>
+    `;
+
+    document.getElementById('channelSettingsContent').innerHTML = html;
+    document.getElementById('channelSettingsModal').classList.add('show');
+
+    setupChannelSettingsSearches(chat);
+}
+
+function setupChannelSettingsSearches(chat) {
+    const adminSearch = document.getElementById('channelAdminSearch');
+    const adminResults = document.getElementById('channelAdminSearchResults');
+
+    if (adminSearch && adminResults) {
+        adminSearch.addEventListener('input', function () {
+            const q = this.value.trim().toLowerCase();
+
+            if (q.length < 2) {
+                adminResults.innerHTML = '';
+                return;
+            }
+
+            const admins = chat.admins || [];
+
+            const users = allUsers.filter(u =>
+                u.uid !== chat.ownerId &&
+                !admins.includes(u.uid) &&
+                (
+                    (u.displayName || '').toLowerCase().includes(q) ||
+                    (u.username || '').toLowerCase().includes(q)
+                )
+            );
+
+            adminResults.innerHTML = users.map(u => `
+                <div class="add-participant-item" onclick="addChannelAdmin('${u.uid}')">
+                    <div class="chat-avatar" style="width:30px;height:30px;font-size:12px;">
+                        ${u.avatarBase64 ? `<img src="${u.avatarBase64}">` : (u.displayName?.[0] || 'U')}
+                    </div>
+                    <span>${esc(u.displayName || u.username)}</span>
+                </div>
+            `).join('');
+        });
+    }
+
+    const subSearch = document.getElementById('channelSubscriberSearch');
+    const subResults = document.getElementById('channelSubscriberSearchResults');
+
+    if (subSearch && subResults) {
+        subSearch.addEventListener('input', function () {
+            const q = this.value.trim().toLowerCase();
+
+            if (q.length < 2) {
+                subResults.innerHTML = '';
+                return;
+            }
+
+            const subscribers = chat.subscribers || [];
+
+            const users = allUsers.filter(u =>
+                !subscribers.includes(u.uid) &&
+                (
+                    (u.displayName || '').toLowerCase().includes(q) ||
+                    (u.username || '').toLowerCase().includes(q)
+                )
+            );
+
+            subResults.innerHTML = users.map(u => `
+                <div class="add-participant-item" onclick="addChannelSubscriber('${u.uid}')">
+                    <div class="chat-avatar" style="width:30px;height:30px;font-size:12px;">
+                        ${u.avatarBase64 ? `<img src="${u.avatarBase64}">` : (u.displayName?.[0] || 'U')}
+                    </div>
+                    <span>${esc(u.displayName || u.username)}</span>
+                </div>
+            `).join('');
+        });
+    }
+
+    const visibilitySelect = document.getElementById('editChannelVisibility');
+    const privateBlock = document.getElementById('editChannelPrivateBlock');
+
+    if (visibilitySelect && privateBlock) {
+        visibilitySelect.addEventListener('change', function () {
+            privateBlock.style.display = this.value === 'private' ? 'block' : 'none';
+
+            const codeInput = document.getElementById('editChannelPrivateCode');
+            if (this.value === 'private' && codeInput && !codeInput.value) {
+                codeInput.value = generateChannelCode();
+            }
+        });
+    }
+}
+
+function closeChannelSettings() {
+    document.getElementById('channelSettingsModal').classList.remove('show');
+}
+
+function regenerateChannelPrivateCode() {
+    const input = document.getElementById('editChannelPrivateCode');
+    if (!input) return;
+
+    if (!confirm('Сменить приватный код? Старый код перестанет работать.')) return;
+
+    input.value = generateChannelCode();
+}
+
+async function saveChannelSettings() {
+    if (!currentChatId || !currentChatIsChannel) return;
+
+    const chatDoc = await db.collection('chats').doc(currentChatId).get();
+    const chat = chatDoc.data();
+
+    if (!chat || !canCurrentUserEditChannel(chat)) {
+        toast('Недостаточно прав');
+        return;
+    }
+
+    const name = document.getElementById('editChannelName')?.value.trim();
+    const visibility = document.getElementById('editChannelVisibility')?.value || chat.visibility || 'public';
+    const commentsEnabled = document.getElementById('editChannelCommentsEnabled')?.checked ?? true;
+
+    if (!name) {
+        toast('Введите название канала');
+        return;
+    }
+
+    const updateData = {
+        name,
+        visibility,
+        commentsEnabled,
+        searchName: visibility === 'public' ? name.toLowerCase() : ''
+    };
+
+    if (visibility === 'private') {
+        updateData.privateCode = document.getElementById('editChannelPrivateCode')?.value || generateChannelCode();
+    } else {
+        updateData.privateCode = null;
+    }
+
+    updateData.avatarBase64 = channelSettingsAvatarBase64 || null;
+
+    try {
+        await db.collection('chats').doc(currentChatId).update(updateData);
+
+        document.getElementById('chatName').textContent = name;
+
+        const avatar = document.getElementById('chatAvatar');
+        if (channelSettingsAvatarBase64) {
+            avatar.innerHTML = `<img src="${channelSettingsAvatarBase64}">`;
+            avatar.style.background = '';
+        } else {
+            avatar.innerHTML = '<i class="fas fa-bullhorn" style="font-size:20px;"></i>';
+            avatar.style.background = 'linear-gradient(135deg,#ff9f0a,#ff3b30)';
+        }
+
+        toast('Канал обновлён');
+        closeChannelSettings();
+        loadChats();
+    } catch (e) {
+        console.error(e);
+        toast('Ошибка сохранения канала');
+    }
+}
+
+async function addChannelAdmin(userId) {
+    if (!currentChatId) return;
+
+    const chatDoc = await db.collection('chats').doc(currentChatId).get();
+    const chat = chatDoc.data();
+
+    if (!chat) return;
+
+    const rights = getChannelRights(chat);
+
+    if (!rights.isOwner && !rights.isDeveloper) {
+        toast('Только владелец может назначать админов');
+        return;
+    }
+
+    const subscribers = chat.subscribers || [];
+    const isSubscriber = subscribers.includes(userId);
+
+    const updateData = {
+        admins: firebase.firestore.FieldValue.arrayUnion(userId),
+        participants: firebase.firestore.FieldValue.arrayUnion(userId),
+        [`adminPermissions.${userId}`]: {
+            canPost: true,
+            canViewSubscribers: false,
+            canEditChannel: false
+        }
+    };
+
+    if (!isSubscriber) {
+        updateData.subscribers = firebase.firestore.FieldValue.arrayUnion(userId);
+        updateData.subscribersCount = firebase.firestore.FieldValue.increment(1);
+    }
+
+    try {
+        await db.collection('chats').doc(currentChatId).update(updateData);
+        toast('Админ добавлен');
+        openChannelSettings();
+    } catch (e) {
+        console.error(e);
+        toast('Ошибка добавления админа');
+    }
+}
+
+async function removeChannelAdmin(userId) {
+    if (!currentChatId) return;
+
+    if (!confirm('Убрать пользователя из админов?')) return;
+
+    try {
+        const updateData = {
+            admins: firebase.firestore.FieldValue.arrayRemove(userId)
+        };
+
+        updateData[`adminPermissions.${userId}`] = firebase.firestore.FieldValue.delete();
+
+        await db.collection('chats').doc(currentChatId).update(updateData);
+
+        toast('Админ удалён');
+        openChannelSettings();
+    } catch (e) {
+        console.error(e);
+        toast('Ошибка удаления админа');
+    }
+}
+
+async function updateChannelAdminPermission(userId, permission, value) {
+    if (!currentChatId) return;
+
+    try {
+        await db.collection('chats').doc(currentChatId).update({
+            [`adminPermissions.${userId}.${permission}`]: value
+        });
+
+        toast('Права обновлены');
+    } catch (e) {
+        console.error(e);
+        toast('Ошибка изменения прав');
+    }
+}
+
+async function addChannelSubscriber(userId) {
+    if (!currentChatId) return;
+
+    const chatDoc = await db.collection('chats').doc(currentChatId).get();
+    const chat = chatDoc.data();
+
+    if (!chat) return;
+
+    if (!canCurrentUserViewChannelSubscribers(chat)) {
+        toast('Недостаточно прав');
+        return;
+    }
+
+    const subscribers = chat.subscribers || [];
+
+    if (subscribers.includes(userId)) {
+        toast('Уже подписан');
+        return;
+    }
+
+    try {
+        await db.collection('chats').doc(currentChatId).update({
+            subscribers: firebase.firestore.FieldValue.arrayUnion(userId),
+            participants: firebase.firestore.FieldValue.arrayUnion(userId),
+            subscribersCount: firebase.firestore.FieldValue.increment(1)
+        });
+
+        toast('Подписчик добавлен');
+        openChannelSettings();
+        loadChats();
+    } catch (e) {
+        console.error(e);
+        toast('Ошибка добавления подписчика');
+    }
+}
+
+async function removeChannelSubscriber(userId) {
+    if (!currentChatId) return;
+
+    if (!confirm('Удалить подписчика из канала?')) return;
+
+    const chatDoc = await db.collection('chats').doc(currentChatId).get();
+    const chat = chatDoc.data();
+
+    if (!chat) return;
+
+    if (chat.ownerId === userId) {
+        toast('Нельзя удалить владельца');
+        return;
+    }
+
+    if (!canCurrentUserViewChannelSubscribers(chat)) {
+        toast('Недостаточно прав');
+        return;
+    }
+
+    try {
+        const updateData = {
+            subscribers: firebase.firestore.FieldValue.arrayRemove(userId),
+            participants: firebase.firestore.FieldValue.arrayRemove(userId),
+            admins: firebase.firestore.FieldValue.arrayRemove(userId),
+            subscribersCount: firebase.firestore.FieldValue.increment(-1)
+        };
+
+        updateData[`adminPermissions.${userId}`] = firebase.firestore.FieldValue.delete();
+
+        await db.collection('chats').doc(currentChatId).update(updateData);
+
+        toast('Подписчик удалён');
+        openChannelSettings();
+        loadChats();
+    } catch (e) {
+        console.error(e);
+        toast('Ошибка удаления подписчика');
+    }
+}
+
+async function unsubscribeFromChannel() {
+    if (!currentChatId || !currentChatIsChannel) return;
+
+    const chatDoc = await db.collection('chats').doc(currentChatId).get();
+    const chat = chatDoc.data();
+
+    if (!chat) return;
+
+    if (chat.ownerId === currentUser.uid) {
+        toast('Владелец не может отписаться от своего канала');
+        return;
+    }
+
+    if (!confirm('Отписаться от канала?')) return;
+
+    try {
+        const updateData = {
+            subscribers: firebase.firestore.FieldValue.arrayRemove(currentUser.uid),
+            participants: firebase.firestore.FieldValue.arrayRemove(currentUser.uid),
+            admins: firebase.firestore.FieldValue.arrayRemove(currentUser.uid),
+            subscribersCount: firebase.firestore.FieldValue.increment(-1)
+        };
+
+        updateData[`adminPermissions.${currentUser.uid}`] = firebase.firestore.FieldValue.delete();
+
+        await db.collection('chats').doc(currentChatId).update(updateData);
+
+        toast('Вы отписались');
+        closeChannelSettings();
+        closeChat();
+        loadChats();
+    } catch (e) {
+        console.error(e);
+        toast('Ошибка отписки');
+    }
+}
+
+async function deleteChannel() {
+    if (!currentChatId || !currentChatIsChannel) return;
+
+    const chatDoc = await db.collection('chats').doc(currentChatId).get();
+    const chat = chatDoc.data();
+
+    if (!chat) return;
+
+    const rights = getChannelRights(chat);
+
+    if (!rights.isOwner && !rights.isDeveloper) {
+        toast('Удалить канал может только владелец');
+        return;
+    }
+
+    if (!confirm('Удалить канал навсегда?')) return;
+
+    try {
+        const batch = db.batch();
+        const ref = db.collection('chats').doc(currentChatId);
+        const msgs = await ref.collection('messages').get();
+
+        msgs.forEach(doc => batch.delete(doc.ref));
+        batch.delete(ref);
+
+        await batch.commit();
+
+        toast('Канал удалён');
+        closeChannelSettings();
+        closeChat();
+        loadChats();
+    } catch (e) {
+        console.error(e);
+        toast('Ошибка удаления канала');
+    }
+}
+
+document.getElementById('editChannelAvatarInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = ev => {
+        document.getElementById('channelCropSettingsImageTarget').src = ev.target.result;
+        document.getElementById('channelCropSettingsModal').classList.add('show');
+
+        setTimeout(() => {
+            if (channelSettingsCropper) channelSettingsCropper.destroy();
+
+            channelSettingsCropper = new Cropper(document.getElementById('channelCropSettingsImageTarget'), {
+                aspectRatio: 1,
+                viewMode: 1,
+                dragMode: 'move',
+                autoCropArea: 1
+            });
+        }, 200);
+    };
+
+    reader.readAsDataURL(file);
+    e.target.value = '';
+});
+
+function closeChannelCropSettings() {
+    document.getElementById('channelCropSettingsModal').classList.remove('show');
+
+    if (channelSettingsCropper) {
+        channelSettingsCropper.destroy();
+        channelSettingsCropper = null;
+    }
+}
+
+function saveChannelCropSettings() {
+    if (!channelSettingsCropper) return;
+
+    const canvas = channelSettingsCropper.getCroppedCanvas({ width: 300, height: 300 });
+    channelSettingsAvatarBase64 = canvas.toDataURL('image/jpeg', 0.85);
+
+    const preview = document.getElementById('channelSettingsAvatarPreview');
+
+    if (preview) {
+        preview.innerHTML = `<img src="${channelSettingsAvatarBase64}" style="width:100%;height:100%;object-fit:cover;">`;
+        preview.style.background = '';
+    }
+
+    closeChannelCropSettings();
+
+    toast('Фото канала готово');
+}
+
 function showCreateGroup() {
     selectedGroupUsers.clear();
     groupAvatarBase64 = null;
@@ -6369,6 +7122,10 @@ async function createGroup() {
 }
 
 async function viewChatUserProfile() {
+    if (currentChatIsChannel) {
+    openChannelSettings();
+    return;
+}
     if (!currentChatUser || currentChatIsGroup || currentChatIsSaved || currentChatIsSystem) return;
     
     const user = await getUserInfo(currentChatUser.uid);
@@ -6757,8 +7514,59 @@ async function searchUsersAndChats(q) {
     } catch(e) { 
         console.error('Ошибка поиска групп:', e);
     }
+
+    let hasChannels = false;
+
+try {
+    const channelsSnap = await db.collection('chats')
+        .where('isChannel', '==', true)
+        .get();
+
+    let channelsHtml = '';
+
+    for (const doc of channelsSnap.docs) {
+        const chat = doc.data();
+
+        const name = (chat.name || '').toLowerCase();
+        const privateCode = (chat.privateCode || '').toLowerCase();
+        const isPublic = chat.visibility === 'public';
+        const isPrivateCodeMatch = privateCode && privateCode === searchTerm;
+
+        if (
+            (isPublic && name.includes(searchTerm)) ||
+            isPrivateCodeMatch
+        ) {
+            hasChannels = true;
+
+            const avHTML = chat.avatarBase64
+                ? `<img src="${chat.avatarBase64}">`
+                : '<i class="fas fa-bullhorn" style="font-size:16px;"></i>';
+
+            channelsHtml += `
+                <div class="search-result-item" onclick="joinAndOpenChannel('${doc.id}')">
+                    <div class="chat-avatar" style="width:40px;height:40px;font-size:16px;background:linear-gradient(135deg,#ff9f0a,#ff3b30);">
+                        ${avHTML}
+                    </div>
+                    <div>
+                        <div style="font-size:15px;">${esc(chat.name || 'Канал')}</div>
+                        <div style="font-size:13px;color:var(--text-secondary);">
+                            Канал · ${chat.subscribersCount || 0} подписчиков
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    if (hasChannels) {
+        channelsHtml = '<div style="padding:8px 16px; font-size:12px; color:var(--text-secondary); background:var(--bg-tertiary);">📣 КАНАЛЫ</div>' + channelsHtml;
+        html = channelsHtml + html;
+    }
+} catch (e) {
+    console.error('Ошибка поиска каналов:', e);
+}
     
-    if (!hasUsers && !hasGroups) {
+    if (!hasUsers && !hasGroups && !hasChannels) {
         html = '<div style="padding:16px;text-align:center;color:var(--text-secondary);">Ничего не найдено</div>';
     }
     
@@ -6906,6 +7714,8 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
         closeImagePreview();
         closeChat();
+        document.getElementById('channelSettingsModal')?.classList.remove('show');
+document.getElementById('channelCropSettingsModal')?.classList.remove('show');
         document.getElementById('profileEditModal').classList.remove('show');
         document.getElementById('changePasswordModal').classList.remove('show');
         document.getElementById('userProfileModal').classList.remove('show');
