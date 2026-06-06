@@ -2355,6 +2355,47 @@ body.keyboard-closing .chat-overlay {
 body.keyboard-open .chat-input-bar {
     padding-bottom: 8px !important;
 }
+
+        /* ===== FIX MEDIA EMPTY GRAY SIDE GAP ===== */
+
+/* ===== TRUE FINAL MEDIA FIX ===== */
+
+.msg-visual-media {
+    display: inline-block !important;
+    width: auto !important;
+    max-width: min(82vw, 354px) !important;
+    padding: 3px !important;
+}
+
+.media-card,
+.media-card.photo-card,
+.media-card.video-card {
+    display: block !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-width: min(82vw, 354px) !important;
+    overflow: hidden !important;
+    line-height: 0 !important;
+    background: transparent !important;
+}
+
+.msg-image,
+.msg-video {
+    display: block !important;
+    width: auto !important;
+    height: auto !important;
+    max-width: min(82vw, 354px) !important;
+    max-height: 65vh !important;
+    object-fit: contain !important;
+    margin: 0 !important;
+    border-radius: 19px !important;
+    background: #111 !important;
+}
+
+.media-shine {
+    display: none !important;
+}
     
     </style>
 </head>
@@ -2819,47 +2860,62 @@ async function sendImages(files) {
     
 async function sendVideo(file) {
     if (!currentChatId || !file) return;
-    
+
     if (!file.type.startsWith('video/')) {
         toast('Можно только видео');
         return;
     }
-    
+
     if (file.size > 50 * 1024 * 1024) {
         toast('Видео не более 50MB');
         return;
     }
-    
+
     const sendBtn = document.getElementById('sendBtn');
     const videoBtn = document.getElementById('videoUploadBtn');
-    
+
     sendBtn.disabled = true;
     videoBtn.disabled = true;
-    
+
     try {
         const url = await uploadVideoToStorage(file);
-        
+
         await db.collection('chats').doc(currentChatId).collection('messages').add({
             videoUrl: url,
             senderId: currentUser.uid,
             timestamp: new Date(),
+            read: false,
             type: 'video'
         });
-        
-        await db.collection('chats').doc(currentChatId).update({
+
+        let unreadFor = [];
+
+        if (currentChatIsGroup) {
+            unreadFor = currentChatParticipants.filter(id => id !== currentUser.uid);
+        } else if (currentChatUser && !currentChatIsSaved && !currentChatIsSystem) {
+            unreadFor = [currentChatUser.uid];
+        }
+
+        const updateData = {
             lastMessage: '🎥 Видео',
             lastSender: currentUser.uid,
             lastMessageTime: new Date()
-        });
-        
+        };
+
+        if (unreadFor.length > 0) {
+            updateData.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
+        }
+
+        await db.collection('chats').doc(currentChatId).update(updateData);
+
         toast('Видео отправлено');
-    } catch(e) { 
+    } catch(e) {
         console.error(e);
-        toast('Ошибка загрузки видео'); 
+        toast('Ошибка загрузки видео');
+    } finally {
+        sendBtn.disabled = false;
+        videoBtn.disabled = false;
     }
-    
-    sendBtn.disabled = false;
-    videoBtn.disabled = false;
 }
 
 async function sendAudio(blob) {
@@ -3802,6 +3858,8 @@ function startGlobalChatsListener() {
 
 function showChatContext(e, chatId, chatType) {
     e.preventDefault();
+    window.__justOpenedPanel = true;
+setTimeout(() => window.__justOpenedPanel = false, 250);
     selectedChatContext = { chatId, chatType };
     
     const menu = document.getElementById('chatContextMenu');
@@ -4359,6 +4417,41 @@ function seekAudio(event, msgId, duration) {
 }
 
 // ========== КОНЕЦ ФУНКЦИЙ ДЛЯ ГОЛОСОВЫХ ==========
+
+    function fitChatMedia(el) {
+    const card = el.closest('.media-card');
+    if (!card) return;
+
+    const maxW = Math.min(window.innerWidth * 0.82, 354);
+    const maxH = window.innerHeight * 0.65;
+
+    const naturalW = el.videoWidth || el.naturalWidth || 0;
+    const naturalH = el.videoHeight || el.naturalHeight || 0;
+
+    if (!naturalW || !naturalH) return;
+
+    const ratio = naturalW / naturalH;
+
+    let w = Math.min(maxW, naturalW);
+    let h = w / ratio;
+
+    if (h > maxH) {
+        h = maxH;
+        w = h * ratio;
+    }
+
+    w = Math.round(w);
+    h = Math.round(h);
+
+    el.style.width = w + 'px';
+    el.style.height = h + 'px';
+
+    card.style.width = w + 'px';
+    card.style.height = h + 'px';
+
+    const messages = document.getElementById('chatMessages');
+    if (messages) messages.scrollTop = messages.scrollHeight;
+}
     
 function renderMessage(id, msg) {
     const container = document.getElementById('chatMessages');
@@ -4397,22 +4490,6 @@ const hasCaption = !!(msg.text && msg.text.trim());
         html += `<span class="msg-sender" style="font-size:12px;color:var(--accent);font-weight:500;"></span>`;
     }
     
-if (msg.imageUrl) {
-    html += `
-        <div class="media-card photo-card">
-          <img 
-    src="${msg.imageUrl}" 
-    class="msg-image" 
-    onclick="event.stopPropagation(); viewImage(this.src)" 
-    onload="document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight"
-    alt="Photo" 
-    loading="lazy"
->
-            <div class="media-shine"></div>
-        </div>
-    `;
-}
-
 if (msg.videoUrl) {
     html += `
         <div class="media-card video-card">
@@ -4423,12 +4500,26 @@ if (msg.videoUrl) {
                 preload="metadata" 
                 playsinline 
                 onclick="event.stopPropagation();"
+                onloadedmetadata="fitChatMedia(this)"
             ></video>
             <div class="video-badge">
                 <i class="fas fa-play"></i>
                 Видео
             </div>
-            <div class="media-shine"></div>
+        </div>
+    `;
+}
+
+    if (msg.imageUrl) {
+    html += `
+        <div class="media-card photo-card">
+            <img 
+                src="${msg.imageUrl}" 
+                class="msg-image" 
+                onclick="event.stopPropagation(); viewImage(this.src)" 
+                onload="fitChatMedia(this)"
+                alt="Photo"
+            >
         </div>
     `;
 }
@@ -4618,15 +4709,25 @@ if (msg.text) {
         });
     });
     
-   div.addEventListener('click', (e) => {
-    if (
-        e.target.closest('.reaction-badge') ||
-        e.target.closest('.msg-image') ||
-        e.target.closest('.msg-video') ||
-        e.target.closest('.msg-audio')
-    ) return;
+div.addEventListener('click', (e) => {
+    if (e.target.closest('.reaction-badge')) return;
 
-    e.stopPropagation(); // ВАЖНО: не даём document сразу закрыть панель
+    const img = e.target.closest('.msg-image');
+    if (img) {
+        e.stopPropagation();
+        viewImage(img.src);
+        return;
+    }
+
+    if (
+        e.target.closest('.msg-video') ||
+        e.target.closest('.msg-audio') ||
+        e.target.closest('.audio-play-btn')
+    ) {
+        return;
+    }
+
+    e.stopPropagation();
     showReactionsPanelForMsg(id, msg, e);
 });
     
@@ -4639,7 +4740,7 @@ if (msg.text) {
     div.addEventListener('touchmove', () => clearTimeout(timer));
 div.addEventListener('contextmenu', (e) => {
     e.preventDefault();
-    e.stopPropagation(); // ВАЖНО: правый клик тоже не должен улетать выше
+    e.stopPropagation();
     showMsgContext(e, id, msg);
 });
     
@@ -4759,45 +4860,76 @@ async function sendMessage() {
     }
 }
 
-function showMsgContext(e, id, msg) {
+async function showMsgContext(e, id, msg) {
     e.preventDefault();
+
+    window.__justOpenedPanel = true;
+    setTimeout(() => window.__justOpenedPanel = false, 250);
+
     selectedMsgId = id;
     selectedMsgData = msg;
-    
+
     const deleteForAllItem = document.getElementById('ctxDeleteForAll');
-    if (isCurrentUserDeveloper || (currentChatIsGroup && isGroupAdmin(currentChatId, currentUser.uid))) {
-        deleteForAllItem.style.display = 'flex';
-    } else {
-        deleteForAllItem.style.display = 'none';
+
+    let canDeleteForAll = false;
+
+    if (isCurrentUserDeveloper) {
+        canDeleteForAll = true;
+    } else if (currentChatIsGroup) {
+        canDeleteForAll = await isGroupAdmin(currentChatId, currentUser.uid);
     }
-    
+
+    deleteForAllItem.style.display = canDeleteForAll ? 'flex' : 'none';
+
     const menu = document.getElementById('msgContextMenu');
+
     let x = e.touches?.[0]?.clientX || e.clientX || 100;
     let y = e.touches?.[0]?.clientY || e.clientY || 200;
-    
+
     menu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
     menu.style.top = Math.min(y, window.innerHeight - 150) + 'px';
     menu.style.display = 'block';
+
     document.getElementById('reactionsPanel').style.display = 'none';
-    
-    const closeHandler = (e) => {
-        if (!menu.contains(e.target)) {
+
+    const closeHandler = (event) => {
+        if (!menu.contains(event.target)) {
             menu.style.display = 'none';
             document.removeEventListener('click', closeHandler);
         }
     };
+
     setTimeout(() => document.addEventListener('click', closeHandler), 10);
 }
-
-function ctxReply() {
+    function ctxReply() {
     document.getElementById('msgContextMenu').style.display = 'none';
+
     if (!selectedMsgId || !selectedMsgData) return;
-    
-    replyingTo = { id: selectedMsgId, text: selectedMsgData.text || 'Фото', senderId: selectedMsgData.senderId };
+
+    let replyText = 'Сообщение';
+
+    if (selectedMsgData.text) {
+        replyText = selectedMsgData.text;
+    } else if (selectedMsgData.imageUrl) {
+        replyText = '📷 Фото';
+    } else if (selectedMsgData.videoUrl) {
+        replyText = '🎥 Видео';
+    } else if (selectedMsgData.audioUrl) {
+        replyText = '🎤 Голосовое';
+    }
+
+    replyingTo = {
+        id: selectedMsgId,
+        text: replyText,
+        senderId: selectedMsgData.senderId
+    };
+
     document.getElementById('replyPreview').style.display = 'flex';
-    document.getElementById('replyName').textContent = selectedMsgData.senderId === currentUser.uid ? 'Вы' : 'Пользователь';
-    document.getElementById('replyText').textContent = (selectedMsgData.text || 'Фото').substring(0, 60);
-    document.getElementById('chatInput').focus();
+    document.getElementById('replyName').textContent =
+        selectedMsgData.senderId === currentUser.uid ? 'Вы' : 'Пользователь';
+    document.getElementById('replyText').textContent = replyText.substring(0, 60);
+
+    focusChatInput();
 }
 
 function cancelReply() {
@@ -4818,6 +4950,8 @@ function showReactionsPanelForMsg(id, msg, e) {
 }
 
 function showReactionsPanel(x, y, msgId) {
+    window.__justOpenedPanel = true;
+setTimeout(() => window.__justOpenedPanel = false, 250);
     const panel = document.getElementById('reactionsPanel');
     panel.setAttribute('data-msg-id', msgId || '');
     
@@ -4841,7 +4975,6 @@ function showReactionsPanel(x, y, msgId) {
         }
     };
     setTimeout(() => document.addEventListener('click', closeHandler), 10);
-    showReactionsPanel(x, y, id);
 }
 
 async function addReaction(emoji) {
