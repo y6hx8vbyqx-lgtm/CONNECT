@@ -8745,7 +8745,7 @@ async function logout() {
     }
 }
 
-document.getElementById('imageInput').addEventListener('change', function(e) {
+document.getElementById('imageInput').addEventListener('change', async function(e) {
     const files = Array.from(e.target.files || []);
 
     if (files.length === 0) {
@@ -8763,7 +8763,7 @@ document.getElementById('imageInput').addEventListener('change', function(e) {
 
     photoEditQueue = photos.slice(1);
 
-    openPhotoEditor(photos[0]);
+    await openPhotoEditor(photos[0]);
 
     this.value = '';
 });
@@ -9777,6 +9777,37 @@ body.keyboard-open #chatOverlay #chatInputBar .chat-send {
     color: white;
     font-size: 14px;
     font-family: inherit;
+}
+</style>
+    <style id="DESKTOP-FULLSCREEN-FIX">
+@media (pointer: fine) and (min-width: 768px) {
+    html,
+    body {
+        width: 100vw !important;
+        height: 100vh !important;
+        min-width: 100vw !important;
+        min-height: 100vh !important;
+        max-width: none !important;
+        max-height: none !important;
+        overflow: hidden !important;
+        position: fixed !important;
+        inset: 0 !important;
+    }
+
+    .app-container {
+        width: 100vw !important;
+        height: 100vh !important;
+        min-width: 100vw !important;
+        min-height: 100vh !important;
+        max-width: none !important;
+        max-height: none !important;
+    }
+
+    #chatOverlay.chat-overlay {
+        width: 100vw !important;
+        height: 100vh !important;
+        max-height: 100vh !important;
+    }
 }
 </style>
 </body>
