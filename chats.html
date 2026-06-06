@@ -1170,10 +1170,11 @@
 /* ---------- PHOTO / VIDEO ---------- */
 
 .msg-visual-media {
-    max-width: min(78vw, 340px);
+    width: fit-content;
+    max-width: min(82vw, 360px);
     padding: 3px;
     border-radius: 22px;
-    overflow: hidden;
+    overflow: visible;
     background: rgba(44, 44, 46, 0.96);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
@@ -1184,6 +1185,8 @@
 
 .media-card {
     position: relative;
+    width: fit-content;
+    max-width: min(82vw, 354px);
     overflow: hidden;
     border-radius: 19px;
     background: #111;
@@ -1195,20 +1198,27 @@
     transform: scale(0.985);
 }
 
-.msg-image,
-.msg-video {
+.msg-image {
     display: block;
-    width: 100%;
-    max-width: min(78vw, 340px);
-    max-height: 420px;
+    width: auto;
+    height: auto;
+    max-width: min(82vw, 354px);
+    max-height: 65vh;
     margin: 0;
     border-radius: 19px;
-    object-fit: cover;
+    object-fit: contain;
     background: #111;
 }
 
 .msg-video {
-    aspect-ratio: 16 / 9;
+    display: block;
+    width: min(82vw, 354px);
+    height: auto;
+    max-height: 65vh;
+    margin: 0;
+    border-radius: 19px;
+    object-fit: contain;
+    background: #111;
 }
 
 .media-shine {
@@ -1444,12 +1454,15 @@
         max-width: min(82vw, 315px);
     }
 
-    .msg-image,
-    .msg-video {
-        max-width: min(82vw, 315px);
-    }
+.msg-image {
+    max-width: min(84vw, 315px);
+    max-height: 62vh;
 }
-   
+
+.msg-video {
+    width: min(84vw, 315px);
+    max-height: 62vh;
+}
     
     /* ========== КОНЕЦ СТИЛЕЙ ДЛЯ ГОЛОСОВЫХ ========== */
     
