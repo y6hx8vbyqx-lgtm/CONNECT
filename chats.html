@@ -9880,5 +9880,123 @@ body.keyboard-open #chatOverlay #chatInputBar .chat-send {
     updateButton();
 })();
 </script>
+    <script id="CONTEGG-DESKTOP-FIRST-CLICK-FULLSCREEN-RESTORE">
+(function () {
+    if (window.__conteggDesktopFirstClickFullscreenInstalled) return;
+    window.__conteggDesktopFirstClickFullscreenInstalled = true;
+
+    const root = document.documentElement;
+
+    function isAppleMobile() {
+        return (
+            /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+        );
+    }
+
+    function isAlreadyFullscreenLike() {
+        return (
+            !!document.fullscreenElement ||
+            window.matchMedia('(display-mode: fullscreen)').matches ||
+            window.matchMedia('(display-mode: standalone)').matches ||
+            window.navigator.standalone === true
+        );
+    }
+
+    function isDesktopTarget() {
+        if (isAppleMobile()) return false;
+
+        return (
+            window.innerWidth >= 768 ||
+            window.matchMedia('(pointer: fine)').matches
+        );
+    }
+
+    function refreshFullscreenLayout() {
+        const h = Math.round(window.innerHeight || document.documentElement.clientHeight || screen.height);
+        const w = Math.round(window.innerWidth || document.documentElement.clientWidth || screen.width);
+
+        root.style.setProperty('--contegg-layout-height', h + 'px');
+        root.style.setProperty('--vv-height', h + 'px');
+        root.style.setProperty('--vv-offset-top', '0px');
+
+        document.body.style.width = w + 'px';
+        document.body.style.height = h + 'px';
+
+        const overlay = document.getElementById('chatOverlay');
+        if (overlay) {
+            overlay.style.setProperty('height', h + 'px', 'important');
+            overlay.style.setProperty('max-height', h + 'px', 'important');
+        }
+
+        const app = document.querySelector('.app-container');
+        if (app) {
+            app.style.setProperty('height', h + 'px', 'important');
+            app.style.setProperty('min-height', h + 'px', 'important');
+        }
+    }
+
+    let requesting = false;
+
+    async function enterFullscreenFromUserGesture() {
+        if (requesting) return;
+        if (!isDesktopTarget()) return;
+        if (isAlreadyFullscreenLike()) {
+            removeGestureListeners();
+            return;
+        }
+
+        const el = document.documentElement;
+        const request =
+            el.requestFullscreen ||
+            el.webkitRequestFullscreen ||
+            el.mozRequestFullScreen ||
+            el.msRequestFullscreen;
+
+        if (!request) return;
+
+        requesting = true;
+
+        try {
+            if (el.requestFullscreen) {
+                await el.requestFullscreen({ navigationUI: 'hide' });
+            } else {
+                request.call(el);
+            }
+
+            refreshFullscreenLayout();
+            removeGestureListeners();
+        } catch (e) {
+            requesting = false;
+            console.warn('Contegg fullscreen restore failed:', e);
+        }
+    }
+
+    function onFirstGesture() {
+        enterFullscreenFromUserGesture();
+    }
+
+    function addGestureListeners() {
+        document.addEventListener('pointerdown', onFirstGesture, true);
+        document.addEventListener('click', onFirstGesture, true);
+        document.addEventListener('keydown', onFirstGesture, true);
+        document.addEventListener('touchstart', onFirstGesture, true);
+    }
+
+    function removeGestureListeners() {
+        document.removeEventListener('pointerdown', onFirstGesture, true);
+        document.removeEventListener('click', onFirstGesture, true);
+        document.removeEventListener('keydown', onFirstGesture, true);
+        document.removeEventListener('touchstart', onFirstGesture, true);
+    }
+
+    document.addEventListener('fullscreenchange', refreshFullscreenLayout);
+    document.addEventListener('webkitfullscreenchange', refreshFullscreenLayout);
+    window.addEventListener('resize', refreshFullscreenLayout);
+
+    addGestureListeners();
+    refreshFullscreenLayout();
+})();
+</script>
 </body>
 </html>
