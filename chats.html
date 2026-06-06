@@ -2559,7 +2559,7 @@ body.keyboard-open .chat-input-bar {
     </div>
 </div>
 
-        <div class="modal-overlay" id="createMenuModal">
+<div class="modal-overlay" id="createMenuModal">
     <div class="modal-sheet">
         <div class="modal-handle"></div>
         <div class="modal-title">Создать</div>
@@ -4791,7 +4791,7 @@ if (chat.isSaved) {
         }
         
         list.innerHTML = sortedChats.map(chat => {
-            if (chat.type === 'saved') {
+if (chat.type === 'saved') {
     const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
     const isPinned = pinnedChats.includes(chat.id);
 
@@ -4814,16 +4814,12 @@ if (chat.isSaved) {
                 <div class="chat-preview">${esc(chat.lastMessage || 'Сохранённые сообщения')}</div>
             </div>
 
-            <button class="chat-open-page-btn" onclick="openChatInOwnPage(event, '${chat.id}')">
+            <button class="chat-open-page-btn" type="button" onclick="openChatInOwnPage(event, '${chat.id}')">
                 <i class="fas fa-up-right-from-square"></i>
             </button>
         </div>`;
 
-                <button class="chat-open-page-btn" onclick="openChatInOwnPage(event, '${chat.id}')">
-    <i class="fas fa-up-right-from-square"></i>
-</button>
-
-                } else if (chat.type === 'channel') {
+} else if (chat.type === 'channel') {
     const avHTML = chat.avatarBase64
         ? `<img src="${chat.avatarBase64}">`
         : '<i class="fas fa-bullhorn" style="font-size:22px;"></i>';
@@ -9954,52 +9950,6 @@ body.keyboard-open #chatOverlay #chatInputBar .chat-send {
 }
 </style>
     
-    <button id="enterFullscreenBtn" type="button">
-    Во весь экран
-</button>
-
-<style>
-#enterFullscreenBtn {
-    position: fixed;
-    left: 16px;
-    top: 16px;
-    z-index: 999999;
-    border: none;
-    border-radius: 999px;
-    padding: 10px 14px;
-    background: #0a84ff;
-    color: white;
-    font-size: 14px;
-    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-    cursor: pointer;
-}
-
-@media (display-mode: standalone), (display-mode: fullscreen) {
-    #enterFullscreenBtn {
-        display: none !important;
-    }
-}
-</style>
-
-<script>
-(function () {
-    const btn = document.getElementById('enterFullscreenBtn');
-
-    function isStandaloneOrFullscreen() {
-        return (
-            document.fullscreenElement ||
-            window.matchMedia('(display-mode: fullscreen)').matches ||
-            window.matchMedia('(display-mode: standalone)').matches ||
-            window.navigator.standalone === true
-        );
-    }
-
-    function updateButton() {
-        if (!btn) return;
-        btn.style.display = isStandaloneOrFullscreen() ? 'none' : 'block';
-    }
-
-</script>
     <style id="CONTEGG-PC-FULLSCREEN-FIX">
 #conteggPcFullscreenBtn {
     position: fixed !important;
