@@ -3243,7 +3243,9 @@ function initSearchScroll() {
 async function loadChats() {
     const list = document.getElementById('chatsList');
     try {
-        const snap = await db.collection('chats').get();
+       const snap = await db.collection('chats')
+    .where('participants', 'array-contains', currentUser.uid)
+    .get();
         let chats = [];
         
         for (const doc of snap.docs) {
@@ -3489,32 +3491,45 @@ async function openDirectChat(userId, username) {
     currentChatIsSaved = false;
     currentChatIsSystem = false;
     clearChatNavbarActions();
-    
+
     let chatId = null;
-    const snap = await db.collection('chats').get();const snap = await db.collection('chats')
-    .where('participants', 'array-contains', currentUser.uid)
-    .get();
+
+    const snap = await db.collection('chats')
+        .where('participants', 'array-contains', currentUser.uid)
+        .get();
+
     for (const doc of snap.docs) {
         const c = doc.data();
-        if (!c.isGroup && !c.isSaved && !c.isSystem && c.participants?.includes(currentUser.uid) && c.participants?.includes(userId)) {
-            chatId = doc.id; break;
+
+        if (
+            !c.isGroup &&
+            !c.isSaved &&
+            !c.isSystem &&
+            c.participants?.includes(userId)
+        ) {
+            chatId = doc.id;
+            break;
         }
     }
-    
+
     if (!chatId) {
         const ref = await db.collection('chats').add({
             participants: [currentUser.uid, userId],
-            lastMessage: '', lastMessageTime: new Date(),
-            createdAt: new Date(), isGroup: false, isSaved: false,
-            unreadFor: [userId]
+            lastMessage: '',
+            lastMessageTime: new Date(),
+            createdAt: new Date(),
+            isGroup: false,
+            isSaved: false,
+            unreadFor: []
         });
+
         chatId = ref.id;
     }
-    
+
     currentChatId = chatId;
     await openChatUI(userId, username, false);
 }
-
+    
 async function openGroupChat(chatId) {
     currentChatId = chatId;
     currentChatIsGroup = true;
@@ -4261,12 +4276,18 @@ async function sendMessage() {
             unreadFor = [currentChatUser.uid];
         }
         
-        await db.collection('chats').doc(currentChatId).update({
-            lastMessage: text,
-            lastSender: currentUser.uid,
-            lastMessageTime: new Date(),
-            unreadFor: firebase.firestore.FieldValue.arrayUnion(...unreadFor)
-        });
+const updateData = {
+    lastMessage: text,
+    lastSender: currentUser.uid,
+    lastMessageTime: new Date()
+};
+
+if (unreadFor.length > 0) {
+    updateData.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
+}
+
+await db.collection('chats').doc(currentChatId).update(updateData);
+        
     } catch (e) { toast('Ошибка отправки'); }
     
     btn.disabled = false;
