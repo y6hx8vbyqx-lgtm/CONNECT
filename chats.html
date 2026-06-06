@@ -1915,28 +1915,6 @@ body.keyboard-open .media-buttons,
 body.keyboard-open .chat-send {
     margin-bottom: 0px !important;
 }
-
-/* ✅ textarea заменён на contenteditable, чтобы iOS не показывала панель стрелок/галочки */
-.chat-input[contenteditable="true"] {
-    display: block;
-    flex: 1;
-    min-width: 0;
-    height: 34px;
-    min-height: 34px;
-    max-height: 100px;
-    line-height: 18px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-word;
-    -webkit-user-select: text !important;
-    user-select: text !important;
-}
-
-.chat-input[contenteditable="true"]:empty::before {
-    content: attr(data-placeholder);
-    color: rgba(235,235,245,0.42);
-    pointer-events: none;
-}
         
     /* ========== КОНЕЦ СТИЛЕЙ ДЛЯ ГОЛОСОВЫХ ========== */
     
@@ -2033,14 +2011,7 @@ body.keyboard-open .chat-send {
                 </button>
             </div>
 
-            <div
-    class="chat-input"
-    id="chatInput"
-    contenteditable="true"
-    role="textbox"
-    aria-label="Сообщение"
-    data-placeholder="Сообщение"
-></div>
+            <textarea class="chat-input" id="chatInput" placeholder="Сообщение" rows="1"></textarea>
 
             <button class="chat-send" id="sendBtn" type="button">
                 <i class="fas fa-arrow-up"></i>
@@ -4169,9 +4140,9 @@ function updateMessageReactions(id, reactions) {
 }
 
 async function sendMessage() {
-const input = document.getElementById('chatInput');
-const text = getChatInputText();
-if (!text || !currentChatId) return;
+    const input = document.getElementById('chatInput');
+    const text = input.value.trim();
+    if (!text || !currentChatId) return;
     
     const btn = document.getElementById('sendBtn');
     const uploadBtn = document.getElementById('imageUploadBtn');
@@ -4181,7 +4152,8 @@ if (!text || !currentChatId) return;
     uploadBtn.disabled = true;
     videoBtn.disabled = true;
     audioBtn.disabled = true;
-    clearChatInput();
+    input.value = '';
+    input.style.height = 'auto';
     
     const msgData = {
         text,
