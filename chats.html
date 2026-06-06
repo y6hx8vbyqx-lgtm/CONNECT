@@ -4821,10 +4821,15 @@ div.addEventListener('touchstart', (e) => {
     touchStartX = t.clientX;
     touchStartY = t.clientY;
 
-    touchTimer = setTimeout(() => {
-        touchTimer = null;
-        showMsgActionsAt(touchStartX, touchStartY, id, msg);
-    }, 500);
+touchTimer = setTimeout(() => {
+    touchTimer = null;
+
+    selectedMsgId = id;
+    selectedMsgData = msg;
+
+    showReactionsPanel(touchStartX, touchStartY, id);
+}, 500);
+    
 }, { passive: true });
 
 div.addEventListener('touchmove', (e) => {
@@ -7064,5 +7069,30 @@ body.keyboard-open #chatInputBar .chat-send {
     });
 })();
 </script>
+    <style id="FINAL-ZINDEX-FIX-FOR-CHAT-ACTIONS">
+/* чат стоит на 99999, значит всё всплывающее должно быть выше */
+
+.modal-overlay {
+    z-index: 100005 !important;
+}
+
+#msgContextMenu,
+#chatContextMenu,
+#reactionsPanel {
+    z-index: 100010 !important;
+}
+
+#imagePreviewOverlay {
+    z-index: 100020 !important;
+}
+
+#imagePreviewOverlay .image-preview-close {
+    z-index: 100021 !important;
+}
+
+#toast {
+    z-index: 100030 !important;
+}
+</style>
 </body>
 </html>
