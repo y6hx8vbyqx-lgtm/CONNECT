@@ -1191,8 +1191,9 @@ body.keyboard-open {
 
 .media-card {
     position: relative;
-    width: fit-content;
+    width: min(82vw, 354px);
     max-width: min(82vw, 354px);
+    min-height: 120px;
     overflow: hidden;
     border-radius: 19px;
     background: #111;
@@ -1206,9 +1207,8 @@ body.keyboard-open {
 
 .msg-image {
     display: block;
-    width: auto;
+    width: 100%;
     height: auto;
-    max-width: min(82vw, 354px);
     max-height: 65vh;
     margin: 0;
     border-radius: 19px;
@@ -4400,13 +4400,14 @@ const hasCaption = !!(msg.text && msg.text.trim());
 if (msg.imageUrl) {
     html += `
         <div class="media-card photo-card">
-            <img 
-                src="${msg.imageUrl}" 
-                class="msg-image" 
-                onclick="event.stopPropagation(); viewImage(this.src)" 
-                alt="Photo" 
-                loading="lazy"
-            >
+          <img 
+    src="${msg.imageUrl}" 
+    class="msg-image" 
+    onclick="event.stopPropagation(); viewImage(this.src)" 
+    onload="document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight"
+    alt="Photo" 
+    loading="lazy"
+>
             <div class="media-shine"></div>
         </div>
     `;
@@ -4840,6 +4841,7 @@ function showReactionsPanel(x, y, msgId) {
         }
     };
     setTimeout(() => document.addEventListener('click', closeHandler), 10);
+    showReactionsPanel(x, y, id);
 }
 
 async function addReaction(emoji) {
@@ -6065,7 +6067,9 @@ document.getElementById('chatInput').addEventListener('input', function() {
     this.style.height = Math.min(this.scrollHeight, 100) + 'px';
 });
 
+    
 document.addEventListener('click', (e) => {
+if (window.__justOpenedPanel) return;
     if (!e.target.closest('.search-bar') && !e.target.closest('.search-results')) {
         document.getElementById('searchResults').style.display = 'none';
     }
