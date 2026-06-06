@@ -3241,8 +3241,88 @@ async function sendImages(files) {
         if (uploadBtn) uploadBtn.disabled = false;
     }
 }
+    function ensurePhotoEditorModal() {
+    let modal = document.getElementById('photoEditModal');
+    let img = document.getElementById('photoEditImage');
+    let canvas = document.getElementById('photoEditCanvas');
+
+    if (modal && img && canvas) {
+        return true;
+    }
+
+    const html = `
+        <div class="modal-overlay" id="photoEditModal">
+            <div class="modal-sheet photo-editor-sheet">
+                <div class="modal-handle"></div>
+                <div class="modal-title">Редактировать фото</div>
+
+                <div class="modal-content">
+                    <div class="photo-editor-stage" id="photoEditorStage">
+                        <img id="photoEditImage" alt="Photo editor">
+                        <canvas id="photoEditCanvas"></canvas>
+                    </div>
+
+                    <div class="photo-tools">
+                        <button class="photo-tool-btn active" data-photo-tool="crop" onclick="setPhotoTool('crop')" type="button">
+                            <i class="fas fa-crop"></i>
+                            Обрезка
+                        </button>
+
+                        <button class="photo-tool-btn" data-photo-tool="draw" onclick="setPhotoTool('draw')" type="button">
+                            <i class="fas fa-marker"></i>
+                            Маркер
+                        </button>
+
+                        <button class="photo-tool-btn" data-photo-tool="text" onclick="setPhotoTool('text')" type="button">
+                            <i class="fas fa-font"></i>
+                            Текст
+                        </button>
+
+                        <button class="photo-tool-btn" onclick="resetPhotoEditor()" type="button">
+                            <i class="fas fa-undo"></i>
+                            Сброс
+                        </button>
+                    </div>
+
+                    <div class="photo-marker-settings">
+                        <input type="color" id="photoMarkerColor" value="#ff3b30">
+                        <input type="range" id="photoMarkerSize" min="8" max="60" value="24">
+                    </div>
+
+                    <div id="photoTextPanel" class="photo-text-panel" style="display:none;">
+                        <input type="text" id="photoTextInput" placeholder="Введите текст">
+                        <button type="button" onclick="addPhotoText()">Добавить</button>
+                    </div>
+
+                    <div style="display:flex;gap:10px;margin-top:14px;">
+                        <button class="btn btn-secondary" onclick="cancelPhotoEditor()" style="flex:1;" type="button">
+                            Отмена
+                        </button>
+
+                        <button class="btn btn-primary" id="photoEditorSendBtn" onclick="sendEditedPhoto()" style="flex:1;" type="button">
+                            Отправить
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', html);
+
+    return !!(
+        document.getElementById('photoEditModal') &&
+        document.getElementById('photoEditImage') &&
+        document.getElementById('photoEditCanvas')
+    );
+}
     
 function openPhotoEditor(file) {
+    if (!ensurePhotoEditorModal()) {
+        toast('Не удалось создать редактор фото');
+        return;
+    }
+
     photoEditFile = file;
     photoEditorMode = 'crop';
     photoIsDrawing = false;
@@ -3252,11 +3332,6 @@ function openPhotoEditor(file) {
     const img = document.getElementById('photoEditImage');
     const canvas = document.getElementById('photoEditCanvas');
     const textPanel = document.getElementById('photoTextPanel');
-
-    if (!modal || !img || !canvas) {
-        toast('Редактор фото не найден');
-        return;
-    }
 
     cleanupPhotoEditor(false);
 
