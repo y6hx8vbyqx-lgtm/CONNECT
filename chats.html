@@ -2174,6 +2174,161 @@ body.keyboard-closing .chat-overlay {
 body.keyboard-open .chat-input-bar {
     padding-bottom: 8px !important;
 }
+        /* ===== EMERGENCY iOS CHAT OVERLAY FIX ===== */
+
+body.chat-open .app-container {
+    pointer-events: none !important;
+}
+
+.chat-overlay {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: var(--vv-offset-top, 0px) !important;
+    bottom: auto !important;
+
+    width: 100vw !important;
+    height: var(--vv-height, 100dvh) !important;
+    max-height: var(--vv-height, 100dvh) !important;
+
+    z-index: 99999 !important;
+    background: #000 !important;
+
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+
+    transform: translateX(100%) !important;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.chat-overlay.show {
+    transform: translateX(0) !important;
+}
+
+body.keyboard-open .chat-overlay,
+body.keyboard-closing .chat-overlay {
+    transition: none !important;
+}
+
+.chat-navbar {
+    flex: 0 0 auto !important;
+}
+
+.chat-messages {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+    padding-bottom: 8px !important;
+}
+
+.chat-input-bar {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+
+    padding-top: 8px !important;
+    padding-left: max(10px, env(safe-area-inset-left)) !important;
+    padding-right: max(10px, env(safe-area-inset-right)) !important;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom)) !important;
+
+    margin: 0 !important;
+    transform: none !important;
+}
+
+body.keyboard-open .chat-input-bar {
+    padding-bottom: 8px !important;
+}
+
+        /* ===== TRUE LAST CHAT FIX ===== */
+
+body.chat-open .app-container {
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+body:not(.chat-open) .app-container {
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+.chat-overlay {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: var(--vv-offset-top, 0px) !important;
+    bottom: auto !important;
+
+    width: 100% !important;
+    height: var(--vv-height, 100dvh) !important;
+    max-height: var(--vv-height, 100dvh) !important;
+
+    z-index: 900 !important;
+    background: #000 !important;
+
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+
+    transform: translateX(100%) !important;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.chat-overlay.show {
+    transform: translateX(0) !important;
+}
+
+body.keyboard-open .chat-overlay,
+body.keyboard-closing .chat-overlay {
+    transition: none !important;
+}
+
+.chat-navbar {
+    flex: 0 0 auto !important;
+}
+
+.chat-messages {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+    padding-bottom: 8px !important;
+}
+
+.chat-input-bar {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+
+    padding-top: 8px !important;
+    padding-left: max(10px, env(safe-area-inset-left)) !important;
+    padding-right: max(10px, env(safe-area-inset-right)) !important;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom)) !important;
+
+    margin: 0 !important;
+    transform: none !important;
+}
+
+body.keyboard-open .chat-input-bar {
+    padding-bottom: 8px !important;
+}
+
+.modal-overlay {
+    z-index: 2000 !important;
+}
+
+.context-menu,
+.reactions-panel {
+    z-index: 3000 !important;
+}
+
+.image-preview-overlay,
+.toast {
+    z-index: 4000 !important;
+}
     
     </style>
 </head>
@@ -3235,7 +3390,7 @@ async function openSavedChatUI() {
     document.getElementById('chatName').textContent = 'Избранное';
     document.getElementById('chatStatus').textContent = 'Сохранённые сообщения';
     
-    document.getElementById('chatOverlay').classList.add('show');
+    showChatOverlay();
     document.getElementById('chatInput').disabled = false;
     document.getElementById('sendBtn').disabled = false;
     document.getElementById('imageUploadBtn').disabled = false;
@@ -3247,7 +3402,7 @@ async function openSavedChatUI() {
 setTimeout(() => {
     if (window.visualViewport) {
         document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
-        document.documentElement.style.setProperty('--vv-offset-top', '0px');
+        document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
     }
 
     document.body.classList.remove('keyboard-open');
@@ -3739,6 +3894,44 @@ async function openDirectChat(userId, username) {
     currentChatId = chatId;
     await openChatUI(userId, username, false);
 }
+
+function showChatOverlay() {
+    const overlay = document.getElementById('chatOverlay');
+    if (!overlay) return;
+
+    document.body.classList.add('chat-open');
+
+    if (window.visualViewport) {
+        document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
+        document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
+    } else {
+        document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
+        document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
+    }
+
+    overlay.classList.add('show');
+}
+
+function hideChatOverlay() {
+    const overlay = document.getElementById('chatOverlay');
+    if (!overlay) return;
+
+    overlay.classList.remove('show');
+
+    document.body.classList.remove('chat-open');
+    document.body.classList.remove('keyboard-open');
+    document.body.classList.remove('keyboard-closing');
+
+    document.documentElement.style.setProperty('--vv-offset-top', '0px');
+
+    if (window.visualViewport) {
+        document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
+    } else {
+        document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
+    }
+}
+
+    
     
 async function openGroupChat(chatId) {
     const token = ++openChatToken;
@@ -3872,7 +4065,7 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
         document.getElementById('audioRecordBtn').disabled = false;
     }
     
-    document.getElementById('chatOverlay').classList.add('show');
+   showChatOverlay();
     await loadMessages();
     markAsRead();
     
@@ -3899,7 +4092,7 @@ function closeChat() {
 }
 
 document.getElementById('chatStatus').style.color = 'var(--text-secondary)';
-    document.getElementById('chatOverlay').classList.remove('show');
+   hideChatOverlay();
     if (chatMessagesListener) { chatMessagesListener(); chatMessagesListener = null; }
     clearChatNavbarActions();
     currentChatId = null;
@@ -5881,13 +6074,21 @@ function setupKeyboardFix() {
     let keyboardCloseTimer = null;
 
     function setViewportHeight() {
-        const height = window.visualViewport
-            ? window.visualViewport.height
-            : window.innerHeight;
+    if (window.visualViewport) {
+        document.documentElement.style.setProperty(
+            '--vv-height',
+            `${window.visualViewport.height}px`
+        );
 
-        document.documentElement.style.setProperty('--vv-height', `${height}px`);
+        document.documentElement.style.setProperty(
+            '--vv-offset-top',
+            `${window.visualViewport.offsetTop}px`
+        );
+    } else {
+        document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
         document.documentElement.style.setProperty('--vv-offset-top', '0px');
     }
+}
 
     function isKeyboardOpen() {
         if (!window.visualViewport) return false;
