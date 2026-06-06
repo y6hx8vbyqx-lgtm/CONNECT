@@ -8633,9 +8633,10 @@ async function searchUsersAndChats(q) {
     let hasChannels = false;
 
 try {
-    const channelsSnap = await db.collection('chats')
-        .where('isChannel', '==', true)
-        .get();
+const channelsSnap = await db.collection('chats')
+    .where('isChannel', '==', true)
+    .where('visibility', '==', 'public')
+    .get();
 
     let channelsHtml = '';
 
@@ -8693,6 +8694,63 @@ async function startChatWith(uid, username) {
     document.getElementById('searchResults').style.display = 'none';
     document.getElementById('searchInput').value = '';
     await openDirectChat(uid, username);
+}
+
+    async function joinAndOpenChannel(chatId) {
+    if (!currentUser || !chatId) return;
+
+    try {
+        const ref = db.collection('chats').doc(chatId);
+        const doc = await ref.get();
+
+        if (!doc.exists) {
+            toast('Канал не найден');
+            return;
+        }
+
+        const chat = doc.data();
+
+        if (!chat.isChannel && chat.type !== 'channel') {
+            toast('Это не канал');
+            return;
+        }
+
+        const subscribers = chat.subscribers || [];
+        const participants = chat.participants || [];
+
+        const alreadySubscribed = subscribers.includes(currentUser.uid);
+        const alreadyParticipant = participants.includes(currentUser.uid);
+
+        const updateData = {};
+
+        if (!alreadySubscribed) {
+            updateData.subscribers = firebase.firestore.FieldValue.arrayUnion(currentUser.uid);
+            updateData.subscribersCount = firebase.firestore.FieldValue.increment(1);
+        }
+
+        if (!alreadyParticipant) {
+            updateData.participants = firebase.firestore.FieldValue.arrayUnion(currentUser.uid);
+        }
+
+        if (Object.keys(updateData).length > 0) {
+            await ref.update(updateData);
+        }
+
+        document.getElementById('searchResults').style.display = 'none';
+        document.getElementById('searchInput').value = '';
+
+        await openChannel(chatId);
+        await loadChats();
+
+    } catch (e) {
+        console.error('joinAndOpenChannel error:', e);
+
+        if (e.code === 'permission-denied') {
+            toast('Нет доступа к каналу по правилам Firestore');
+        } else {
+            toast('Ошибка открытия канала');
+        }
+    }
 }
 
 function checkAutoOpen() {
