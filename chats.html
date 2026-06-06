@@ -4617,10 +4617,17 @@ if (msg.text) {
         });
     });
     
-    div.addEventListener('click', (e) => {
-        if (e.target.closest('.reaction-badge') || e.target.closest('.msg-image') || e.target.closest('.msg-video') || e.target.closest('.msg-audio')) return;
-        showReactionsPanelForMsg(id, msg, e);
-    });
+   div.addEventListener('click', (e) => {
+    if (
+        e.target.closest('.reaction-badge') ||
+        e.target.closest('.msg-image') ||
+        e.target.closest('.msg-video') ||
+        e.target.closest('.msg-audio')
+    ) return;
+
+    e.stopPropagation(); // ВАЖНО: не даём document сразу закрыть панель
+    showReactionsPanelForMsg(id, msg, e);
+});
     
     let timer;
     div.addEventListener('touchstart', (e) => {
@@ -4629,10 +4636,11 @@ if (msg.text) {
     });
     div.addEventListener('touchend', () => clearTimeout(timer));
     div.addEventListener('touchmove', () => clearTimeout(timer));
-    div.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        showMsgContext(e, id, msg);
-    });
+div.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation(); // ВАЖНО: правый клик тоже не должен улетать выше
+    showMsgContext(e, id, msg);
+});
     
     container.appendChild(div);
 }
