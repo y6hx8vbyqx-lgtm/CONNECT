@@ -6545,5 +6545,96 @@ body.keyboard-open #chatInputBar.chat-input-bar {
 })();
     
 </script>
+    <style id="KILL-IOS-KEYBOARD-GAP-FINAL">
+/* клавиатура закрыта — оставляем нормальный нижний отступ */
+body:not(.keyboard-open) #chatInputBar {
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* клавиатура открыта — УБИРАЕМ ВЕСЬ НИЖНИЙ ЗАЗОР */
+body.keyboard-open #chatInputBar {
+    padding-bottom: 0px !important;
+    margin-bottom: 0px !important;
+}
+
+body.keyboard-open #chatInputBar > div,
+body.keyboard-open #chatInputBar .chat-input-row,
+body.keyboard-open #chatInputBar .chat-input,
+body.keyboard-open #chatInputBar .media-buttons,
+body.keyboard-open #chatInputBar .media-btn,
+body.keyboard-open #chatInputBar .chat-send {
+    padding-bottom: 0px !important;
+    margin-bottom: 0px !important;
+}
+</style>
+
+<script id="KILL-IOS-KEYBOARD-GAP-FINAL-JS">
+(function () {
+    const input = document.getElementById('chatInput');
+    const bar = document.getElementById('chatInputBar');
+
+    if (!input || !bar) return;
+
+    let closedHeight = window.visualViewport
+        ? window.visualViewport.height
+        : window.innerHeight;
+
+    function currentHeight() {
+        return window.visualViewport
+            ? window.visualViewport.height
+            : window.innerHeight;
+    }
+
+    function applyKeyboardState() {
+        const active = document.activeElement === input;
+        const diff = closedHeight - currentHeight();
+        const open = active && diff > 80;
+
+        document.body.classList.toggle('keyboard-open', open);
+
+        if (open) {
+            bar.style.setProperty('padding-bottom', '0px', 'important');
+            bar.style.setProperty('margin-bottom', '0px', 'important');
+        } else {
+            bar.style.setProperty(
+                'padding-bottom',
+                'calc(8px + env(safe-area-inset-bottom, 0px))',
+                'important'
+            );
+        }
+
+        document.documentElement.style.setProperty('--vv-height', currentHeight() + 'px');
+        document.documentElement.style.setProperty('--vv-offset-top', '0px');
+    }
+
+    input.addEventListener('focus', function () {
+        setTimeout(applyKeyboardState, 50);
+        setTimeout(applyKeyboardState, 180);
+        setTimeout(applyKeyboardState, 350);
+    });
+
+    input.addEventListener('blur', function () {
+        document.body.classList.remove('keyboard-open');
+
+        setTimeout(function () {
+            closedHeight = currentHeight();
+            applyKeyboardState();
+        }, 250);
+    });
+
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', applyKeyboardState);
+        window.visualViewport.addEventListener('scroll', applyKeyboardState);
+    }
+
+    window.addEventListener('resize', function () {
+        if (document.activeElement !== input) {
+            closedHeight = currentHeight();
+        }
+
+        applyKeyboardState();
+    });
+})();
+</script>
 </body>
 </html>
