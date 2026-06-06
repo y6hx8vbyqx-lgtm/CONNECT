@@ -2088,6 +2088,45 @@ body.keyboard-open .chat-send {
     min-width: 0 !important;
     max-width: 100% !important;
 }
+        /* ===== SMOOTH KEYBOARD: NO HEADER / MESSAGES JUMP ===== */
+
+.chat-overlay {
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    top: 0 !important;
+    bottom: auto !important;
+    height: var(--vv-height) !important;
+    max-height: var(--vv-height) !important;
+    transform: translateX(100%);
+    will-change: transform;
+}
+
+.chat-overlay.show {
+    transform: translateX(0) !important;
+}
+
+/* когда клавиатура двигает viewport — НЕ анимируем высоту */
+body.keyboard-open .chat-overlay,
+body.keyboard-closing .chat-overlay {
+    transition: none !important;
+}
+
+/* шапка не должна прыгать */
+.chat-navbar {
+    transform: translateZ(0);
+    will-change: auto;
+}
+
+/* сообщения не должны плавно пересчитываться */
+.chat-messages {
+    overflow-anchor: none;
+    scroll-behavior: auto !important;
+}
+
+/* input без анимаций при клавиатуре */
+.chat-input-bar {
+    transition: none !important;
+    transform: translateZ(0);
+}
     
     </style>
 </head>
@@ -5791,16 +5830,108 @@ function setupKeyboardFix() {
         ? window.visualViewport.height
         : window.innerHeight;
 
-    function updateViewportVars() {
-        if (window.visualViewport) {
-            document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
-            document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
-        } else {
-            document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
-            document.documentElement.style.setProperty('--vv-offset-top', `0px`);
-        }
+    let rafId = null;
+    let keyboardCloseTimer = null;
+
+    function setViewportHeight() {
+        const height = window.visualViewport
+            ? window.visualViewport.height
+            : window.innerHeight;
+
+        document.documentElement.style.setProperty('--vv-height', `${height}px`);
+
+        // ВАЖНО: не используем offsetTop, от него прыгает шапка
+        document.documentElement.style.setProperty('--vv-offset-top', '0px');
     }
 
+    function isKeyboardOpen() {
+        if (!window.visualViewport) return false;
+
+        return baseViewportHeight - window.visualViewport.height > 80;
+    }
+
+    function updateKeyboardState() {
+        if (rafId) cancelAnimationFrame(rafId);
+
+        rafId = requestAnimationFrame(() => {
+            setViewportHeight();
+
+            const open = isKeyboardOpen();
+
+            if (open) {
+                clearTimeout(keyboardCloseTimer);
+                document.body.classList.remove('keyboard-closing');
+                document.body.classList.add('keyboard-open');
+            } else {
+                document.body.classList.add('keyboard-closing');
+                document.body.classList.remove('keyboard-open');
+
+                clearTimeout(keyboardCloseTimer);
+                keyboardCloseTimer = setTimeout(() => {
+                    document.body.classList.remove('keyboard-closing');
+
+                    baseViewportHeight = window.visualViewport
+                        ? window.visualViewport.height
+                        : window.innerHeight;
+
+                    setViewportHeight();
+                }, 250);
+            }
+        });
+    }
+
+    setViewportHeight();
+
+    if (input) {
+        input.addEventListener('focus', () => {
+            setViewportHeight();
+
+            setTimeout(updateKeyboardState, 50);
+            setTimeout(updateKeyboardState, 180);
+            setTimeout(updateKeyboardState, 350);
+        });
+
+        input.addEventListener('blur', () => {
+            document.body.classList.add('keyboard-closing');
+            document.body.classList.remove('keyboard-open');
+
+            setTimeout(() => {
+                document.body.classList.remove('keyboard-closing');
+
+                baseViewportHeight = window.visualViewport
+                    ? window.visualViewport.height
+                    : window.innerHeight;
+
+                setViewportHeight();
+            }, 250);
+        });
+    }
+
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', updateKeyboardState);
+        window.visualViewport.addEventListener('scroll', updateKeyboardState);
+    }
+
+    window.addEventListener('resize', () => {
+        if (document.activeElement !== input) {
+            baseViewportHeight = window.visualViewport
+                ? window.visualViewport.height
+                : window.innerHeight;
+        }
+
+        updateKeyboardState();
+    });
+
+    window.addEventListener('orientationchange', () => {
+        setTimeout(() => {
+            baseViewportHeight = window.visualViewport
+                ? window.visualViewport.height
+                : window.innerHeight;
+
+            setViewportHeight();
+        }, 400);
+    });
+}
     function keyboardIsOpen() {
         const vv = window.visualViewport;
         if (!vv) return false;
@@ -5820,7 +5951,6 @@ function setupKeyboardFix() {
         requestAnimationFrame(() => {
             const messages = document.getElementById('chatMessages');
             if (messages && currentChatId) {
-                messages.scrollTop = messages.scrollHeight;
             }
         });
     }
