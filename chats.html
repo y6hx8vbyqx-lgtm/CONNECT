@@ -2404,7 +2404,7 @@ body.keyboard-open .chat-input-bar {
 <div class="app-container">
     <div class="navbar">
         <span class="navbar-title">Contegg</span>
-        <button class="navbar-btn" onclick="showCreateGroup()">
+        <button class="navbar-btn" onclick="showCreateMenu()">
             <i class="fas fa-plus"></i>
         </button>
     </div>
@@ -2549,6 +2549,86 @@ body.keyboard-open .chat-input-bar {
             <div class="users-list" id="groupUsersList" style="max-height:200px;overflow-y:auto;margin-bottom:12px;"></div>
             <button class="btn btn-primary" id="createGroupBtn" onclick="createGroup()" disabled>Создать группу</button>
             <button class="btn btn-secondary" onclick="closeGroupModal()">Отмена</button>
+        </div>
+    </div>
+</div>
+
+        <div class="modal-overlay" id="createMenuModal">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Создать</div>
+        <div class="modal-content">
+            <button class="btn btn-primary" onclick="showCreateGroupFromMenu()">
+                <i class="fas fa-users"></i> Создать группу
+            </button>
+
+            <button class="btn btn-primary" onclick="showCreateChannel()">
+                <i class="fas fa-bullhorn"></i> Создать канал
+            </button>
+
+            <button class="btn btn-secondary" onclick="closeCreateMenu()">Отмена</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="channelModal">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Новый канал</div>
+        <div class="modal-content">
+            <div 
+                id="channelAvatarPreview"
+                style="width:80px;height:80px;border-radius:50%;margin:0 auto 16px;background:linear-gradient(135deg,#ff9f0a,#ff3b30);display:flex;align-items:center;justify-content:center;font-size:32px;color:white;overflow:hidden;cursor:pointer;"
+                onclick="document.getElementById('channelAvatarInput').click()"
+            >📣</div>
+
+            <div style="text-align:center;margin-bottom:16px;color:var(--accent);font-size:14px;cursor:pointer;" onclick="document.getElementById('channelAvatarInput').click()">
+                Фото канала
+            </div>
+
+            <div class="input-row">
+                <label>Название канала</label>
+                <input type="text" id="channelNameInput" placeholder="Например: Новости Contegg" maxlength="50">
+            </div>
+
+            <div class="input-row">
+                <label>Тип канала</label>
+                <select id="channelVisibility" style="width:100%;background:none;border:none;color:var(--text-primary);font-size:16px;outline:none;">
+                    <option value="public">Публичный</option>
+                    <option value="private">Частный</option>
+                </select>
+            </div>
+
+            <div id="channelPublicInfo" style="font-size:13px;color:var(--text-secondary);line-height:1.4;margin-bottom:12px;">
+                Публичный канал можно будет найти по названию.
+            </div>
+
+            <div id="channelPrivateInfo" style="display:none;font-size:13px;color:var(--text-secondary);line-height:1.4;margin-bottom:12px;">
+                Частный канал смогут найти только по приватному коду. Код видит только владелец и админы.
+                <div class="input-row" style="margin-top:10px;">
+                    <label>Приватный код</label>
+                    <input type="text" id="channelPrivateCode" readonly>
+                </div>
+            </div>
+
+            <button class="btn btn-primary" id="createChannelBtn" onclick="createChannel()" disabled>Создать канал</button>
+            <button class="btn btn-secondary" onclick="closeChannelModal()">Отмена</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="channelCropModal">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Обрезать фото канала</div>
+        <div class="modal-content">
+            <div style="max-height:350px;border-radius:12px;overflow:hidden;margin-bottom:16px;">
+                <img id="channelCropImageTarget" style="max-width:100%;display:block;">
+            </div>
+            <div style="display:flex;gap:10px;">
+                <button class="btn btn-secondary" onclick="closeChannelCrop()" style="flex:1;">Отмена</button>
+                <button class="btn btn-primary" onclick="saveChannelCrop()" style="flex:1;">Готово</button>
+            </div>
         </div>
     </div>
 </div>
@@ -2728,6 +2808,7 @@ body.keyboard-open .chat-input-bar {
 <input type="file" id="imageInput" accept="image/*" style="display:none;" multiple>
 <input type="file" id="videoInput" accept="video/*" style="display:none;">
 <input type="file" id="editGroupAvatarInput" accept="image/*" style="display:none;">
+<input type="file" id="channelAvatarInput" accept="image/*" style="display:none;">
 
 <div class="toast" id="toast"></div>
 
@@ -2754,10 +2835,10 @@ let adminUsers = [];
 let currentChatId = null;
 let openChatToken = 0;
 let loadChatsTimer = null;
-let currentChatUser = null;
 let currentChatIsGroup = false;
 let currentChatIsSaved = false;
 let currentChatIsSystem = false;
+let currentChatUser = null;
 let currentChatParticipants = [];
 let chatMessagesListener = null;
 let chatsGlobalListener = null;
@@ -2771,6 +2852,8 @@ let selectedChatContext = null;
 let allUsers = [];
 let selectedGroupUsers = new Set();
 let groupAvatarBase64 = null;
+let channelAvatarBase64 = null;
+let channelCropper = null;
 let cropper = null;
 let groupCropper = null;
 let groupSettingsCropper = null;
@@ -3482,6 +3565,7 @@ async function openSavedChat() {
     currentChatIsSaved = true;
     currentChatIsGroup = false;
     currentChatIsSystem = false;
+    currentChatIsChannel = false;
     currentChatUser = null;
     const chatId = await getOrCreateSavedChat();
     currentChatId = chatId;
@@ -3727,11 +3811,13 @@ async function loadChats() {
             const chat = doc.data();
             if (!chat.participants?.includes(currentUser.uid)) continue;
             
-            if (chat.isSaved) {
-                chats.push({ id: doc.id, ...chat, type: 'saved' });
-            } else if (chat.isGroup) {
-                chats.push({ id: doc.id, ...chat, type: 'group' });
-            } else if (chat.isSystem) {
+if (chat.isSaved) {
+    chats.push({ id: doc.id, ...chat, type: 'saved' });
+} else if (chat.isChannel || chat.type === 'channel') {
+    chats.push({ id: doc.id, ...chat, type: 'channel' });
+} else if (chat.isGroup) {
+    chats.push({ id: doc.id, ...chat, type: 'group' });
+} else if (chat.isSystem) {
                 chats.push({ id: doc.id, ...chat, type: 'system' });
             } else {
                 const otherId = chat.participants.find(id => id !== currentUser.uid);
@@ -3786,6 +3872,33 @@ async function loadChats() {
                             <div class="chat-preview">${esc(chat.lastMessage || 'Сохранённые сообщения')}</div>
                         </div>
                     </div>`;
+
+                } else if (chat.type === 'channel') {
+    const avHTML = chat.avatarBase64
+        ? `<img src="${chat.avatarBase64}">`
+        : '<i class="fas fa-bullhorn" style="font-size:22px;"></i>';
+
+    const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
+    const isPinned = pinnedChats.includes(chat.id);
+
+    return `
+        <div class="chat-cell" onclick="openChannel('${chat.id}')" data-chat-id="${chat.id}" data-chat-type="channel">
+            <div class="chat-avatar" style="background:linear-gradient(135deg,#ff9f0a,#ff3b30);">
+                ${avHTML}
+            </div>
+            <div class="chat-content">
+                <div class="chat-top">
+                    <span class="chat-name">
+                        <i class="fas fa-bullhorn saved-icon"></i>
+                        ${esc(chat.name)}
+                        ${isPinned ? ' <i class="fas fa-thumbtack pinned-icon"></i>' : ''}
+                    </span>
+                    <span class="chat-time">${timeStr}</span>
+                </div>
+                <div class="chat-preview">${esc(chat.lastMessage || 'Канал')}</div>
+            </div>
+        </div>`;
+                
             } else if (chat.type === 'group') {
                 const avHTML = chat.avatarBase64 ? `<img src="${chat.avatarBase64}">` : '👥';
                 const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
@@ -3942,6 +4055,11 @@ async function ctxDeleteChat() {
         toast('Нельзя удалить системный чат');
         return;
     }
+
+    if (chatType === 'channel') {
+    toast('Удаление канала будет в настройках канала');
+    return;
+}
     
     if (!confirm('Удалить чат навсегда?')) return;
     
@@ -3964,9 +4082,10 @@ async function ctxDeleteChat() {
 
 async function openDirectChat(userId, username) {
     currentChatUser = { uid: userId, username };
-    currentChatIsGroup = false;
-    currentChatIsSaved = false;
-    currentChatIsSystem = false;
+currentChatIsGroup = false;
+currentChatIsSaved = false;
+currentChatIsSystem = false;
+currentChatIsChannel = false;
     clearChatNavbarActions();
 
     let chatId = null;
@@ -3978,12 +4097,14 @@ async function openDirectChat(userId, username) {
     for (const doc of snap.docs) {
         const c = doc.data();
 
-        if (
-            !c.isGroup &&
-            !c.isSaved &&
-            !c.isSystem &&
-            c.participants?.includes(userId)
-        ) {
+if (
+    !c.isGroup &&
+    !c.isSaved &&
+    !c.isSystem &&
+    !c.isChannel &&
+    c.type !== 'channel' &&
+    c.participants?.includes(userId)
+) {
             chatId = doc.id;
             break;
         }
@@ -4043,16 +4164,49 @@ function hideChatOverlay() {
     }
 }
 
-    
+    function canCurrentUserPostInChannel(chat) {
+    if (!currentUser || !chat) return false;
+
+    if (chat.ownerId === currentUser.uid) return true;
+
+    const admins = chat.admins || [];
+    const permissions = chat.adminPermissions || {};
+
+    if (!admins.includes(currentUser.uid)) return false;
+
+    return permissions[currentUser.uid]?.canPost === true;
+}
+
+async function openChannel(chatId) {
+    currentChatId = chatId;
+    currentChatIsChannel = true;
+    currentChatIsGroup = false;
+    currentChatIsSaved = false;
+    currentChatIsSystem = false;
+    currentChatUser = null;
+
+    clearChatNavbarActions();
+
+    const doc = await db.collection('chats').doc(chatId).get();
+    const chat = doc.data();
+
+    if (!chat) {
+        toast('Канал не найден');
+        return;
+    }
+
+    await openChatUI(null, chat.name, false, chat);
+}
     
 async function openGroupChat(chatId) {
     const token = ++openChatToken;
 
     currentChatId = chatId;
-    currentChatIsGroup = true;
-    currentChatIsSaved = false;
-    currentChatIsSystem = false;
-    currentChatUser = null;
+currentChatIsGroup = true;
+currentChatIsSaved = false;
+currentChatIsSystem = false;
+currentChatIsChannel = false;
+currentChatUser = null;
 
     clearChatNavbarActions();
 
@@ -4090,6 +4244,7 @@ async function openSystemChat(chatId) {
     currentChatIsGroup = false;
     currentChatIsSaved = false;
     currentChatIsSystem = true;
+    currentChatIsChannel = false;
     clearChatNavbarActions();
     
     const doc = await db.collection('chats').doc(chatId).get();
@@ -4131,6 +4286,30 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
         document.getElementById('imageUploadBtn').disabled = false;
         document.getElementById('videoUploadBtn').disabled = false;
         document.getElementById('audioRecordBtn').disabled = false;
+
+        } else if (chatData?.isChannel || chatData?.type === 'channel') {
+    if (chatData.avatarBase64) {
+        avatar.innerHTML = `<img src="${chatData.avatarBase64}">`;
+        avatar.style.background = '';
+    } else {
+        avatar.innerHTML = '<i class="fas fa-bullhorn" style="font-size:20px;"></i>';
+        avatar.style.background = 'linear-gradient(135deg,#ff9f0a,#ff3b30)';
+    }
+
+    document.getElementById('chatName').textContent = chatData.name || 'Канал';
+    document.getElementById('chatStatus').textContent = `${chatData.subscribersCount || 0} подписчиков`;
+
+    currentChatUser = null;
+
+    const canPost = canCurrentUserPostInChannel(chatData);
+
+    document.getElementById('chatInputBar').style.display = canPost ? 'flex' : 'none';
+    document.getElementById('chatInput').disabled = !canPost;
+    document.getElementById('sendBtn').disabled = !canPost;
+    document.getElementById('imageUploadBtn').disabled = !canPost;
+    document.getElementById('videoUploadBtn').disabled = !canPost;
+    document.getElementById('audioRecordBtn').disabled = !canPost;
+        
     } else if (chatData?.isSystem) {
         avatar.innerHTML = '<i class="fas fa-check-circle" style="font-size:20px;"></i>';
         avatar.style.background = 'linear-gradient(135deg, #007aff, #5856d6)';
@@ -4210,8 +4389,9 @@ document.getElementById('chatStatus').style.color = 'var(--text-secondary)';
     currentChatId = null;
     currentChatUser = null;
     currentChatIsGroup = false;
-    currentChatIsSaved = false;
-    currentChatIsSystem = false;
+currentChatIsSaved = false;
+currentChatIsSystem = false;
+currentChatIsChannel = false;
     currentChatParticipants = [];
     cancelReply();
     document.getElementById('chatInputBar').style.display = 'flex';
@@ -5876,6 +6056,154 @@ function saveGroupCropSettings() {
     saveGroupSettings();
 }
 
+    function showCreateMenu() {
+    document.getElementById('createMenuModal').classList.add('show');
+}
+
+function closeCreateMenu() {
+    document.getElementById('createMenuModal').classList.remove('show');
+}
+
+function showCreateGroupFromMenu() {
+    closeCreateMenu();
+    showCreateGroup();
+}
+
+function generateChannelCode() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+
+    for (let i = 0; i < 8; i++) {
+        code += chars[Math.floor(Math.random() * chars.length)];
+    }
+
+    return `Contegg-Channel-#${code}`;
+}
+
+function showCreateChannel() {
+    closeCreateMenu();
+
+    channelAvatarBase64 = null;
+
+    document.getElementById('channelNameInput').value = '';
+    document.getElementById('channelVisibility').value = 'public';
+    document.getElementById('channelPrivateCode').value = generateChannelCode();
+    document.getElementById('channelAvatarPreview').innerHTML = '📣';
+    document.getElementById('channelAvatarPreview').style.background = 'linear-gradient(135deg,#ff9f0a,#ff3b30)';
+
+    updateChannelVisibilityUI();
+    updateCreateChannelBtn();
+
+    document.getElementById('channelModal').classList.add('show');
+}
+
+function closeChannelModal() {
+    document.getElementById('channelModal').classList.remove('show');
+}
+
+function updateChannelVisibilityUI() {
+    const visibility = document.getElementById('channelVisibility').value;
+
+    document.getElementById('channelPublicInfo').style.display =
+        visibility === 'public' ? 'block' : 'none';
+
+    document.getElementById('channelPrivateInfo').style.display =
+        visibility === 'private' ? 'block' : 'none';
+
+    if (visibility === 'private' && !document.getElementById('channelPrivateCode').value) {
+        document.getElementById('channelPrivateCode').value = generateChannelCode();
+    }
+}
+
+function updateCreateChannelBtn() {
+    const name = document.getElementById('channelNameInput').value.trim();
+    document.getElementById('createChannelBtn').disabled = !name;
+}
+
+async function createChannel() {
+    const name = document.getElementById('channelNameInput').value.trim();
+    const visibility = document.getElementById('channelVisibility').value;
+
+    if (!name || !currentUser) return;
+
+    const privateCode = visibility === 'private'
+        ? document.getElementById('channelPrivateCode').value
+        : null;
+
+    try {
+        const channelData = {
+            type: 'channel',
+            isChannel: true,
+
+            visibility,
+            name,
+            searchName: visibility === 'public' ? name.toLowerCase() : '',
+
+            privateCode,
+
+            avatarBase64: channelAvatarBase64 || null,
+
+            ownerId: currentUser.uid,
+
+            admins: [],
+            adminPermissions: {},
+
+            subscribers: [currentUser.uid],
+            subscribersCount: 1,
+
+            // ВАЖНО: пока нужно, чтобы канал появлялся в твоём текущем списке чатов
+            participants: [currentUser.uid],
+
+            commentsEnabled: true,
+
+            lastMessage: 'Канал создан',
+            lastSender: currentUser.uid,
+            lastMessageTime: new Date(),
+            createdAt: new Date()
+        };
+
+        const ref = await db.collection('chats').add(channelData);
+
+        await ref.collection('messages').add({
+            text: `Канал "${name}" создан`,
+            senderId: currentUser.uid,
+            timestamp: new Date(),
+            isSystemMessage: true,
+            type: 'channel_post'
+        });
+
+        closeChannelModal();
+        toast('Канал создан');
+        loadChats();
+    } catch (e) {
+        console.error('createChannel error:', e);
+        toast('Ошибка создания канала');
+    }
+}
+
+function closeChannelCrop() {
+    document.getElementById('channelCropModal').classList.remove('show');
+
+    if (channelCropper) {
+        channelCropper.destroy();
+        channelCropper = null;
+    }
+}
+
+function saveChannelCrop() {
+    if (!channelCropper) return;
+
+    const canvas = channelCropper.getCroppedCanvas({ width: 300, height: 300 });
+    channelAvatarBase64 = canvas.toDataURL('image/jpeg', 0.85);
+
+    const preview = document.getElementById('channelAvatarPreview');
+    preview.innerHTML = `<img src="${channelAvatarBase64}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+    preview.style.background = '';
+
+    closeChannelCrop();
+    toast('Фото канала готово');
+}
+
 function showCreateGroup() {
     selectedGroupUsers.clear();
     groupAvatarBase64 = null;
@@ -5934,6 +6262,38 @@ document.getElementById('groupSearch').addEventListener('input', function() {
 });
 
 document.getElementById('groupNameInput').addEventListener('input', updateCreateGroupBtn);
+
+    document.getElementById('channelNameInput').addEventListener('input', updateCreateChannelBtn);
+
+document.getElementById('channelVisibility').addEventListener('change', function() {
+    updateChannelVisibilityUI();
+});
+
+document.getElementById('channelAvatarInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = ev => {
+        document.getElementById('channelCropImageTarget').src = ev.target.result;
+        document.getElementById('channelCropModal').classList.add('show');
+
+        setTimeout(() => {
+            if (channelCropper) channelCropper.destroy();
+
+            channelCropper = new Cropper(document.getElementById('channelCropImageTarget'), {
+                aspectRatio: 1,
+                viewMode: 1,
+                dragMode: 'move',
+                autoCropArea: 1
+            });
+        }, 200);
+    };
+
+    reader.readAsDataURL(file);
+    e.target.value = '';
+});
 
 async function createGroup() {
     const name = document.getElementById('groupNameInput').value.trim();
@@ -7094,5 +7454,158 @@ body.keyboard-open #chatInputBar .chat-send {
     z-index: 100030 !important;
 }
 </style>
+    <style id="CONTEGG-KEYBOARD-NO-JUMP-OVERRIDE">
+/* финально перебиваем нижний зазор без удаления старых блоков */
+body.keyboard-open #chatOverlay #chatInputBar.chat-input-bar {
+    padding-bottom: 0px !important;
+    margin-bottom: 0px !important;
+}
+
+body:not(.keyboard-open) #chatOverlay #chatInputBar.chat-input-bar {
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+    margin-bottom: 0px !important;
+}
+
+body.keyboard-open #chatOverlay #chatInputBar > div,
+body.keyboard-open #chatOverlay #chatInputBar .chat-input-row,
+body.keyboard-open #chatOverlay #chatInputBar .chat-input,
+body.keyboard-open #chatOverlay #chatInputBar .media-buttons,
+body.keyboard-open #chatOverlay #chatInputBar .media-btn,
+body.keyboard-open #chatOverlay #chatInputBar .chat-send {
+    padding-bottom: 0px !important;
+    margin-bottom: 0px !important;
+}
+</style>
+
+<script id="CONTEGG-KEYBOARD-NO-JUMP-OVERRIDE-JS">
+(function () {
+    const root = document.documentElement;
+
+    let stableHeight = 0;
+    let rafId = null;
+
+    function getVV() {
+        return window.visualViewport || null;
+    }
+
+    function getInput() {
+        return document.getElementById('chatInput');
+    }
+
+    function getBar() {
+        return document.getElementById('chatInputBar');
+    }
+
+    function getStableHeight() {
+        const vv = getVV();
+
+        return Math.round(Math.max(
+            stableHeight || 0,
+            window.innerHeight || 0,
+            document.documentElement.clientHeight || 0,
+            vv ? vv.height + vv.offsetTop : 0
+        ));
+    }
+
+    function apply() {
+        const input = getInput();
+        const bar = getBar();
+        const vv = getVV();
+
+        if (!input || !bar) return;
+
+        if (!stableHeight) {
+            stableHeight = getStableHeight();
+        }
+
+        const inputActive = document.activeElement === input;
+        const visibleBottom = vv
+            ? Math.round(vv.height + vv.offsetTop)
+            : window.innerHeight;
+
+        let keyboardHeight = inputActive
+            ? Math.max(0, stableHeight - visibleBottom)
+            : 0;
+
+        if (keyboardHeight < 80) {
+            keyboardHeight = 0;
+        }
+
+        root.style.setProperty('--contegg-layout-height', stableHeight + 'px');
+        root.style.setProperty('--contegg-keyboard-height', keyboardHeight + 'px');
+
+        /* гасим старые правила, которые могли дёргать чат вверх-вниз */
+        root.style.setProperty('--vv-height', stableHeight + 'px');
+        root.style.setProperty('--vv-offset-top', '0px');
+
+        document.body.classList.toggle('keyboard-open', keyboardHeight > 0);
+        document.body.classList.remove('keyboard-closing');
+
+        bar.style.setProperty(
+            'padding-bottom',
+            keyboardHeight > 0
+                ? '0px'
+                : 'calc(8px + env(safe-area-inset-bottom, 0px))',
+            'important'
+        );
+
+        bar.style.setProperty('margin-bottom', '0px', 'important');
+    }
+
+    function requestApply() {
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(apply);
+    }
+
+    function burstApply() {
+        requestApply();
+        setTimeout(requestApply, 70);
+        setTimeout(requestApply, 200);
+        setTimeout(requestApply, 380);
+        setTimeout(requestApply, 700);
+    }
+
+    function init() {
+        const input = getInput();
+
+        stableHeight = getStableHeight();
+
+        if (input) {
+            input.addEventListener('focus', function () {
+                stableHeight = getStableHeight();
+                burstApply();
+            });
+
+            input.addEventListener('blur', function () {
+                setTimeout(function () {
+                    stableHeight = getStableHeight();
+                    burstApply();
+                }, 260);
+            });
+        }
+
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', burstApply);
+            window.visualViewport.addEventListener('scroll', burstApply);
+        }
+
+        window.addEventListener('resize', function () {
+            if (document.activeElement !== getInput()) {
+                stableHeight = getStableHeight();
+            }
+
+            burstApply();
+        });
+
+        burstApply();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+</script>
 </body>
 </html>
