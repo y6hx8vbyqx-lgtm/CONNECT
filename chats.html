@@ -4792,19 +4792,32 @@ if (chat.isSaved) {
         
         list.innerHTML = sortedChats.map(chat => {
             if (chat.type === 'saved') {
-                const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
-                const isPinned = pinnedChats.includes(chat.id);
-                return `
-                    <div class="chat-cell saved ${isPinned ? 'pinned' : ''}" data-chat-id="${chat.id}" data-chat-type="saved" onclick="openSavedChat()">
-                        <div class="chat-avatar saved"><i class="fas fa-bookmark" style="font-size:24px;"></i></div>
-                        <div class="chat-content">
-                            <div class="chat-top">
-                                <span class="chat-name"><i class="fas fa-bookmark saved-icon"></i> Избранное${isPinned ? ' <i class="fas fa-thumbtack pinned-icon"></i>' : ''}</span>
-                                <span class="chat-time">${timeStr}</span>
-                            </div>
-                            <div class="chat-preview">${esc(chat.lastMessage || 'Сохранённые сообщения')}</div>
-                        </div>
-                    </div>`;
+    const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
+    const isPinned = pinnedChats.includes(chat.id);
+
+    return `
+        <div class="chat-cell saved ${isPinned ? 'pinned' : ''}" data-chat-id="${chat.id}" data-chat-type="saved" onclick="openSavedChat()">
+            <div class="chat-avatar saved">
+                <i class="fas fa-bookmark" style="font-size:24px;"></i>
+            </div>
+
+            <div class="chat-content">
+                <div class="chat-top">
+                    <span class="chat-name">
+                        <i class="fas fa-bookmark saved-icon"></i>
+                        Избранное
+                        ${isPinned ? ' <i class="fas fa-thumbtack pinned-icon"></i>' : ''}
+                    </span>
+                    <span class="chat-time">${timeStr}</span>
+                </div>
+
+                <div class="chat-preview">${esc(chat.lastMessage || 'Сохранённые сообщения')}</div>
+            </div>
+
+            <button class="chat-open-page-btn" onclick="openChatInOwnPage(event, '${chat.id}')">
+                <i class="fas fa-up-right-from-square"></i>
+            </button>
+        </div>`;
 
                 <button class="chat-open-page-btn" onclick="openChatInOwnPage(event, '${chat.id}')">
     <i class="fas fa-up-right-from-square"></i>
