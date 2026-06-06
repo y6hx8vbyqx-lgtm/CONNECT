@@ -3317,7 +3317,17 @@ async function sendImages(files) {
     );
 }
     
-function openPhotoEditor(file) {
+async function openPhotoEditor(file) {
+    if (!file) {
+        toast('Фото не выбрано');
+        return;
+    }
+
+    if (!isProbablyImageFile(file)) {
+        toast('Можно только фото');
+        return;
+    }
+
     if (!ensurePhotoEditorModal()) {
         toast('Не удалось создать редактор фото');
         return;
@@ -3335,11 +3345,19 @@ function openPhotoEditor(file) {
 
     cleanupPhotoEditor(false);
 
+    if (photoEditCropper) {
+        photoEditCropper.destroy();
+        photoEditCropper = null;
+    }
+
     canvas.style.display = 'none';
     img.style.display = 'block';
-    textPanel.style.display = 'none';
 
-    photoEditObjectUrl = URL.createObjectURL(file);
+    if (textPanel) {
+        textPanel.style.display = 'none';
+    }
+
+    img.removeAttribute('src');
 
     img.onload = () => {
         setTimeout(() => {
@@ -3362,12 +3380,20 @@ function openPhotoEditor(file) {
     };
 
     img.onerror = () => {
-        toast('Не удалось открыть фото. Попробуйте JPG/PNG');
-        closePhotoEditor(true);
+        console.error('PHOTO EDIT IMG ERROR:', file);
+        toast('Фото не открылось. Попробуйте JPG/PNG/WebP');
     };
 
-    img.src = photoEditObjectUrl;
-    modal.classList.add('show');
+    try {
+        const dataUrl = await readFileAsDataURL(file);
+
+        modal.classList.add('show');
+
+        img.src = dataUrl;
+    } catch (e) {
+        console.error('openPhotoEditor read error:', e);
+        toast('Не удалось прочитать фото');
+    }
 }
 
 function cleanupPhotoEditor(clearFile = true) {
@@ -3381,11 +3407,22 @@ function cleanupPhotoEditor(clearFile = true) {
         photoEditObjectUrl = null;
     }
 
+    const img = document.getElementById('photoEditImage');
     const canvas = document.getElementById('photoEditCanvas');
+
+    if (img) {
+        img.onload = null;
+        img.onerror = null;
+        img.removeAttribute('src');
+    }
 
     if (canvas) {
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width || 1, canvas.height || 1);
+        canvas.width = 0;
+        canvas.height = 0;
+        canvas.style.display = 'none';
+        delete canvas.dataset.eventsAttached;
     }
 
     if (clearFile) {
@@ -8711,9 +8748,24 @@ async function logout() {
 document.getElementById('imageInput').addEventListener('change', function(e) {
     const files = Array.from(e.target.files || []);
 
-    this.value = '';
+    if (files.length === 0) {
+        toast('Фото не выбрано');
+        return;
+    }
 
-    handleSelectedImages(files);
+    const photos = files.filter(isProbablyImageFile);
+
+    if (photos.length === 0) {
+        toast('Можно только фото');
+        this.value = '';
+        return;
+    }
+
+    photoEditQueue = photos.slice(1);
+
+    openPhotoEditor(photos[0]);
+
+    this.value = '';
 });
 
 document.getElementById('videoInput').addEventListener('change', function(e) {
