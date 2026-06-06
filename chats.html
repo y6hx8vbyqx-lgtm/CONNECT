@@ -1915,6 +1915,58 @@ body.keyboard-open .media-buttons,
 body.keyboard-open .chat-send {
     margin-bottom: 0px !important;
 }
+
+html,
+body {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.chat-overlay {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.chat-overlay.show {
+    top: var(--vv-offset-top);
+    bottom: auto;
+    height: var(--vv-height);
+    max-height: var(--vv-height);
+}
+
+.chat-input-bar {
+    width: 100%;
+    max-width: 100%;
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-bottom: calc(6px + env(safe-area-inset-bottom));
+}
+
+body.keyboard-open .chat-input-bar {
+    padding-bottom: 6px !important;
+}
+
+.chat-input-row {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.chat-input-row > div:first-child {
+    flex-shrink: 0;
+}
+
+.chat-input {
+    min-width: 0;
+    max-width: 100%;
+}
+
+#chatInputBar > div {
+    min-width: 0;
+    max-width: 100%;
+}
         
     /* ========== КОНЕЦ СТИЛЕЙ ДЛЯ ГОЛОСОВЫХ ========== */
     
@@ -2243,18 +2295,6 @@ body.keyboard-open .chat-send {
 <div class="toast" id="toast"></div>
 
 <script>
-function enterFullscreen() {
-    const docEl = document.documentElement;
-    const requestFullscreen = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.msRequestFullscreen;
-    if (requestFullscreen) {
-        requestFullscreen.call(docEl).catch(() => {});
-    }
-}
-
-window.addEventListener('load', () => {
-    setTimeout(enterFullscreen, 300);
-    window.scrollTo(0, 1);
-});
 
 document.addEventListener('click', () => {
     if (!document.fullscreenElement && !document.webkitFullscreenElement) {
@@ -2281,6 +2321,8 @@ let blockedUsers = [];
 let pinnedChats = [];
 let adminUsers = [];
 let currentChatId = null;
+let openChatToken = 0;
+let loadChatsTimer = null;
 let currentChatUser = null;
 let currentChatIsGroup = false;
 let currentChatIsSaved = false;
@@ -2365,11 +2407,18 @@ async function sendImages(files) {
             await db.collection('chats').doc(currentChatId)
                 .collection('messages').add(msgData);
 
-            await db.collection('chats').doc(currentChatId).update({
-                lastMessage: '📷 Фото',
-                lastSender: currentUser.uid,
-                lastMessageTime: new Date()
-            });
+const updateData = {
+    lastMessage: text,
+    lastSender: currentUser.uid,
+    lastMessageTime: new Date()
+};
+
+if (unreadFor.length > 0) {
+    updateData.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
+}
+
+await db.collection('chats').doc(currentChatId).update(updateData);
+            
         }
         toast('Фото отправлены');
     } catch (e) {
@@ -2989,8 +3038,14 @@ async function openSavedChatUI() {
     document.getElementById('chatInputBar').style.display = 'flex';
     await loadMessages();
     
-    setTimeout(() => document.getElementById('chatInput').focus(), 300);
-}
+    setTimeout(() => document.getElementById('chatInput').focus(), 300);setTimeout(() => {
+    focusChatInput();
+
+    if (window.visualViewport) {
+        document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
+        document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
+    }
+}, 350);
 
 async function saveMessageToFavorites(messageId, messageData) {
     try {
@@ -3335,8 +3390,21 @@ async function loadChats() {
 }
 
 function startGlobalChatsListener() {
-    if (chatsGlobalListener) return;
-    chatsGlobalListener = db.collection('chats').onSnapshot(() => loadChats());
+    if (!currentUser) return;
+
+    if (chatsGlobalListener) {
+        chatsGlobalListener();
+        chatsGlobalListener = null;
+    }
+
+    chatsGlobalListener = db.collection('chats')
+        .where('participants', 'array-contains', currentUser.uid)
+        .onSnapshot(() => {
+            clearTimeout(loadChatsTimer);
+            loadChatsTimer = setTimeout(loadChats, 250);
+        }, error => {
+            console.error('Ошибка слушателя чатов:', error);
+        });
 }
 
 function showChatContext(e, chatId, chatType) {
@@ -3423,7 +3491,9 @@ async function openDirectChat(userId, username) {
     clearChatNavbarActions();
     
     let chatId = null;
-    const snap = await db.collection('chats').get();
+    const snap = await db.collection('chats').get();const snap = await db.collection('chats')
+    .where('participants', 'array-contains', currentUser.uid)
+    .get();
     for (const doc of snap.docs) {
         const c = doc.data();
         if (!c.isGroup && !c.isSaved && !c.isSystem && c.participants?.includes(currentUser.uid) && c.participants?.includes(userId)) {
@@ -3567,9 +3637,18 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
     await loadMessages();
     markAsRead();
     
-    if (!chatData?.isSystem) {
-        setTimeout(() => document.getElementById('chatInput').focus(), 300);
-    }
+if (!chatData?.isSystem) {
+    setTimeout(() => {
+        focusChatInput();
+
+        if (window.visualViewport) {
+            document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
+            document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
+        }
+
+        const messages = document.getElementById('chatMessages');
+        if (messages) messages.scrollTop = messages.scrollHeight;
+    }, 350);
 }
 
 function closeChat() {
@@ -5445,11 +5524,6 @@ async function logout() {
     }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-    initSearchScroll();
-    setupKeyboardFix();
-});
-
 document.getElementById('imageInput').addEventListener('change', function(e) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -5544,37 +5618,64 @@ document.addEventListener('keydown', e => {
 function setupKeyboardFix() {
     const input = document.getElementById('chatInput');
 
-    function setKeyboardOpen(open) {
-        document.body.classList.toggle('keyboard-open', open);
+    function updateViewportVars() {
+        if (window.visualViewport) {
+            document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
+            document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
+        } else {
+            document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
+            document.documentElement.style.setProperty('--vv-offset-top', `0px`);
+        }
     }
+
+    function updateKeyboardState() {
+        updateViewportVars();
+
+        const keyboardOpen =
+            window.visualViewport &&
+            window.visualViewport.height < window.innerHeight - 80;
+
+        document.body.classList.toggle('keyboard-open', !!keyboardOpen);
+
+        requestAnimationFrame(() => {
+            const messages = document.getElementById('chatMessages');
+            if (messages && currentChatId) {
+                messages.scrollTop = messages.scrollHeight;
+            }
+        });
+    }
+
+    updateViewportVars();
 
     if (input) {
         input.addEventListener('focus', () => {
-            setKeyboardOpen(true);
+            document.body.classList.add('keyboard-open');
+            updateKeyboardState();
+
+            setTimeout(updateKeyboardState, 80);
+            setTimeout(updateKeyboardState, 250);
+            setTimeout(updateKeyboardState, 500);
         });
 
         input.addEventListener('blur', () => {
             setTimeout(() => {
-                setKeyboardOpen(false);
-            }, 150);
+                updateKeyboardState();
+            }, 180);
         });
     }
 
     if (window.visualViewport) {
-        function updateKeyboardState() {
-            const keyboardOpen =
-                window.visualViewport.height < window.innerHeight - 80 ||
-                document.activeElement === input;
-
-            setKeyboardOpen(keyboardOpen);
-        }
-
         window.visualViewport.addEventListener('resize', updateKeyboardState);
         window.visualViewport.addEventListener('scroll', updateKeyboardState);
-        updateKeyboardState();
     }
-}
 
+    window.addEventListener('resize', updateKeyboardState);
+    window.addEventListener('orientationchange', () => {
+        setTimeout(updateKeyboardState, 300);
+    });
+
+    updateKeyboardState();
+}
 function focusChatInput() {
     const input = document.getElementById('chatInput');
     if (!input) return;
@@ -5592,21 +5693,24 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 const sendBtnElement = document.getElementById('sendBtn');
+const isMobileLike = window.matchMedia('(pointer: coarse)').matches;
 
 if (sendBtnElement) {
-    sendBtnElement.addEventListener('pointerdown', function(e) {
-        e.preventDefault();
-        focusChatInput();
-    });
+    if (isMobileLike) {
+        sendBtnElement.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+    }
 
     sendBtnElement.addEventListener('click', async function(e) {
         e.preventDefault();
 
-        focusChatInput();
         await sendMessage();
 
-        requestAnimationFrame(focusChatInput);
-        setTimeout(focusChatInput, 80);
+        if (isMobileLike) {
+            requestAnimationFrame(focusChatInput);
+            setTimeout(focusChatInput, 80);
+        }
     });
 }
 
