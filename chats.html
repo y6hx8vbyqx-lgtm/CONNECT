@@ -2329,6 +2329,32 @@ body.keyboard-open .chat-input-bar {
 .toast {
     z-index: 4000 !important;
 }
+
+        /* ===== NO OFFSET TOP FIX — DO NOT MOVE CHAT UP ===== */
+
+:root {
+    --vv-offset-top: 0px;
+}
+
+.chat-overlay,
+.chat-overlay.show,
+body.keyboard-open .chat-overlay,
+body.keyboard-closing .chat-overlay {
+    top: 0 !important;
+    bottom: auto !important;
+    height: var(--vv-height, 100dvh) !important;
+    max-height: var(--vv-height, 100dvh) !important;
+}
+
+.chat-input-bar {
+    position: relative !important;
+    bottom: auto !important;
+    transform: none !important;
+}
+
+body.keyboard-open .chat-input-bar {
+    padding-bottom: 8px !important;
+}
     
     </style>
 </head>
@@ -3402,7 +3428,7 @@ async function openSavedChatUI() {
 setTimeout(() => {
     if (window.visualViewport) {
         document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
-        document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
+        document.documentElement.style.setProperty('--vv-offset-top', '0px');
     }
 
     document.body.classList.remove('keyboard-open');
@@ -3903,11 +3929,11 @@ function showChatOverlay() {
 
     if (window.visualViewport) {
         document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
-        document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
     } else {
         document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
-        document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
     }
+
+    document.documentElement.style.setProperty('--vv-offset-top', '0px');
 
     overlay.classList.add('show');
 }
@@ -6079,17 +6105,12 @@ function setupKeyboardFix() {
             '--vv-height',
             `${window.visualViewport.height}px`
         );
-
-        document.documentElement.style.setProperty(
-            '--vv-offset-top',
-            `${window.visualViewport.offsetTop}px`
-        );
     } else {
         document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
-        document.documentElement.style.setProperty('--vv-offset-top', '0px');
     }
-}
 
+    document.documentElement.style.setProperty('--vv-offset-top', '0px');
+}
     function isKeyboardOpen() {
         if (!window.visualViewport) return false;
         return baseViewportHeight - window.visualViewport.height > 80;
