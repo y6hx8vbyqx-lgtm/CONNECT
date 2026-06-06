@@ -9810,5 +9810,75 @@ body.keyboard-open #chatOverlay #chatInputBar .chat-send {
     }
 }
 </style>
+    <button id="enterFullscreenBtn" type="button">
+    Во весь экран
+</button>
+
+<style>
+#enterFullscreenBtn {
+    position: fixed;
+    left: 16px;
+    top: 16px;
+    z-index: 999999;
+    border: none;
+    border-radius: 999px;
+    padding: 10px 14px;
+    background: #0a84ff;
+    color: white;
+    font-size: 14px;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    cursor: pointer;
+}
+
+@media (display-mode: standalone), (display-mode: fullscreen) {
+    #enterFullscreenBtn {
+        display: none !important;
+    }
+}
+</style>
+
+<script>
+(function () {
+    const btn = document.getElementById('enterFullscreenBtn');
+
+    function isStandaloneOrFullscreen() {
+        return (
+            document.fullscreenElement ||
+            window.matchMedia('(display-mode: fullscreen)').matches ||
+            window.matchMedia('(display-mode: standalone)').matches ||
+            window.navigator.standalone === true
+        );
+    }
+
+    function updateButton() {
+        if (!btn) return;
+        btn.style.display = isStandaloneOrFullscreen() ? 'none' : 'block';
+    }
+
+    async function enterFullscreen() {
+        const el = document.documentElement;
+
+        try {
+            if (el.requestFullscreen) {
+                await el.requestFullscreen({ navigationUI: 'hide' });
+            } else if (el.webkitRequestFullscreen) {
+                el.webkitRequestFullscreen();
+            } else {
+                alert('На этом устройстве fullscreen доступен только через установку на экран Домой.');
+            }
+        } catch (e) {
+            alert('Браузер не дал включить fullscreen. На iPhone открой приложение через иконку с экрана Домой.');
+        }
+
+        updateButton();
+    }
+
+    btn?.addEventListener('click', enterFullscreen);
+    document.addEventListener('fullscreenchange', updateButton);
+    window.addEventListener('load', updateButton);
+
+    updateButton();
+})();
+</script>
 </body>
 </html>
