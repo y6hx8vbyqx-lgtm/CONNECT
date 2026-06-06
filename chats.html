@@ -5886,14 +5886,11 @@ function setupKeyboardFix() {
             : window.innerHeight;
 
         document.documentElement.style.setProperty('--vv-height', `${height}px`);
-
-        // ВАЖНО: не используем offsetTop, от него прыгает шапка
         document.documentElement.style.setProperty('--vv-offset-top', '0px');
     }
 
     function isKeyboardOpen() {
         if (!window.visualViewport) return false;
-
         return baseViewportHeight - window.visualViewport.height > 80;
     }
 
@@ -5932,7 +5929,6 @@ function setupKeyboardFix() {
     if (input) {
         input.addEventListener('focus', () => {
             setViewportHeight();
-
             setTimeout(updateKeyboardState, 50);
             setTimeout(updateKeyboardState, 180);
             setTimeout(updateKeyboardState, 350);
@@ -5979,7 +5975,6 @@ function setupKeyboardFix() {
         }, 400);
     });
 }
-    }
 
 function focusChatInput() {
     const input = document.getElementById('chatInput');
@@ -5992,7 +5987,6 @@ function focusChatInput() {
     }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('DOMContentLoaded', () => {
     initSearchScroll();
     setupKeyboardFix();
