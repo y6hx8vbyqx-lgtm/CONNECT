@@ -2127,6 +2127,53 @@ body.keyboard-closing .chat-overlay {
     transition: none !important;
     transform: translateZ(0);
 }
+
+/* ===== ABSOLUTE FINAL iOS KEYBOARD STABILITY FIX ===== */
+
+.chat-overlay,
+.chat-overlay.show {
+    top: 0 !important;
+    bottom: auto !important;
+    height: var(--vv-height) !important;
+    max-height: var(--vv-height) !important;
+    transform: translateX(100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.chat-overlay.show {
+    transform: translateX(0) !important;
+}
+
+/* при открытии/закрытии клавиатуры не анимируем resize */
+body.keyboard-open .chat-overlay,
+body.keyboard-closing .chat-overlay {
+    transition: none !important;
+}
+
+.chat-navbar {
+    flex: 0 0 auto !important;
+    transform: translateZ(0);
+}
+
+.chat-messages {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-anchor: none;
+    scroll-behavior: auto !important;
+    overscroll-behavior: contain;
+}
+
+.chat-input-bar {
+    flex: 0 0 auto !important;
+    transition: none !important;
+    transform: translateZ(0);
+    margin: 0 !important;
+}
+
+body.keyboard-open .chat-input-bar {
+    padding-bottom: 8px !important;
+}
     
     </style>
 </head>
@@ -3200,7 +3247,7 @@ async function openSavedChatUI() {
 setTimeout(() => {
     if (window.visualViewport) {
         document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
-        document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
+        document.documentElement.style.setProperty('--vv-offset-top', '0px');
     }
 
     document.body.classList.remove('keyboard-open');
@@ -3833,7 +3880,7 @@ if (!chatData?.isSystem) {
     setTimeout(() => {
         if (window.visualViewport) {
             document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
-            document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
+            document.documentElement.style.setProperty('--vv-offset-top', '0px');
         }
 
         document.body.classList.remove('keyboard-open');
@@ -5932,82 +5979,6 @@ function setupKeyboardFix() {
         }, 400);
     });
 }
-    function keyboardIsOpen() {
-        const vv = window.visualViewport;
-        if (!vv) return false;
-
-        return (
-            baseViewportHeight - vv.height > 80 ||
-            vv.offsetTop > 0
-        );
-    }
-
-    function updateKeyboardState() {
-        updateViewportVars();
-
-        const isOpen = keyboardIsOpen();
-        document.body.classList.toggle('keyboard-open', isOpen);
-
-        requestAnimationFrame(() => {
-            const messages = document.getElementById('chatMessages');
-            if (messages && currentChatId) {
-            }
-        });
-    }
-
-    updateViewportVars();
-
-    if (input) {
-        input.addEventListener('focus', () => {
-            updateViewportVars();
-
-            setTimeout(updateKeyboardState, 80);
-            setTimeout(updateKeyboardState, 250);
-            setTimeout(updateKeyboardState, 500);
-        });
-
-        input.addEventListener('blur', () => {
-            setTimeout(() => {
-                document.body.classList.remove('keyboard-open');
-
-                baseViewportHeight = window.visualViewport
-                    ? window.visualViewport.height
-                    : window.innerHeight;
-
-                updateViewportVars();
-            }, 200);
-        });
-    }
-
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', updateKeyboardState);
-        window.visualViewport.addEventListener('scroll', updateKeyboardState);
-    }
-
-    window.addEventListener('resize', () => {
-        if (document.activeElement !== input) {
-            baseViewportHeight = window.visualViewport
-                ? window.visualViewport.height
-                : window.innerHeight;
-        }
-
-        updateKeyboardState();
-    });
-
-    window.addEventListener('orientationchange', () => {
-        setTimeout(() => {
-            baseViewportHeight = window.visualViewport
-                ? window.visualViewport.height
-                : window.innerHeight;
-
-            updateKeyboardState();
-        }, 400);
-    });
-
-    updateKeyboardState();
-}
-    
-function focusChatInput() {
     const input = document.getElementById('chatInput');
     if (!input) return;
 
