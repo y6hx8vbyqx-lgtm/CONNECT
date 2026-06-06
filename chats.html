@@ -3164,9 +3164,12 @@ setTimeout(() => {
         document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
     }
 
+    document.body.classList.remove('keyboard-open');
+
     const messages = document.getElementById('chatMessages');
     if (messages) messages.scrollTop = messages.scrollHeight;
 }, 350);
+}
 
 async function saveMessageToFavorites(messageId, messageData) {
     try {
@@ -3800,7 +3803,8 @@ if (!chatData?.isSystem) {
         if (messages) messages.scrollTop = messages.scrollHeight;
     }, 350);
 }
-
+}
+    
 function closeChat() {
     
     if (chatUserPresenceListener) {
@@ -5836,11 +5840,9 @@ function setupKeyboardFix() {
             setTimeout(() => {
                 document.body.classList.remove('keyboard-open');
 
-                if (window.visualViewport) {
-                    baseViewportHeight = window.visualViewport.height;
-                } else {
-                    baseViewportHeight = window.innerHeight;
-                }
+                baseViewportHeight = window.visualViewport
+                    ? window.visualViewport.height
+                    : window.innerHeight;
 
                 updateViewportVars();
             }, 200);
@@ -5873,95 +5875,6 @@ function setupKeyboardFix() {
     });
 
     updateKeyboardState();
-}
-    function isInputFocused() {
-        return document.activeElement === input;
-    }
-
-    function updateKeyboardState(forceOpen = false) {
-        updateViewportVars();
-
-        const vv = window.visualViewport;
-
-        const keyboardOpen =
-            forceOpen ||
-            isInputFocused() ||
-            (
-                vv &&
-                (
-                    baseViewportHeight - vv.height > 80 ||
-                    vv.offsetTop > 0
-                )
-            );
-
-        document.body.classList.toggle('keyboard-open', !!keyboardOpen);
-
-        requestAnimationFrame(() => {
-            const messages = document.getElementById('chatMessages');
-            if (messages && currentChatId) {
-                messages.scrollTop = messages.scrollHeight;
-            }
-        });
-    }
-
-    updateViewportVars();
-
-    if (input) {
-        input.addEventListener('focus', () => {
-            document.body.classList.add('keyboard-open');
-
-            updateKeyboardState(true);
-            setTimeout(() => updateKeyboardState(true), 80);
-            setTimeout(() => updateKeyboardState(true), 250);
-            setTimeout(() => updateKeyboardState(true), 500);
-        });
-
-        input.addEventListener('blur', () => {
-            setTimeout(() => {
-                document.body.classList.remove('keyboard-open');
-
-                if (window.visualViewport) {
-                    baseViewportHeight = window.visualViewport.height;
-                } else {
-                    baseViewportHeight = window.innerHeight;
-                }
-
-                updateKeyboardState(false);
-            }, 200);
-        });
-    }
-
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', () => {
-            updateKeyboardState(isInputFocused());
-        });
-
-        window.visualViewport.addEventListener('scroll', () => {
-            updateKeyboardState(isInputFocused());
-        });
-    }
-
-    window.addEventListener('resize', () => {
-        if (!isInputFocused()) {
-            baseViewportHeight = window.visualViewport
-                ? window.visualViewport.height
-                : window.innerHeight;
-        }
-
-        updateKeyboardState(isInputFocused());
-    });
-
-    window.addEventListener('orientationchange', () => {
-        setTimeout(() => {
-            baseViewportHeight = window.visualViewport
-                ? window.visualViewport.height
-                : window.innerHeight;
-
-            updateKeyboardState(isInputFocused());
-        }, 400);
-    });
-
-    updateKeyboardState(false);
 }
     
 function focusChatInput() {
