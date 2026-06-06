@@ -38,6 +38,7 @@
       }
     </style>
 
+ 
     <!-- ОСНОВНЫЕ СТИЛИ -->
     
     <style>
@@ -1881,20 +1882,9 @@ body {
     height: var(--vv-height);
 }
 
-/* Когда клавиатура открыта — никакого safe-area снизу */
-body.keyboard-open .chat-input-bar {
-    padding-bottom: 6px !important;
-}
-
 /* Чтобы messages не создавали лишнюю пустоту */
 body.keyboard-open .chat-messages {
     padding-bottom: 6px !important;
-}
-
-/* ✅ УБИРАЕМ ЧЁРНЫЙ НИЗ ПОД СТРОКОЙ ВВОДА ПРИ КЛАВИАТУРЕ */
-body.keyboard-open .chat-input-bar {
-    padding-top: 6px !important;
-    padding-bottom: 0px !important;
 }
 
 body.keyboard-open .chat-input-row {
@@ -1902,10 +1892,6 @@ body.keyboard-open .chat-input-row {
     margin-bottom: 0px !important;
 }
 
-body.keyboard-open .chat-input-bar > div {
-    padding-bottom: 0px !important;
-    margin-bottom: 0px !important;
-}
 
 body.keyboard-open .chat-input {
     margin-bottom: 0px !important;
@@ -1944,10 +1930,6 @@ body {
     padding-bottom: calc(6px + env(safe-area-inset-bottom));
 }
 
-body.keyboard-open .chat-input-bar {
-    padding-bottom: 6px !important;
-}
-
 .chat-input-row {
     width: 100%;
     max-width: 100%;
@@ -1966,6 +1948,58 @@ body.keyboard-open .chat-input-bar {
 #chatInputBar > div {
     min-width: 0;
     max-width: 100%;
+}
+
+        body.keyboard-open .chat-messages {
+    padding-bottom: 6px !important;
+}
+
+/* ===== FINAL iOS KEYBOARD GAP FIX ===== */
+
+:root {
+    --vv-height: 100dvh;
+    --vv-offset-top: 0px;
+    --chat-input-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.chat-overlay.show {
+    top: var(--vv-offset-top) !important;
+    bottom: auto !important;
+    height: var(--vv-height) !important;
+    max-height: var(--vv-height) !important;
+}
+
+.chat-input-bar {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-top: 8px !important;
+    padding-left: max(10px, env(safe-area-inset-left)) !important;
+    padding-right: max(10px, env(safe-area-inset-right)) !important;
+    padding-bottom: calc(6px + var(--chat-input-bottom)) !important;
+    margin-bottom: 0 !important;
+}
+
+body.keyboard-open {
+    --chat-input-bottom: 0px;
+}
+
+body.keyboard-open .chat-input-bar {
+    padding-top: 6px !important;
+    padding-bottom: 0px !important;
+    margin-bottom: 0px !important;
+}
+
+body.keyboard-open .chat-input-row,
+body.keyboard-open #chatInputBar > div,
+body.keyboard-open .chat-input,
+body.keyboard-open .media-buttons,
+body.keyboard-open .chat-send {
+    padding-bottom: 0px !important;
+    margin-bottom: 0px !important;
+}
+
+body.keyboard-open .chat-messages {
+    padding-bottom: 6px !important;
 }
         
     /* ========== КОНЕЦ СТИЛЕЙ ДЛЯ ГОЛОСОВЫХ ========== */
@@ -5665,8 +5699,8 @@ function setupKeyboardFix() {
         updateViewportVars();
 
         const keyboardOpen =
-            window.visualViewport &&
-            window.visualViewport.height < window.innerHeight - 80;
+    window.visualViewport &&
+    (window.innerHeight - window.visualViewport.height) > 120;
 
         document.body.classList.toggle('keyboard-open', !!keyboardOpen);
 
