@@ -2911,7 +2911,7 @@ body.keyboard-open .chat-input-bar {
 
 <input type="file" id="avatarInput" accept="image/*" style="display:none;">
 <input type="file" id="groupAvatarInput" accept="image/*" style="display:none;">
-<input type="file" id="imageInput" accept="image/*" style="display:none;" multiple>
+<input type="file" id="imageInput" accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif" style="display:none;" multiple>
 <input type="file" id="videoInput" accept="video/*" style="display:none;">
 <input type="file" id="editGroupAvatarInput" accept="image/*" style="display:none;">
 <input type="file" id="channelAvatarInput" accept="image/*" style="display:none;">
@@ -3013,6 +3013,100 @@ let photoEditorMode = 'crop';
 let photoIsDrawing = false;
 let photoLastPoint = null;
 
+    function isProbablyImageFile(file) {
+    if (!file) return false;
+
+    const type = (file.type || '').toLowerCase();
+    const name = (file.name || '').toLowerCase();
+
+    if (type.startsWith('image/')) return true;
+
+    return (
+        name.endsWith('.jpg') ||
+        name.endsWith('.jpeg') ||
+        name.endsWith('.png') ||
+        name.endsWith('.webp') ||
+        name.endsWith('.gif') ||
+        name.endsWith('.heic') ||
+        name.endsWith('.heif') ||
+        name.endsWith('.bmp')
+    );
+}
+
+async function imageFileToJpegBlob(file) {
+    const dataUrl = await readFileAsDataURL(file);
+    const img = await loadImageFromDataURL(dataUrl);
+
+    let width = img.naturalWidth || img.width;
+    let height = img.naturalHeight || img.height;
+
+    if (!width || !height) {
+        throw new Error('Не удалось определить размер изображения');
+    }
+
+    const ratio = Math.min(
+        MAX_IMAGE_WIDTH / width,
+        MAX_IMAGE_HEIGHT / height,
+        1
+    );
+
+    width = Math.round(width * ratio);
+    height = Math.round(height * ratio);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0, width, height);
+
+    const blob = await new Promise(resolve => {
+        canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY);
+    });
+
+    if (!blob) {
+        throw new Error('canvas.toBlob вернул null');
+    }
+
+    return blob;
+}
+
+function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = e => resolve(e.target.result);
+        reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
+
+        reader.readAsDataURL(file);
+    });
+}
+
+function loadImageFromDataURL(dataUrl) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Файл не читается как изображение'));
+
+        img.src = dataUrl;
+    });
+}
+
+async function uploadImageBlobToStorage(blob) {
+    const fileName = `${currentUser.uid}_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+    const fileRef = storage.ref().child(`images/${fileName}`);
+
+    const snapshot = await fileRef.put(blob, {
+        contentType: 'image/jpeg'
+    });
+
+    return await snapshot.ref.getDownloadURL();
+}
+
 async function sendImages(files) {
     if (!currentChatId || !files || files.length === 0) return;
 
@@ -3021,30 +3115,93 @@ async function sendImages(files) {
         return;
     }
 
-    const imageFiles = Array.from(files).filter(file => {
-        return file && file.type && file.type.startsWith('image/');
-    });
+    const sendBtn = document.getElementById('sendBtn');
+    const uploadBtn = document.getElementById('imageUploadBtn');
 
-    if (imageFiles.length === 0) {
-        toast('Можно только изображения');
-        return;
+    if (sendBtn) sendBtn.disabled = true;
+    if (uploadBtn) uploadBtn.disabled = true;
+
+    try {
+        const fileArray = Array.from(files);
+
+        if (fileArray.length === 0) {
+            toast('Фото не выбрано');
+            return;
+        }
+
+        let sentCount = 0;
+
+        for (const file of fileArray) {
+            try {
+                console.log('PHOTO FILE:', {
+                    name: file.name,
+                    type: file.type,
+                    size: file.size
+                });
+
+                if (!isProbablyImageFile(file)) {
+                    toast('Файл не похож на фото');
+                    continue;
+                }
+
+                const blob = await imageFileToJpegBlob(file);
+                const url = await uploadImageBlobToStorage(blob);
+
+                await db.collection('chats')
+                    .doc(currentChatId)
+                    .collection('messages')
+                    .add({
+                        text: '',
+                        imageUrl: url,
+                        senderId: currentUser.uid,
+                        timestamp: new Date(),
+                        read: false,
+                        type: 'image'
+                    });
+
+                let unreadFor = [];
+
+                if (currentChatIsGroup) {
+                    unreadFor = currentChatParticipants.filter(id => id !== currentUser.uid);
+                } else if (currentChatUser && !currentChatIsSaved && !currentChatIsSystem) {
+                    unreadFor = [currentChatUser.uid];
+                }
+
+                const updateData = {
+                    lastMessage: '📷 Фото',
+                    lastSender: currentUser.uid,
+                    lastMessageTime: new Date()
+                };
+
+                if (unreadFor.length > 0) {
+                    updateData.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
+                }
+
+                await db.collection('chats').doc(currentChatId).update(updateData);
+
+                sentCount++;
+
+            } catch (innerError) {
+                console.error('Ошибка одного фото:', innerError);
+                toast('Не удалось отправить одно фото');
+            }
+        }
+
+        if (sentCount > 0) {
+            toast(sentCount === 1 ? 'Фото отправлено' : `Фото отправлены: ${sentCount}`);
+        } else {
+            toast('Фото не отправлено');
+        }
+
+    } catch (e) {
+        console.error('sendImages error:', e);
+        toast('Ошибка отправки фото');
+    } finally {
+        if (sendBtn) sendBtn.disabled = false;
+        if (uploadBtn) uploadBtn.disabled = false;
     }
-
-    photoEditQueue = imageFiles;
-    openNextPhotoEditor();
 }
-
-function openNextPhotoEditor() {
-    const nextFile = photoEditQueue.shift();
-
-    if (!nextFile) {
-        closePhotoEditor(false);
-        return;
-    }
-
-    openPhotoEditor(nextFile);
-}
-
+    
 function openPhotoEditor(file) {
     photoEditFile = file;
     photoEditorMode = 'crop';
