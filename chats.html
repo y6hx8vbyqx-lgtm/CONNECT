@@ -2769,6 +2769,62 @@ body.keyboard-open .chat-input-bar {
             </div>
         </div>
     </div>
+</div
+
+    <div class="modal-overlay" id="photoEditModal">
+    <div class="modal-sheet photo-editor-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Редактировать фото</div>
+
+        <div class="modal-content">
+            <div class="photo-editor-stage" id="photoEditorStage">
+                <img id="photoEditImage" alt="Photo editor">
+                <canvas id="photoEditCanvas"></canvas>
+            </div>
+
+            <div class="photo-tools">
+                <button class="photo-tool-btn active" data-photo-tool="crop" onclick="setPhotoTool('crop')">
+                    <i class="fas fa-crop"></i>
+                    Обрезка
+                </button>
+
+                <button class="photo-tool-btn" data-photo-tool="draw" onclick="setPhotoTool('draw')">
+                    <i class="fas fa-marker"></i>
+                    Маркер
+                </button>
+
+                <button class="photo-tool-btn" data-photo-tool="text" onclick="setPhotoTool('text')">
+                    <i class="fas fa-font"></i>
+                    Текст
+                </button>
+
+                <button class="photo-tool-btn" onclick="resetPhotoEditor()">
+                    <i class="fas fa-undo"></i>
+                    Сброс
+                </button>
+            </div>
+
+            <div class="photo-marker-settings">
+                <input type="color" id="photoMarkerColor" value="#ff3b30">
+                <input type="range" id="photoMarkerSize" min="8" max="60" value="24">
+            </div>
+
+            <div id="photoTextPanel" class="photo-text-panel" style="display:none;">
+                <input type="text" id="photoTextInput" placeholder="Введите текст">
+                <button type="button" onclick="addPhotoText()">Добавить</button>
+            </div>
+
+            <div style="display:flex;gap:10px;margin-top:14px;">
+                <button class="btn btn-secondary" onclick="cancelPhotoEditor()" style="flex:1;">
+                    Отмена
+                </button>
+
+                <button class="btn btn-primary" id="photoEditorSendBtn" onclick="sendEditedPhoto()" style="flex:1;">
+                    Отправить
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="modal-overlay" id="userProfileModal">
@@ -2949,8 +3005,499 @@ async function uploadAudioToStorage(file) {
     return await uploadFileToStorage(file, 'audio');
 }
 
+let photoEditQueue = [];
+let photoEditFile = null;
+let photoEditCropper = null;
+let photoEditObjectUrl = null;
+let photoEditorMode = 'crop';
+let photoIsDrawing = false;
+let photoLastPoint = null;
+
 async function sendImages(files) {
     if (!currentChatId || !files || files.length === 0) return;
+
+    if (!(await canSendToCurrentChat())) {
+        toast('Нет права публиковать в канал');
+        return;
+    }
+
+    const imageFiles = Array.from(files).filter(file => {
+        return file && file.type && file.type.startsWith('image/');
+    });
+
+    if (imageFiles.length === 0) {
+        toast('Можно только изображения');
+        return;
+    }
+
+    photoEditQueue = imageFiles;
+    openNextPhotoEditor();
+}
+
+function openNextPhotoEditor() {
+    const nextFile = photoEditQueue.shift();
+
+    if (!nextFile) {
+        closePhotoEditor(false);
+        return;
+    }
+
+    openPhotoEditor(nextFile);
+}
+
+function openPhotoEditor(file) {
+    photoEditFile = file;
+    photoEditorMode = 'crop';
+    photoIsDrawing = false;
+    photoLastPoint = null;
+
+    const modal = document.getElementById('photoEditModal');
+    const img = document.getElementById('photoEditImage');
+    const canvas = document.getElementById('photoEditCanvas');
+    const textPanel = document.getElementById('photoTextPanel');
+
+    if (!modal || !img || !canvas) {
+        toast('Редактор фото не найден');
+        return;
+    }
+
+    cleanupPhotoEditor(false);
+
+    canvas.style.display = 'none';
+    img.style.display = 'block';
+    textPanel.style.display = 'none';
+
+    photoEditObjectUrl = URL.createObjectURL(file);
+
+    img.onload = () => {
+        setTimeout(() => {
+            if (photoEditCropper) {
+                photoEditCropper.destroy();
+                photoEditCropper = null;
+            }
+
+            photoEditCropper = new Cropper(img, {
+                aspectRatio: NaN,
+                viewMode: 1,
+                dragMode: 'move',
+                autoCropArea: 1,
+                background: false,
+                responsive: true
+            });
+
+            updatePhotoToolButtons();
+        }, 120);
+    };
+
+    img.onerror = () => {
+        toast('Не удалось открыть фото. Попробуйте JPG/PNG');
+        closePhotoEditor(true);
+    };
+
+    img.src = photoEditObjectUrl;
+    modal.classList.add('show');
+}
+
+function cleanupPhotoEditor(clearFile = true) {
+    if (photoEditCropper) {
+        photoEditCropper.destroy();
+        photoEditCropper = null;
+    }
+
+    if (photoEditObjectUrl) {
+        URL.revokeObjectURL(photoEditObjectUrl);
+        photoEditObjectUrl = null;
+    }
+
+    const canvas = document.getElementById('photoEditCanvas');
+
+    if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width || 1, canvas.height || 1);
+    }
+
+    if (clearFile) {
+        photoEditFile = null;
+    }
+}
+
+function closePhotoEditor(clearQueue = true) {
+    const modal = document.getElementById('photoEditModal');
+
+    if (modal) {
+        modal.classList.remove('show');
+    }
+
+    cleanupPhotoEditor(true);
+
+    if (clearQueue) {
+        photoEditQueue = [];
+    }
+}
+
+function cancelPhotoEditor() {
+    closePhotoEditor(true);
+}
+
+function resetPhotoEditor() {
+    if (!photoEditFile) return;
+    openPhotoEditor(photoEditFile);
+}
+
+function setPhotoTool(mode) {
+    photoEditorMode = mode;
+
+    const textPanel = document.getElementById('photoTextPanel');
+
+    if (mode === 'crop') {
+        enablePhotoCropMode();
+        if (textPanel) textPanel.style.display = 'none';
+    }
+
+    if (mode === 'draw') {
+        applyPhotoCropToCanvas();
+        if (textPanel) textPanel.style.display = 'none';
+    }
+
+    if (mode === 'text') {
+        applyPhotoCropToCanvas();
+        if (textPanel) textPanel.style.display = 'block';
+    }
+
+    updatePhotoToolButtons();
+}
+
+function updatePhotoToolButtons() {
+    document.querySelectorAll('.photo-tool-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    const active = document.querySelector(`[data-photo-tool="${photoEditorMode}"]`);
+
+    if (active) {
+        active.classList.add('active');
+    }
+}
+
+function enablePhotoCropMode() {
+    const img = document.getElementById('photoEditImage');
+    const canvas = document.getElementById('photoEditCanvas');
+
+    if (!img || !canvas) return;
+
+    if (canvas.style.display !== 'none' && canvas.width > 0 && canvas.height > 0) {
+        img.src = canvas.toDataURL('image/jpeg', 0.9);
+    }
+
+    canvas.style.display = 'none';
+    img.style.display = 'block';
+
+    img.onload = () => {
+        if (photoEditCropper) {
+            photoEditCropper.destroy();
+            photoEditCropper = null;
+        }
+
+        photoEditCropper = new Cropper(img, {
+            aspectRatio: NaN,
+            viewMode: 1,
+            dragMode: 'move',
+            autoCropArea: 1,
+            background: false,
+            responsive: true
+        });
+    };
+}
+
+function applyPhotoCropToCanvas() {
+    const img = document.getElementById('photoEditImage');
+    const canvas = document.getElementById('photoEditCanvas');
+
+    if (!img || !canvas) return;
+
+    if (canvas.style.display !== 'none' && canvas.width > 0 && canvas.height > 0) {
+        attachPhotoCanvasEvents();
+        return;
+    }
+
+    let sourceCanvas = null;
+
+    if (photoEditCropper) {
+        const cropData = photoEditCropper.getData(true);
+
+        let outW = Math.max(1, cropData.width);
+        let outH = Math.max(1, cropData.height);
+
+        const ratio = Math.min(
+            MAX_IMAGE_WIDTH / outW,
+            MAX_IMAGE_HEIGHT / outH,
+            1
+        );
+
+        outW = Math.round(outW * ratio);
+        outH = Math.round(outH * ratio);
+
+        sourceCanvas = photoEditCropper.getCroppedCanvas({
+            width: outW,
+            height: outH,
+            imageSmoothingEnabled: true,
+            imageSmoothingQuality: 'high'
+        });
+
+        photoEditCropper.destroy();
+        photoEditCropper = null;
+    } else {
+        sourceCanvas = document.createElement('canvas');
+        const ctx = sourceCanvas.getContext('2d');
+
+        const naturalW = img.naturalWidth || img.width;
+        const naturalH = img.naturalHeight || img.height;
+
+        const ratio = Math.min(
+            MAX_IMAGE_WIDTH / naturalW,
+            MAX_IMAGE_HEIGHT / naturalH,
+            1
+        );
+
+        sourceCanvas.width = Math.round(naturalW * ratio);
+        sourceCanvas.height = Math.round(naturalH * ratio);
+
+        ctx.drawImage(img, 0, 0, sourceCanvas.width, sourceCanvas.height);
+    }
+
+    if (!sourceCanvas) {
+        toast('Ошибка обработки фото');
+        return;
+    }
+
+    canvas.width = sourceCanvas.width;
+    canvas.height = sourceCanvas.height;
+
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(sourceCanvas, 0, 0);
+
+    img.style.display = 'none';
+    canvas.style.display = 'block';
+
+    attachPhotoCanvasEvents();
+}
+
+function attachPhotoCanvasEvents() {
+    const canvas = document.getElementById('photoEditCanvas');
+
+    if (!canvas || canvas.dataset.eventsAttached === 'true') return;
+
+    canvas.dataset.eventsAttached = 'true';
+    canvas.style.touchAction = 'none';
+
+    canvas.addEventListener('pointerdown', e => {
+        if (photoEditorMode !== 'draw') return;
+
+        e.preventDefault();
+
+        photoIsDrawing = true;
+        photoLastPoint = getPhotoCanvasPoint(e);
+
+        try {
+            canvas.setPointerCapture(e.pointerId);
+        } catch (_) {}
+    });
+
+    canvas.addEventListener('pointermove', e => {
+        if (photoEditorMode !== 'draw' || !photoIsDrawing || !photoLastPoint) return;
+
+        e.preventDefault();
+
+        const point = getPhotoCanvasPoint(e);
+        drawPhotoMarker(photoLastPoint, point);
+        photoLastPoint = point;
+    });
+
+    canvas.addEventListener('pointerup', e => {
+        if (photoEditorMode !== 'draw') return;
+
+        e.preventDefault();
+
+        photoIsDrawing = false;
+        photoLastPoint = null;
+    });
+
+    canvas.addEventListener('pointercancel', () => {
+        photoIsDrawing = false;
+        photoLastPoint = null;
+    });
+}
+
+function getPhotoCanvasPoint(e) {
+    const canvas = document.getElementById('photoEditCanvas');
+    const rect = canvas.getBoundingClientRect();
+
+    return {
+        x: (e.clientX - rect.left) * (canvas.width / rect.width),
+        y: (e.clientY - rect.top) * (canvas.height / rect.height)
+    };
+}
+
+function drawPhotoMarker(from, to) {
+    const canvas = document.getElementById('photoEditCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const colorInput = document.getElementById('photoMarkerColor');
+    const sizeInput = document.getElementById('photoMarkerSize');
+
+    ctx.save();
+
+    ctx.strokeStyle = colorInput?.value || '#ff3b30';
+    ctx.lineWidth = Number(sizeInput?.value || 22);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+function addPhotoText() {
+    setPhotoTool('text');
+
+    const input = document.getElementById('photoTextInput');
+    const canvas = document.getElementById('photoEditCanvas');
+
+    if (!input || !canvas) return;
+
+    const text = input.value.trim();
+
+    if (!text) {
+        toast('Введите текст');
+        return;
+    }
+
+    const ctx = canvas.getContext('2d');
+
+    const fontSize = Math.max(24, Math.round(canvas.width * 0.055));
+    const x = canvas.width / 2;
+    const y = canvas.height * 0.78;
+    const maxWidth = canvas.width * 0.86;
+
+    ctx.save();
+
+    ctx.font = `700 ${fontSize}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.lineWidth = Math.max(4, Math.round(fontSize * 0.16));
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillStyle = '#ffffff';
+
+    wrapPhotoText(ctx, text, x, y, maxWidth, fontSize * 1.2);
+
+    ctx.restore();
+
+    input.value = '';
+}
+
+function wrapPhotoText(ctx, text, x, y, maxWidth, lineHeight) {
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+
+    for (const word of words) {
+        const testLine = line ? `${line} ${word}` : word;
+        const metrics = ctx.measureText(testLine);
+
+        if (metrics.width > maxWidth && line) {
+            lines.push(line);
+            line = word;
+        } else {
+            line = testLine;
+        }
+    }
+
+    if (line) {
+        lines.push(line);
+    }
+
+    const startY = y - ((lines.length - 1) * lineHeight) / 2;
+
+    lines.forEach((lineText, index) => {
+        const lineY = startY + index * lineHeight;
+
+        ctx.strokeText(lineText, x, lineY);
+        ctx.fillText(lineText, x, lineY);
+    });
+}
+
+async function sendEditedPhoto() {
+    if (!currentChatId || !photoEditFile) return;
+
+    const sendBtn = document.getElementById('photoEditorSendBtn');
+
+    if (sendBtn) {
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Отправка...';
+    }
+
+    try {
+        applyPhotoCropToCanvas();
+
+        const canvas = document.getElementById('photoEditCanvas');
+
+        if (!canvas || canvas.width === 0 || canvas.height === 0) {
+            toast('Фото не готово');
+            return;
+        }
+
+        const blob = await new Promise(resolve => {
+            canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY);
+        });
+
+        if (!blob) {
+            toast('Ошибка подготовки фото');
+            return;
+        }
+
+        await sendImageBlobToChat(blob);
+
+        cleanupPhotoEditor(true);
+
+        if (photoEditQueue.length > 0) {
+            openNextPhotoEditor();
+        } else {
+            closePhotoEditor(false);
+        }
+
+    } catch (e) {
+        console.error('sendEditedPhoto error:', e);
+        toast('Ошибка отправки фото');
+    } finally {
+        if (sendBtn) {
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Отправить';
+        }
+    }
+}
+
+async function uploadImageBlobToStorage(blob) {
+    const safeName = `${currentUser.uid}_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+
+    const fileRef = storage.ref().child(`images/${safeName}`);
+
+    const snapshot = await fileRef.put(blob, {
+        contentType: 'image/jpeg',
+        cacheControl: 'public,max-age=31536000'
+    });
+
+    return await snapshot.ref.getDownloadURL();
+}
+
+async function sendImageBlobToChat(blob) {
+    if (!currentChatId) return;
 
     if (!(await canSendToCurrentChat())) {
         toast('Нет права публиковать в канал');
@@ -2960,57 +3507,51 @@ async function sendImages(files) {
     const sendBtn = document.getElementById('sendBtn');
     const uploadBtn = document.getElementById('imageUploadBtn');
 
-    sendBtn.disabled = true;
-    uploadBtn.disabled = true;
+    if (sendBtn) sendBtn.disabled = true;
+    if (uploadBtn) uploadBtn.disabled = true;
 
     try {
-        for (const file of files) {
-            if (!file.type.startsWith('image/')) {
-                toast('Можно только изображения');
-                continue;
-            }
+        const url = await uploadImageBlobToStorage(blob);
 
-            const url = await uploadFileToStorage(file, 'images');
+        await db.collection('chats').doc(currentChatId)
+            .collection('messages')
+            .add({
+                text: '',
+                imageUrl: url,
+                senderId: currentUser.uid,
+                timestamp: new Date(),
+                read: false,
+                type: 'image'
+            });
 
-            await db.collection('chats').doc(currentChatId)
-                .collection('messages')
-                .add({
-                    text: '',
-                    imageUrl: url,
-                    senderId: currentUser.uid,
-                    timestamp: new Date(),
-                    read: false,
-                    type: 'image'
-                });
+        let unreadFor = [];
 
-            let unreadFor = [];
-
-            if (currentChatIsGroup) {
-                unreadFor = currentChatParticipants.filter(id => id !== currentUser.uid);
-            } else if (currentChatUser && !currentChatIsSaved && !currentChatIsSystem) {
-                unreadFor = [currentChatUser.uid];
-            }
-
-            const updateData = {
-                lastMessage: '📷 Фото',
-                lastSender: currentUser.uid,
-                lastMessageTime: new Date()
-            };
-
-            if (unreadFor.length > 0) {
-                updateData.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
-            }
-
-            await db.collection('chats').doc(currentChatId).update(updateData);
+        if (currentChatIsGroup) {
+            unreadFor = currentChatParticipants.filter(id => id !== currentUser.uid);
+        } else if (currentChatUser && !currentChatIsSaved && !currentChatIsSystem) {
+            unreadFor = [currentChatUser.uid];
         }
 
-        toast(files.length === 1 ? 'Фото отправлено' : 'Фото отправлены');
+        const updateData = {
+            lastMessage: '📷 Фото',
+            lastSender: currentUser.uid,
+            lastMessageTime: new Date()
+        };
+
+        if (unreadFor.length > 0) {
+            updateData.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
+        }
+
+        await db.collection('chats').doc(currentChatId).update(updateData);
+
+        toast('Фото отправлено');
+
     } catch (e) {
-        console.error('sendImages error:', e);
+        console.error('sendImageBlobToChat error:', e);
         toast('Ошибка загрузки фото');
     } finally {
-        sendBtn.disabled = false;
-        uploadBtn.disabled = false;
+        if (sendBtn) sendBtn.disabled = false;
+        if (uploadBtn) uploadBtn.disabled = false;
     }
 }
     
@@ -8788,5 +9329,122 @@ body.keyboard-open #chatOverlay #chatInputBar .chat-send {
     }
 })();
 </script>
+    <style id="CONTEGG-PHOTO-EDITOR-STYLES">
+.photo-editor-sheet {
+    max-height: 92vh !important;
+}
+
+.photo-editor-stage {
+    position: relative;
+    width: 100%;
+    min-height: 240px;
+    max-height: 56vh;
+    background: #111;
+    border-radius: 16px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+}
+
+#photoEditImage {
+    display: block;
+    max-width: 100%;
+    max-height: 56vh;
+}
+
+#photoEditCanvas {
+    display: none;
+    max-width: 100%;
+    max-height: 56vh;
+    background: #111;
+    touch-action: none;
+}
+
+.photo-tools {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.photo-tools::-webkit-scrollbar {
+    display: none;
+}
+
+.photo-tool-btn {
+    flex: 0 0 auto;
+    border: 0.5px solid var(--separator);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-radius: 999px;
+    padding: 9px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.photo-tool-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+.photo-marker-settings {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+    background: var(--bg-tertiary);
+    border: 0.5px solid var(--separator);
+    border-radius: 14px;
+    padding: 10px 12px;
+}
+
+#photoMarkerColor {
+    width: 38px;
+    height: 34px;
+    border: none;
+    background: transparent;
+    padding: 0;
+}
+
+#photoMarkerSize {
+    flex: 1;
+}
+
+.photo-text-panel {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+}
+
+.photo-text-panel input {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg-tertiary);
+    border: 0.5px solid var(--separator);
+    color: var(--text-primary);
+    border-radius: 12px;
+    padding: 11px 12px;
+    font-size: 16px;
+    outline: none;
+}
+
+.photo-text-panel button {
+    border: none;
+    border-radius: 12px;
+    padding: 0 12px;
+    background: var(--accent);
+    color: white;
+    font-size: 14px;
+    font-family: inherit;
+}
+</style>
 </body>
 </html>
