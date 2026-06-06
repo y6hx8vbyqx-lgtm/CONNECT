@@ -4914,8 +4914,6 @@ function checkAutoOpen() {
     } catch (e) {}
 }
 
-function logout() {
-    
 async function logout() {
     if (!confirm('Выйти из аккаунта?')) return;
 
@@ -4960,7 +4958,7 @@ async function logout() {
         toast('Ошибка выхода');
     }
 }
-    
+
 window.addEventListener('DOMContentLoaded', () => {
     initSearchScroll();
 });
