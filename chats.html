@@ -1840,7 +1840,7 @@ body {
 
 <div class="tabbar">
     <div class="tab-item active" data-tab="chats" onclick="switchTab('chats')">
-        <i class="fas fa-comments"></i>
+        <i class="fas fa-comment-dots"></i>
         <span>Чаты</span>
     </div>
     <div class="tab-item" data-tab="profile" onclick="switchTab('profile')">
@@ -1889,9 +1889,9 @@ body {
                         <i class="fas fa-microphone"></i>
                     </button>
                 </div>
-                <textarea class="chat-input" id="chatInput" placeholder="Сообщение" rows="1"></textarea>
-                <button class="chat-send" id="sendBtn" onclick="sendMessage()">
-                    <i class="fas fa-arrow-up"></i>
+<button class="chat-send" id="sendBtn" type="button">
+    <i class="fas fa-arrow-up"></i>
+</button>
                 </button>
             </div>
         </div>
@@ -3503,63 +3503,65 @@ function addDateDividerIfNeeded(container, d) {
     container.dataset.lastDateKey = dateKey;
 }
 
-async function loadMessages() {
+ async function loadMessages() {
     const container = document.getElementById('chatMessages');
     if (!currentChatId) return;
-    
+
+    const chatId = currentChatId;
+
     container.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка...</span></div>';
-    
-    const snap = await db.collection('chats').doc(currentChatId)
-        .collection('messages').orderBy('timestamp', 'asc').limit(200).get();
-    
+    container.dataset.lastDateKey = '';
+
+    const snap = await db.collection('chats').doc(chatId)
+        .collection('messages')
+        .orderBy('timestamp', 'asc')
+        .limit(200)
+        .get();
+
+    if (currentChatId !== chatId) return;
+
     container.innerHTML = '';
-    let lastDate = null;
-    
+    container.dataset.lastDateKey = '';
+
     snap.forEach(doc => {
         const msg = doc.data();
         const d = msg.timestamp?.toDate?.() || new Date();
-        const dateKey = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
-        
-        if (!lastDate || lastDate !== dateKey) {
-            const divider = document.createElement('div');
-            divider.className = 'msg-date-divider';
-            divider.innerHTML = `<span>${dateDivider(d)}</span>`;
-            container.appendChild(divider);
-            lastDate = dateKey;
-        }
-        
+
+        addDateDividerIfNeeded(container, d);
         renderMessage(doc.id, msg);
     });
-    
+
     container.scrollTop = container.scrollHeight;
-    
+
     if (chatMessagesListener) chatMessagesListener();
-    chatMessagesListener = db.collection('chats').doc(currentChatId)
-        .collection('messages').orderBy('timestamp', 'asc')
+
+    chatMessagesListener = db.collection('chats').doc(chatId)
+        .collection('messages')
+        .orderBy('timestamp', 'asc')
         .onSnapshot(snap => {
+            if (currentChatId !== chatId) return;
+
             snap.docChanges().forEach(change => {
                 if (change.type === 'added') {
                     const existing = document.querySelector(`[data-msg-id="${change.doc.id}"]`);
+
                     if (!existing) {
                         const msg = change.doc.data();
                         const d = msg.timestamp?.toDate?.() || new Date();
-                        let lastDivider = container.querySelector('.msg-date-divider:last-child');
-                        const lastDateStr = lastDivider ? lastDivider.innerText : '';
-                        const currentDateStr = dateDivider(d);
-                        
-                        if (!lastDivider || lastDateStr !== currentDateStr) {
-                            const divider = document.createElement('div');
-                            divider.className = 'msg-date-divider';
-                            divider.innerHTML = `<span>${currentDateStr}</span>`;
-                            container.appendChild(divider);
-                        }
-                        
+
+                        addDateDividerIfNeeded(container, d);
                         renderMessage(change.doc.id, msg);
+
                         container.scrollTop = container.scrollHeight;
                     }
                 }
+
                 if (change.type === 'modified') {
                     updateMessageReactions(change.doc.id, change.doc.data().reactions);
+                }
+
+                if (change.type === 'removed') {
+                    document.querySelector(`[data-msg-id="${change.doc.id}"]`)?.remove();
                 }
             });
         });
@@ -3676,20 +3678,7 @@ async function playAudio(audioUrl, msgId, duration) {
     };
     
     // ВАЖНО ДЛЯ IPHONE: нужно вызвать play() в ответ на действие пользователя
-
-    function setupKeyboardFix() {
-    if (!window.visualViewport) return;
-
-    function updateKeyboardState() {
-        const keyboardOpen = window.innerHeight - window.visualViewport.height > 120;
-        document.body.classList.toggle('keyboard-open', keyboardOpen);
-    }
-
-    window.visualViewport.addEventListener('resize', updateKeyboardState);
-    window.visualViewport.addEventListener('scroll', updateKeyboardState);
-    updateKeyboardState();
-}
-
+ffocusChatInput
 window.addEventListener('DOMContentLoaded', setupKeyboardFix);
     
     try {
@@ -3788,9 +3777,9 @@ if (msg.audioUrl) {
 
     html += `
         <div class="msg-audio voice-card" data-audio-url="${msg.audioUrl}" data-msg-id="${id}" data-duration="${duration}">
-           <button class="chat-send" id="sendBtn" type="button">
-    <i class="fas fa-arrow-up"></i>
-</button>
+          <button class="audio-play-btn" data-playing="false">
+    <i class="fas fa-play"></i>
+</button>f
 
             <div class="voice-body">
                 <div class="voice-top">
@@ -5336,6 +5325,7 @@ async function logout() {
 
 window.addEventListener('DOMContentLoaded', () => {
     initSearchScroll();
+    setupKeyboardFix();
 });
 
 document.getElementById('imageInput').addEventListener('change', function(e) {
@@ -5442,13 +5432,38 @@ function focusChatInput() {
 
 const sendBtnElement = document.getElementById('sendBtn');
 
-sendBtnElement.addEventListener('pointerdown', function(e) {
-    e.preventDefault();
-    focusChatInput();
-});
+if (sendBtnElement) {
+    sendBtnElement.addEventListener('pointerdown', function(e) {
+        e.preventDefault();
+        focusChatInput();
+    });
+
+    sendBtnElement.addEventListener('click', async function(e) {
+        e.preventDefault();
+
+        focusChatInput();
+        await sendMessage();
+
+        requestAnimationFrame(focusChatInput);
+        setTimeout(focusChatInput, 80);
+    });
+}
 
 sendBtnElement.addEventListener('click', async function(e) {
     e.preventDefault();
+
+    function setupKeyboardFix() {
+    if (!window.visualViewport) return;
+
+    function updateKeyboardState() {
+        const keyboardOpen = window.innerHeight - window.visualViewport.height > 120;
+        document.body.classList.toggle('keyboard-open', keyboardOpen);
+    }
+
+    window.visualViewport.addEventListener('resize', updateKeyboardState);
+    window.visualViewport.addEventListener('scroll', updateKeyboardState);
+    updateKeyboardState();
+}
 
     focusChatInput();
     await sendMessage();
