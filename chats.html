@@ -19,7 +19,7 @@
     <link rel="shortcut icon" href="/favicon.ico">
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css" />f
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
     
     <!-- Firebase (ВСЕ 4 компонента в правильном порядке) -->
@@ -2296,12 +2296,6 @@ body.keyboard-open .chat-input-bar {
 
 <script>
 
-document.addEventListener('click', () => {
-    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-        setTimeout(enterFullscreen, 100);
-    }
-});
-
 const firebaseConfig = {
     apiKey: "AIzaSyBKTPyHKC_Mp1ZO6NDiCaJVz3w1u_PWfUo",
     authDomain: "contegg-b3b4b.firebaseapp.com",
@@ -3046,6 +3040,7 @@ async function openSavedChatUI() {
         document.documentElement.style.setProperty('--vv-offset-top', `${window.visualViewport.offsetTop}px`);
     }
 }, 350);
+}
 
 async function saveMessageToFavorites(messageId, messageData) {
     try {
@@ -3665,6 +3660,9 @@ if (!chatData?.isSystem) {
         if (messages) messages.scrollTop = messages.scrollHeight;
     }, 350);
 }
+}
+
+function closeChat() {
 
 function closeChat() {
     
@@ -4276,8 +4274,16 @@ async function sendMessage() {
             unreadFor = [currentChatUser.uid];
         }
         
+let unreadFor = [];
+
+if (currentChatIsGroup) {
+    unreadFor = currentChatParticipants.filter(id => id !== currentUser.uid);
+} else if (currentChatUser && !currentChatIsSaved && !currentChatIsSystem) {
+    unreadFor = [currentChatUser.uid];
+}
+
 const updateData = {
-    lastMessage: text,
+    lastMessage: '📷 Фото',
     lastSender: currentUser.uid,
     lastMessageTime: new Date()
 };
