@@ -7,10 +7,16 @@
     <title>Contegg · Messenger</title>
     
     <meta name="theme-color" content="#000000">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="application-name" content="Contegg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="application-name" content="Contegg">
+
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/LOGO.png">
+<link rel="icon" type="image/png" href="/LOGO.png">
+<link rel="shortcut icon" href="/favicon.ico">
+    
     
     <!-- PWA иконки -->
     <link rel="manifest" href="/manifest.json">
@@ -9780,7 +9786,6 @@ body.keyboard-open #chatOverlay #chatInputBar .chat-send {
 }
 </style>
     
-</style>
     <button id="enterFullscreenBtn" type="button">
     Во весь экран
 </button>
@@ -9850,9 +9855,9 @@ body.keyboard-open #chatOverlay #chatInputBar .chat-send {
 
     updateButton();
 })();
-</script>
     
 </script>
+    
     <script id="contegg-pwa-register">
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', async () => {
