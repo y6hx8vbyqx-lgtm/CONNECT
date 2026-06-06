@@ -2681,11 +2681,21 @@ body.keyboard-open .chat-input-bar {
 </div>
 
 <div class="context-menu" id="msgContextMenu">
-    <div class="context-item" onclick="ctxReply()"><i class="fas fa-reply"></i> Ответить</div>
-    <div class="context-item" onclick="ctxSaveToFavorites()"><i class="fas fa-bookmark"></i> В избранное</div>
-    <div class="context-item" onclick="ctxReaction()"><i class="fas fa-smile"></i> Реакции</div>
-    <div class="context-item danger" onclick="ctxDelete()"><i class="fas fa-trash"></i> Удалить</div>
-    <div class="context-item danger" id="ctxDeleteForAll" onclick="ctxDeleteForAll()" style="display:none;"><i class="fas fa-trash-alt"></i> Удалить у всех</div>
+    <div class="context-item" onclick="ctxEditMessage()" id="ctxEditItem">
+        <i class="fas fa-pen"></i> Редактировать
+    </div>
+
+    <div class="context-item" onclick="ctxDeleteForMe()">
+        <i class="fas fa-trash"></i> Удалить у себя
+    </div>
+
+    <div class="context-item danger" onclick="ctxDeleteForBoth()" id="ctxDeleteForBothItem">
+        <i class="fas fa-trash-alt"></i> Удалить у обоих
+    </div>
+
+    <div class="context-item" onclick="ctxForwardMessage()">
+        <i class="fas fa-share"></i> Переслать
+    </div>
 </div>
 
 <div class="context-menu" id="chatContextMenu">
@@ -2756,6 +2766,7 @@ let presenceInterval = null;
 let replyingTo = null;
 let selectedMsgId = null;
 let selectedMsgData = null;
+let editingMessage = null;
 let selectedChatContext = null;
 let allUsers = [];
 let selectedGroupUsers = new Set();
@@ -3074,6 +3085,23 @@ function timeAgo(d) {
     if (sec < 86400) return Math.floor(sec / 3600) + ' ч';
     if (sec < 604800) return Math.floor(sec / 86400) + ' д';
     return d.toLocaleDateString('ru', { day: '2-digit', month: '2-digit' });
+}
+
+    function getEditedLabel(msg) {
+    if (!msg.edited) return '';
+
+    const text = (msg.text || '').trim();
+    const hasVisualMedia = !!msg.imageUrl || !!msg.videoUrl;
+
+    // Для короткого текста и компактных медиа лучше писать коротко
+    if (hasVisualMedia && !text) return ' · ИЗМ.';
+    if (text.length > 0 && text.length <= 8) return ' · ИЗМ.';
+
+    return ' · изменено';
+}
+
+function buildMessageTimeText(msg, isOut, d) {
+    return `${timeFormat(d)}${getEditedLabel(msg)}${isOut ? ' · ✓✓' : ''}`;
 }
 
 function timeFormat(d) {
@@ -4276,9 +4304,37 @@ function addDateDividerIfNeeded(container, d) {
                     }
                 }
 
-                if (change.type === 'modified') {
-                    updateMessageReactions(change.doc.id, change.doc.data().reactions);
-                }
+if (change.type === 'modified') {
+    const msg = change.doc.data();
+    const el = document.querySelector(`[data-msg-id="${change.doc.id}"]`);
+
+    if (msg.deletedFor?.includes(currentUser.uid)) {
+        el?.remove();
+        return;
+    }
+
+    if (!el) return;
+
+    const textEl = el.querySelector('.msg-text, .msg-caption');
+
+    if (textEl && msg.text !== undefined) {
+        textEl.textContent = msg.text;
+    }
+
+    const timeEl = el.querySelector('.msg-time');
+
+    if (timeEl) {
+        const d = msg.timestamp?.toDate?.() || new Date();
+        const isOut = msg.senderId === currentUser.uid;
+        const hasVisualMedia = !!msg.imageUrl || !!msg.videoUrl;
+        const hasCaption = !!(msg.text && msg.text.trim());
+
+        timeEl.className = `msg-time ${hasVisualMedia && !hasCaption ? 'msg-time-overlay' : ''}`;
+        timeEl.textContent = buildMessageTimeText(msg, isOut, d);
+    }
+
+    updateMessageReactions(change.doc.id, msg.reactions);
+}
 
                 if (change.type === 'removed') {
                     document.querySelector(`[data-msg-id="${change.doc.id}"]`)?.remove();
@@ -4455,6 +4511,7 @@ function seekAudio(event, msgId, duration) {
     
 function renderMessage(id, msg) {
     const container = document.getElementById('chatMessages');
+    if (msg.deletedFor?.includes(currentUser.uid)) return;
     const isOut = msg.senderId === currentUser.uid;
     const d = msg.timestamp?.toDate?.() || new Date();
     const hasImage = !!msg.imageUrl;
@@ -4575,7 +4632,7 @@ if (msg.text) {
         html += '</div>';
     }
     
-    html += `<div class="msg-time ${hasVisualMedia && !hasCaption ? 'msg-time-overlay' : ''}">${timeFormat(d)}${isOut ? ' · ✓✓' : ''}</div>`;
+    html += `<div class="msg-time ${hasVisualMedia && !hasCaption ? 'msg-time-overlay' : ''}">${buildMessageTimeText(msg, isOut, d)}</div>`;
     div.innerHTML = html;
     
     // Привязываем события для аудио после добавления в DOM
@@ -4712,37 +4769,97 @@ if (msg.text) {
 div.addEventListener('click', (e) => {
     if (e.target.closest('.reaction-badge')) return;
 
+    if (
+        e.target.closest('.audio-play-btn') ||
+        e.target.closest('.audio-waveform') ||
+        e.target.closest('.audio-progress') ||
+        e.target.closest('.msg-video')
+    ) {
+        return;
+    }
+
     const img = e.target.closest('.msg-image');
+
     if (img) {
         e.stopPropagation();
         viewImage(img.src);
         return;
     }
 
+    showMsgActions(e, id, msg);
+});
+
+div.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const p = getPointerPosition(e);
+
+    selectedMsgId = id;
+    selectedMsgData = msg;
+
+    showReactionsPanel(p.x, p.y, id);
+});
+
+let touchTimer = null;
+let touchMoved = false;
+let touchStartX = 0;
+let touchStartY = 0;
+
+div.addEventListener('touchstart', (e) => {
     if (
-        e.target.closest('.msg-video') ||
-        e.target.closest('.msg-audio') ||
-        e.target.closest('.audio-play-btn')
+        e.target.closest('.audio-play-btn') ||
+        e.target.closest('.audio-waveform') ||
+        e.target.closest('.audio-progress') ||
+        e.target.closest('.msg-video')
     ) {
         return;
     }
 
-    e.stopPropagation();
-    showReactionsPanelForMsg(id, msg, e);
-});
-    
-    let timer;
-    div.addEventListener('touchstart', (e) => {
-        if (e.target.closest('.msg-image') || e.target.closest('.msg-video') || e.target.closest('.msg-audio')) return;
-        timer = setTimeout(() => showMsgContext(e, id, msg), 500);
-    });
-    div.addEventListener('touchend', () => clearTimeout(timer));
-    div.addEventListener('touchmove', () => clearTimeout(timer));
-div.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    showMsgContext(e, id, msg);
-});
+    const t = e.touches[0];
+    touchMoved = false;
+    touchStartX = t.clientX;
+    touchStartY = t.clientY;
+
+    touchTimer = setTimeout(() => {
+        touchTimer = null;
+        showMsgActionsAt(touchStartX, touchStartY, id, msg);
+    }, 500);
+}, { passive: true });
+
+div.addEventListener('touchmove', (e) => {
+    const t = e.touches[0];
+
+    if (
+        Math.abs(t.clientX - touchStartX) > 10 ||
+        Math.abs(t.clientY - touchStartY) > 10
+    ) {
+        touchMoved = true;
+
+        if (touchTimer) {
+            clearTimeout(touchTimer);
+            touchTimer = null;
+        }
+    }
+}, { passive: true });
+
+div.addEventListener('touchend', (e) => {
+    if (touchTimer) {
+        clearTimeout(touchTimer);
+        touchTimer = null;
+
+        if (!touchMoved) {
+            const img = e.target.closest('.msg-image');
+
+            if (img) {
+                viewImage(img.src);
+                return;
+            }
+
+            showMsgActionsAt(touchStartX, touchStartY, id, msg);
+        }
+    }
+}, { passive: true });
     
     container.appendChild(div);
 }
@@ -4792,6 +4909,11 @@ async function sendMessage() {
     const text = input.value.trim();
 
     if (!text || !currentChatId) return;
+
+    if (editingMessage) {
+    await saveEditedMessage(text);
+    return;
+}
 
     const btn = document.getElementById('sendBtn');
     const uploadBtn = document.getElementById('imageUploadBtn');
@@ -4860,47 +4982,203 @@ async function sendMessage() {
     }
 }
 
-async function showMsgContext(e, id, msg) {
-    e.preventDefault();
+function getPointerPosition(e) {
+    const touch = e.touches?.[0] || e.changedTouches?.[0];
 
+    return {
+        x: touch?.clientX || e.clientX || window.innerWidth / 2,
+        y: touch?.clientY || e.clientY || window.innerHeight / 2
+    };
+}
+
+async function showMsgActionsAt(x, y, id, msg) {
     window.__justOpenedPanel = true;
     setTimeout(() => window.__justOpenedPanel = false, 250);
 
     selectedMsgId = id;
     selectedMsgData = msg;
 
-    const deleteForAllItem = document.getElementById('ctxDeleteForAll');
+    const menu = document.getElementById('msgContextMenu');
+    const editItem = document.getElementById('ctxEditItem');
+    const deleteBothItem = document.getElementById('ctxDeleteForBothItem');
 
-    let canDeleteForAll = false;
+    const isMyMessage = msg.senderId === currentUser.uid;
+
+    let canDeleteForBoth = false;
 
     if (isCurrentUserDeveloper) {
-        canDeleteForAll = true;
+        canDeleteForBoth = true;
     } else if (currentChatIsGroup) {
-        canDeleteForAll = await isGroupAdmin(currentChatId, currentUser.uid);
+        canDeleteForBoth = await isGroupAdmin(currentChatId, currentUser.uid);
+    } else {
+        canDeleteForBoth = isMyMessage;
     }
 
-    deleteForAllItem.style.display = canDeleteForAll ? 'flex' : 'none';
+    editItem.style.display = isMyMessage && msg.text ? 'flex' : 'none';
+    deleteBothItem.style.display = canDeleteForBoth ? 'flex' : 'none';
 
-    const menu = document.getElementById('msgContextMenu');
-
-    let x = e.touches?.[0]?.clientX || e.clientX || 100;
-    let y = e.touches?.[0]?.clientY || e.clientY || 200;
-
-    menu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
-    menu.style.top = Math.min(y, window.innerHeight - 150) + 'px';
+    menu.style.left = Math.min(x, window.innerWidth - 210) + 'px';
+    menu.style.top = Math.min(y, window.innerHeight - 210) + 'px';
     menu.style.display = 'block';
 
     document.getElementById('reactionsPanel').style.display = 'none';
+}
 
-    const closeHandler = (event) => {
-        if (!menu.contains(event.target)) {
-            menu.style.display = 'none';
-            document.removeEventListener('click', closeHandler);
-        }
+function showMsgActions(e, id, msg) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const p = getPointerPosition(e);
+    showMsgActionsAt(p.x, p.y, id, msg);
+}
+
+async function ctxDeleteForMe() {
+    document.getElementById('msgContextMenu').style.display = 'none';
+
+    if (!selectedMsgId || !currentChatId) return;
+
+    try {
+        await db.collection('chats')
+            .doc(currentChatId)
+            .collection('messages')
+            .doc(selectedMsgId)
+            .update({
+                deletedFor: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
+            });
+
+        document.querySelector(`[data-msg-id="${selectedMsgId}"]`)?.remove();
+
+        toast('Удалено у вас');
+    } catch (e) {
+        console.error(e);
+        toast('Ошибка удаления');
+    }
+}
+
+async function ctxDeleteForBoth() {
+    document.getElementById('msgContextMenu').style.display = 'none';
+
+    if (!selectedMsgId || !selectedMsgData || !currentChatId) return;
+
+    const isMyMessage = selectedMsgData.senderId === currentUser.uid;
+
+    let canDelete = false;
+
+    if (isCurrentUserDeveloper) {
+        canDelete = true;
+    } else if (currentChatIsGroup) {
+        canDelete = await isGroupAdmin(currentChatId, currentUser.uid);
+    } else {
+        canDelete = isMyMessage;
+    }
+
+    if (!canDelete) {
+        toast('Нельзя удалить у обоих');
+        return;
+    }
+
+    if (!confirm('Удалить сообщение у обоих?')) return;
+
+    try {
+        await db.collection('chats')
+            .doc(currentChatId)
+            .collection('messages')
+            .doc(selectedMsgId)
+            .delete();
+
+        document.querySelector(`[data-msg-id="${selectedMsgId}"]`)?.remove();
+
+        toast('Удалено у обоих');
+    } catch (e) {
+        console.error(e);
+        toast('Ошибка удаления');
+    }
+}
+
+function ctxEditMessage() {
+    document.getElementById('msgContextMenu').style.display = 'none';
+
+    if (!selectedMsgId || !selectedMsgData) return;
+
+    if (selectedMsgData.senderId !== currentUser.uid) {
+        toast('Можно редактировать только свои сообщения');
+        return;
+    }
+
+    if (!selectedMsgData.text) {
+        toast('Можно редактировать только текст');
+        return;
+    }
+
+    editingMessage = {
+        id: selectedMsgId,
+        oldText: selectedMsgData.text
     };
 
-    setTimeout(() => document.addEventListener('click', closeHandler), 10);
+    const input = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendBtn');
+
+    input.value = selectedMsgData.text;
+    input.focus();
+
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+
+    sendBtn.innerHTML = '<i class="fas fa-check"></i>';
+
+    document.getElementById('replyPreview').style.display = 'flex';
+    document.getElementById('replyName').textContent = 'Редактирование';
+    document.getElementById('replyText').textContent = selectedMsgData.text.substring(0, 60);
 }
+
+function ctxForwardMessage() {
+    document.getElementById('msgContextMenu').style.display = 'none';
+    toast('Пересылку добавим позже');
+}
+
+function cancelEditMessage() {
+    editingMessage = null;
+
+    const sendBtn = document.getElementById('sendBtn');
+    sendBtn.innerHTML = '<i class="fas fa-arrow-up"></i>';
+
+    document.getElementById('replyPreview').style.display = 'none';
+}
+
+async function saveEditedMessage(newText) {
+    if (!editingMessage || !currentChatId) return;
+
+    const text = newText.trim();
+
+    if (!text) {
+        toast('Сообщение не может быть пустым');
+        return;
+    }
+
+    try {
+        await db.collection('chats')
+            .doc(currentChatId)
+            .collection('messages')
+            .doc(editingMessage.id)
+            .update({
+                text,
+                edited: true,
+                editedAt: new Date()
+            });
+
+        const input = document.getElementById('chatInput');
+        input.value = '';
+        input.style.height = 'auto';
+
+        cancelEditMessage();
+
+        toast('Сообщение изменено');
+    } catch (e) {
+        console.error(e);
+        toast('Ошибка редактирования');
+    }
+}
+    
     function ctxReply() {
     document.getElementById('msgContextMenu').style.display = 'none';
 
@@ -4933,6 +5211,11 @@ async function showMsgContext(e, id, msg) {
 }
 
 function cancelReply() {
+    if (editingMessage) {
+        cancelEditMessage();
+        return;
+    }
+
     replyingTo = null;
     document.getElementById('replyPreview').style.display = 'none';
 }
