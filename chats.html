@@ -1868,6 +1868,28 @@ body {
     color: white;
     font-size: 14px;
 }
+
+        :root {
+    --vv-height: 100dvh;
+    --vv-offset-top: 0px;
+}
+
+/* ВАЖНО: чат должен жить в visible viewport, а не в старом 100dvh */
+.chat-overlay.show {
+    top: var(--vv-offset-top);
+    bottom: auto;
+    height: var(--vv-height);
+}
+
+/* Когда клавиатура открыта — никакого safe-area снизу */
+body.keyboard-open .chat-input-bar {
+    padding-bottom: 6px !important;
+}
+
+/* Чтобы messages не создавали лишнюю пустоту */
+body.keyboard-open .chat-messages {
+    padding-bottom: 6px !important;
+}
         
     /* ========== КОНЕЦ СТИЛЕЙ ДЛЯ ГОЛОСОВЫХ ========== */
     
@@ -5497,13 +5519,33 @@ document.addEventListener('keydown', e => {
 function setupKeyboardFix() {
     if (!window.visualViewport) return;
 
+    const root = document.documentElement;
+    const vv = window.visualViewport;
+
     function updateKeyboardState() {
-        const keyboardOpen = window.innerHeight - window.visualViewport.height > 120;
+        const height = vv.height;
+        const offsetTop = vv.offsetTop || 0;
+
+        root.style.setProperty('--vv-height', `${height}px`);
+        root.style.setProperty('--vv-offset-top', `${offsetTop}px`);
+
+        const keyboardOpen =
+            window.innerHeight - height - offsetTop > 80 ||
+            height < window.innerHeight * 0.8;
+
         document.body.classList.toggle('keyboard-open', keyboardOpen);
+
+        if (keyboardOpen) {
+            root.style.setProperty('--chat-input-bottom', '0px');
+        } else {
+            root.style.setProperty('--chat-input-bottom', 'env(safe-area-inset-bottom, 0px)');
+        }
     }
 
-    window.visualViewport.addEventListener('resize', updateKeyboardState);
-    window.visualViewport.addEventListener('scroll', updateKeyboardState);
+    vv.addEventListener('resize', updateKeyboardState);
+    vv.addEventListener('scroll', updateKeyboardState);
+    window.addEventListener('resize', updateKeyboardState);
+
     updateKeyboardState();
 }
 
