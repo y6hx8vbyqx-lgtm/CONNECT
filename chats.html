@@ -66,7 +66,8 @@
             --saved: #ff9f0a;
             --separator: rgba(84, 84, 88, 0.65);
             --tab-bar-bg: rgba(28, 28, 30, 0.92);
-            --safe-bottom: env(safe-area-inset-bottom, 20px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --chat-input-bottom: var(--safe-bottom);
             --safe-top: env(safe-area-inset-top, 0px);
             --navbar-height: 44px;
         }
@@ -710,17 +711,22 @@
             z-index: 3001;
         }
 
-        .chat-input-bar {
-            background: rgba(0,0,0,0.8);
-            backdrop-filter: blur(20px);
-            padding: 8px 10px;
-            display: flex;
-            gap: 8px;
-            align-items: flex-end;
-            border-top: 0.5px solid var(--separator);
-            flex-shrink: 0;
-            padding-bottom: calc(8px + var(--safe-bottom));
-        }
+    .chat-input-bar {
+    background: rgba(0,0,0,0.88);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 8px 10px;
+    padding-bottom: calc(6px + var(--chat-input-bottom));
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    border-top: 0.5px solid var(--separator);
+    flex-shrink: 0;
+}
+
+body.keyboard-open {
+    --chat-input-bottom: 0px;
+}
         .reply-preview {
             background: var(--bg-tertiary);
             border-left: 3px solid var(--accent);
@@ -3473,6 +3479,30 @@ async function markAsRead() {
     }
 }
 
+function getDateKey(d) {
+    return [
+        d.getFullYear(),
+        String(d.getMonth() + 1).padStart(2, '0'),
+        String(d.getDate()).padStart(2, '0')
+    ].join('-');
+}
+
+function addDateDividerIfNeeded(container, d) {
+    const dateKey = getDateKey(d);
+
+    if (container.dataset.lastDateKey === dateKey) {
+        return;
+    }
+
+    const divider = document.createElement('div');
+    divider.className = 'msg-date-divider';
+    divider.dataset.dateKey = dateKey;
+    divider.innerHTML = `<span>${dateDivider(d)}</span>`;
+
+    container.appendChild(divider);
+    container.dataset.lastDateKey = dateKey;
+}
+
 async function loadMessages() {
     const container = document.getElementById('chatMessages');
     if (!currentChatId) return;
@@ -3646,6 +3676,22 @@ async function playAudio(audioUrl, msgId, duration) {
     };
     
     // ВАЖНО ДЛЯ IPHONE: нужно вызвать play() в ответ на действие пользователя
+
+    function setupKeyboardFix() {
+    if (!window.visualViewport) return;
+
+    function updateKeyboardState() {
+        const keyboardOpen = window.innerHeight - window.visualViewport.height > 120;
+        document.body.classList.toggle('keyboard-open', keyboardOpen);
+    }
+
+    window.visualViewport.addEventListener('resize', updateKeyboardState);
+    window.visualViewport.addEventListener('scroll', updateKeyboardState);
+    updateKeyboardState();
+}
+
+window.addEventListener('DOMContentLoaded', setupKeyboardFix);
+    
     try {
         await audio.play();
     } catch(e) {
@@ -3742,9 +3788,9 @@ if (msg.audioUrl) {
 
     html += `
         <div class="msg-audio voice-card" data-audio-url="${msg.audioUrl}" data-msg-id="${id}" data-duration="${duration}">
-            <button class="audio-play-btn" data-playing="false">
-                <i class="fas fa-play"></i>
-            </button>
+           <button class="chat-send" id="sendBtn" type="button">
+    <i class="fas fa-arrow-up"></i>
+</button>
 
             <div class="voice-body">
                 <div class="voice-top">
@@ -4037,7 +4083,7 @@ async function sendMessage() {
     uploadBtn.disabled = false;
     videoBtn.disabled = false;
     audioBtn.disabled = false;
-    document.getElementById('chatInput').focus();
+    focusChatInput();
 }
 
 function showMsgContext(e, id, msg) {
@@ -5381,6 +5427,34 @@ document.addEventListener('keydown', e => {
         document.getElementById('addAccountModal').classList.remove('show');
         document.getElementById('reactionsPanel').style.display = 'none';
     }
+});
+
+function focusChatInput() {
+    const input = document.getElementById('chatInput');
+    if (!input) return;
+
+    try {
+        input.focus({ preventScroll: true });
+    } catch (e) {
+        input.focus();
+    }
+}
+
+const sendBtnElement = document.getElementById('sendBtn');
+
+sendBtnElement.addEventListener('pointerdown', function(e) {
+    e.preventDefault();
+    focusChatInput();
+});
+
+sendBtnElement.addEventListener('click', async function(e) {
+    e.preventDefault();
+
+    focusChatInput();
+    await sendMessage();
+
+    requestAnimationFrame(focusChatInput);
+    setTimeout(focusChatInput, 80);
 });
 
 console.log('✅ Contegg Messenger · Полная версия с фото, видео и голосовыми');
