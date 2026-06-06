@@ -1890,6 +1890,31 @@ body.keyboard-open .chat-input-bar {
 body.keyboard-open .chat-messages {
     padding-bottom: 6px !important;
 }
+
+/* ✅ УБИРАЕМ ЧЁРНЫЙ НИЗ ПОД СТРОКОЙ ВВОДА ПРИ КЛАВИАТУРЕ */
+body.keyboard-open .chat-input-bar {
+    padding-top: 6px !important;
+    padding-bottom: 0px !important;
+}
+
+body.keyboard-open .chat-input-row {
+    padding-bottom: 0px !important;
+    margin-bottom: 0px !important;
+}
+
+body.keyboard-open .chat-input-bar > div {
+    padding-bottom: 0px !important;
+    margin-bottom: 0px !important;
+}
+
+body.keyboard-open .chat-input {
+    margin-bottom: 0px !important;
+}
+
+body.keyboard-open .media-buttons,
+body.keyboard-open .chat-send {
+    margin-bottom: 0px !important;
+}
         
     /* ========== КОНЕЦ СТИЛЕЙ ДЛЯ ГОЛОСОВЫХ ========== */
     
@@ -1928,7 +1953,7 @@ body.keyboard-open .chat-messages {
 
 <div class="tabbar">
     <div class="tab-item active" data-tab="chats" onclick="switchTab('chats')">
-        <i class="fas fa-comment-dots"></i>
+        <i class="fas fa-comment"></i>
         <span>Чаты</span>
         
     </div>
@@ -5517,36 +5542,37 @@ document.addEventListener('keydown', e => {
 });
 
 function setupKeyboardFix() {
-    if (!window.visualViewport) return;
+    const input = document.getElementById('chatInput');
 
-    const root = document.documentElement;
-    const vv = window.visualViewport;
-
-    function updateKeyboardState() {
-        const height = vv.height;
-        const offsetTop = vv.offsetTop || 0;
-
-        root.style.setProperty('--vv-height', `${height}px`);
-        root.style.setProperty('--vv-offset-top', `${offsetTop}px`);
-
-        const keyboardOpen =
-            window.innerHeight - height - offsetTop > 80 ||
-            height < window.innerHeight * 0.8;
-
-        document.body.classList.toggle('keyboard-open', keyboardOpen);
-
-        if (keyboardOpen) {
-            root.style.setProperty('--chat-input-bottom', '0px');
-        } else {
-            root.style.setProperty('--chat-input-bottom', 'env(safe-area-inset-bottom, 0px)');
-        }
+    function setKeyboardOpen(open) {
+        document.body.classList.toggle('keyboard-open', open);
     }
 
-    vv.addEventListener('resize', updateKeyboardState);
-    vv.addEventListener('scroll', updateKeyboardState);
-    window.addEventListener('resize', updateKeyboardState);
+    if (input) {
+        input.addEventListener('focus', () => {
+            setKeyboardOpen(true);
+        });
 
-    updateKeyboardState();
+        input.addEventListener('blur', () => {
+            setTimeout(() => {
+                setKeyboardOpen(false);
+            }, 150);
+        });
+    }
+
+    if (window.visualViewport) {
+        function updateKeyboardState() {
+            const keyboardOpen =
+                window.visualViewport.height < window.innerHeight - 80 ||
+                document.activeElement === input;
+
+            setKeyboardOpen(keyboardOpen);
+        }
+
+        window.visualViewport.addEventListener('resize', updateKeyboardState);
+        window.visualViewport.addEventListener('scroll', updateKeyboardState);
+        updateKeyboardState();
+    }
 }
 
 function focusChatInput() {
