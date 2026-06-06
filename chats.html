@@ -4692,7 +4692,7 @@ function seekAudio(event, msgId, duration) {
 function renderMessage(id, msg) {
     const container = document.getElementById('chatMessages');
     if (msg.deletedFor?.includes(currentUser.uid)) return;
-    const isOut = msg.senderId === currentUser.uid;
+    const isOut = currentChatIsChannel ? false : msg.senderId === currentUser.uid;
     const d = msg.timestamp?.toDate?.() || new Date();
     const hasImage = !!msg.imageUrl;
 const hasVideo = !!msg.videoUrl;
@@ -5189,19 +5189,50 @@ async function showMsgActionsAt(x, y, id, msg) {
 
     const isMyMessage = msg.senderId === currentUser.uid;
 
-    let canDeleteForBoth = false;
+const deleteForMeItem = document.querySelector('#msgContextMenu .context-item[onclick="ctxDeleteForMe()"]');
 
-    if (isCurrentUserDeveloper) {
-        canDeleteForBoth = true;
-    } else if (currentChatIsGroup) {
-        canDeleteForBoth = await isGroupAdmin(currentChatId, currentUser.uid);
-    } else {
-        canDeleteForBoth = isMyMessage;
+let canDeleteForAll = false;
+
+if (currentChatIsChannel) {
+    const chatDoc = await db.collection('chats').doc(currentChatId).get();
+    const chat = chatDoc.data();
+
+    const isOwner = chat?.ownerId === currentUser.uid;
+    const isAdmin = (chat?.admins || []).includes(currentUser.uid);
+
+    canDeleteForAll = isOwner || isAdmin || isCurrentUserDeveloper;
+
+    // В канале не должно быть "удалить у себя"
+    if (deleteForMeItem) {
+        deleteForMeItem.style.display = 'none';
     }
 
-    editItem.style.display = isMyMessage && msg.text ? 'flex' : 'none';
-    deleteBothItem.style.display = canDeleteForBoth ? 'flex' : 'none';
+    // В канале пункт называется именно "Удалить у всех"
+    deleteBothItem.innerHTML = '<i class="fas fa-trash-alt"></i> Удалить у всех';
+    deleteBothItem.style.display = canDeleteForAll ? 'flex' : 'none';
 
+    // Редактирование пока оставляем только автору текста
+    editItem.style.display = isMyMessage && msg.text ? 'flex' : 'none';
+
+} else {
+    if (deleteForMeItem) {
+        deleteForMeItem.style.display = 'flex';
+    }
+
+    if (isCurrentUserDeveloper) {
+        canDeleteForAll = true;
+    } else if (currentChatIsGroup) {
+        canDeleteForAll = await isGroupAdmin(currentChatId, currentUser.uid);
+    } else {
+        canDeleteForAll = isMyMessage;
+    }
+
+    deleteBothItem.innerHTML = '<i class="fas fa-trash-alt"></i> Удалить у обоих';
+    deleteBothItem.style.display = canDeleteForAll ? 'flex' : 'none';
+
+    editItem.style.display = isMyMessage && msg.text ? 'flex' : 'none';
+}
+    
     menu.style.left = Math.min(x, window.innerWidth - 210) + 'px';
     menu.style.top = Math.min(y, window.innerHeight - 210) + 'px';
     menu.style.display = 'block';
@@ -5249,20 +5280,28 @@ async function ctxDeleteForBoth() {
 
     let canDelete = false;
 
-    if (isCurrentUserDeveloper) {
-        canDelete = true;
-    } else if (currentChatIsGroup) {
-        canDelete = await isGroupAdmin(currentChatId, currentUser.uid);
-    } else {
-        canDelete = isMyMessage;
-    }
+if (isCurrentUserDeveloper) {
+    canDelete = true;
+} else if (currentChatIsChannel) {
+    const chatDoc = await db.collection('chats').doc(currentChatId).get();
+    const chat = chatDoc.data();
+
+    const isOwner = chat?.ownerId === currentUser.uid;
+    const isAdmin = (chat?.admins || []).includes(currentUser.uid);
+
+    canDelete = isOwner || isAdmin;
+} else if (currentChatIsGroup) {
+    canDelete = await isGroupAdmin(currentChatId, currentUser.uid);
+} else {
+    canDelete = isMyMessage;
+}
 
     if (!canDelete) {
         toast('Нельзя удалить у обоих');
         return;
     }
 
-    if (!confirm('Удалить сообщение у обоих?')) return;
+if (!confirm(currentChatIsChannel ? 'Удалить пост у всех?' : 'Удалить сообщение у обоих?')) return;
 
     try {
         await db.collection('chats')
@@ -5273,7 +5312,7 @@ async function ctxDeleteForBoth() {
 
         document.querySelector(`[data-msg-id="${selectedMsgId}"]`)?.remove();
 
-        toast('Удалено у обоих');
+toast(currentChatIsChannel ? 'Пост удалён у всех' : 'Удалено у обоих');
     } catch (e) {
         console.error(e);
         toast('Ошибка удаления');
