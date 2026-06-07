@@ -4787,8 +4787,6 @@ async function loadChats() {
     try {
 const snap = await db.collection('chats')
     .where('participants', 'array-contains', currentUser.uid)
-    .orderBy('lastMessageTime', 'desc')
-    .limit(80)
     .get();
         let chats = [];
         
@@ -4987,21 +4985,14 @@ function startGlobalChatsListener() {
 
     let firstSnapshot = true;
 
-    chatsGlobalListener = db.collection('chats')
-        .where('participants', 'array-contains', currentUser.uid)
-        .onSnapshot(() => {
-            // Первый snapshot приходит сразу после подключения.
-            // У нас loadChats уже был, поэтому пропускаем.
-            if (firstSnapshot) {
-                firstSnapshot = false;
-                return;
-            }
-
-            clearTimeout(loadChatsTimer);
-            loadChatsTimer = setTimeout(loadChats, 700);
-        }, error => {
-            console.error('Ошибка слушателя чатов:', error);
-        });
+ chatsGlobalListener = db.collection('chats')
+    .where('participants', 'array-contains', currentUser.uid)
+    .onSnapshot(() => {
+        clearTimeout(loadChatsTimer);
+        loadChatsTimer = setTimeout(loadChats, 250);
+    }, error => {
+        console.error('Ошибка слушателя чатов:', error);
+    });
 }
 function showChatContext(e, chatId, chatType) {
     e.preventDefault();
@@ -8889,18 +8880,10 @@ async function checkAutoOpen() {
             return;
         }
 
-        if (chat.isSaved) {
-            currentChatId = chatId;
-            currentChatIsSaved = true;
-            currentChatIsGroup = false;
-            currentChatIsSystem = false;
-            currentChatIsChannel = false;
-            currentChatUser = null;
-
-            clearChatNavbarActions();
-            await openSavedChatUI();
-            return;
-        }
+if (chat.isSaved) {
+    history.replaceState(null, '', location.pathname);
+    return;
+}
 
         if (chat.isChannel || chat.type === 'channel') {
             await openChannel(chatId);
