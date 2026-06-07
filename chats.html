@@ -2873,6 +2873,10 @@ body.keyboard-open .chat-input-bar {
 </div>
 
 <div class="context-menu" id="msgContextMenu">
+    <div class="context-item" onclick="ctxReply()" id="ctxReplyItem">
+        <i class="fas fa-reply"></i> Ответить
+    </div>
+
     <div class="context-item" onclick="ctxEditMessage()" id="ctxEditItem">
         <i class="fas fa-pen"></i> Редактировать
     </div>
@@ -5757,12 +5761,20 @@ const hasCaption = !!(msg.text && msg.text.trim());
     
     let html = '';
     
-    if (msg.replyTo) {
-        html += `<div class="msg-reply">
-            <div class="msg-reply-name">${msg.replyTo.senderId === currentUser.uid ? 'Вы' : 'Пользователь'}</div>
-            <div class="msg-reply-text">${esc(msg.replyTo.text || 'Фото')}</div>
-        </div>`;
-    }
+if (msg.replyTo) {
+    const replyName = msg.replyTo.senderName || (
+        msg.replyTo.senderId === currentUser.uid ? 'Вы' : 'Пользователь'
+    );
+
+    const replyText = msg.replyTo.text || 'Сообщение';
+
+    html += `
+        <div class="msg-reply">
+            <div class="msg-reply-name">${esc(replyName)}</div>
+            <div class="msg-reply-text">${esc(replyText)}</div>
+        </div>
+    `;
+}
     
     if (msg.isSystemMessage && msg.senderName) {
         html += `<div style="font-size:11px;color:var(--accent);margin-bottom:4px;font-weight:500;">${esc(msg.senderName)}</div>`;
@@ -6006,14 +6018,18 @@ if (msg.text) {
         });
     });
     
+// ===== ПК: ЛКМ = реакции, ПКМ = контекстное меню =====
+
 div.addEventListener('click', (e) => {
+    let ignoreNextClick = false;м
     if (e.target.closest('.reaction-badge')) return;
 
     if (
         e.target.closest('.audio-play-btn') ||
         e.target.closest('.audio-waveform') ||
         e.target.closest('.audio-progress') ||
-        e.target.closest('.msg-video')
+        e.target.closest('.msg-video') ||
+        e.target.closest('.post-comments-btn')
     ) {
         return;
     }
@@ -6026,10 +6042,6 @@ div.addEventListener('click', (e) => {
         return;
     }
 
-    showMsgActions(e, id, msg);
-});
-
-div.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -6041,35 +6053,53 @@ div.addEventListener('contextmenu', (e) => {
     showReactionsPanel(p.x, p.y, id);
 });
 
+div.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const p = getPointerPosition(e);
+
+    selectedMsgId = id;
+    selectedMsgData = msg;
+
+    showMsgActionsAt(p.x, p.y, id, msg);
+});
+
+
+// ===== ТЕЛЕФОН: короткий тап = реакции, долгий тап = контекстное меню =====
+
 let touchTimer = null;
 let touchMoved = false;
 let touchStartX = 0;
 let touchStartY = 0;
+let ignoreNextClick = false;
 
 div.addEventListener('touchstart', (e) => {
     if (
         e.target.closest('.audio-play-btn') ||
         e.target.closest('.audio-waveform') ||
         e.target.closest('.audio-progress') ||
-        e.target.closest('.msg-video')
+        e.target.closest('.msg-video') ||
+        e.target.closest('.post-comments-btn')
     ) {
         return;
     }
 
     const t = e.touches[0];
+
     touchMoved = false;
     touchStartX = t.clientX;
     touchStartY = t.clientY;
 
-touchTimer = setTimeout(() => {
-    touchTimer = null;
+    touchTimer = setTimeout(() => {
+        touchTimer = null;
+        ignoreNextClick = true;
 
-    selectedMsgId = id;
-    selectedMsgData = msg;
+        selectedMsgId = id;
+        selectedMsgData = msg;
 
-    showReactionsPanel(touchStartX, touchStartY, id);
-}, 500);
-    
+        showMsgActionsAt(touchStartX, touchStartY, id, msg);
+    }, 500);
 }, { passive: true });
 
 div.addEventListener('touchmove', (e) => {
@@ -6094,6 +6124,8 @@ div.addEventListener('touchend', (e) => {
         touchTimer = null;
 
         if (!touchMoved) {
+            ignoreNextClick = true;
+
             const img = e.target.closest('.msg-image');
 
             if (img) {
@@ -6101,12 +6133,17 @@ div.addEventListener('touchend', (e) => {
                 return;
             }
 
-            showMsgActionsAt(touchStartX, touchStartY, id, msg);
+            selectedMsgId = id;
+            selectedMsgData = msg;
+
+            showReactionsPanel(touchStartX, touchStartY, id);
         }
     }
+
+    setTimeout(() => {
+        ignoreNextClick = false;
+    }, 350);
 }, { passive: true });
-    
-    container.appendChild(div);
 }
     
 function updateMessageReactions(id, reactions) {
@@ -6362,15 +6399,16 @@ async function sendMessage() {
         type: 'text'
     };
 
-    if (replyingTo) {
-        msgData.replyTo = {
-            messageId: replyingTo.id,
-            senderId: replyingTo.senderId,
-            text: replyingTo.text
-        };
+if (replyingTo) {
+    msgData.replyTo = {
+        messageId: replyingTo.id,
+        senderId: replyingTo.senderId || '',
+        senderName: replyingTo.senderName || 'Пользователь',
+        text: replyingTo.text || 'Сообщение'
+    };
 
-        cancelReply();
-    }
+    cancelReply();
+}
 
     try {
         await db.collection('chats').doc(currentChatId)
@@ -6644,7 +6682,7 @@ async function saveEditedMessage(newText) {
     }
 }
     
-    function ctxReply() {
+async function ctxReply() {
     document.getElementById('msgContextMenu').style.display = 'none';
 
     if (!selectedMsgId || !selectedMsgData) return;
@@ -6661,20 +6699,35 @@ async function saveEditedMessage(newText) {
         replyText = '🎤 Голосовое';
     }
 
+    let senderName = 'Пользователь';
+
+    if (selectedMsgData.senderId === currentUser.uid) {
+        senderName = 'Вы';
+    } else if (selectedMsgData.senderId === 'system') {
+        senderName = 'Contegg';
+    } else {
+        try {
+            const u = await getUserInfo(selectedMsgData.senderId);
+            senderName = u.displayName || u.username || 'Пользователь';
+        } catch (e) {
+            senderName = 'Пользователь';
+        }
+    }
+
     replyingTo = {
         id: selectedMsgId,
         text: replyText,
-        senderId: selectedMsgData.senderId
+        senderId: selectedMsgData.senderId,
+        senderName
     };
 
     document.getElementById('replyPreview').style.display = 'flex';
-    document.getElementById('replyName').textContent =
-        selectedMsgData.senderId === currentUser.uid ? 'Вы' : 'Пользователь';
-    document.getElementById('replyText').textContent = replyText.substring(0, 60);
+    document.getElementById('replyName').textContent = senderName;
+    document.getElementById('replyText').textContent = replyText.substring(0, 80);
 
     focusChatInput();
 }
-
+    
 function cancelReply() {
     if (editingMessage) {
         cancelEditMessage();
