@@ -2974,6 +2974,7 @@ let cropper = null;
 let groupCropper = null;
 let groupSettingsCropper = null;
 let usersCache = {};
+let usersCachePromises = {};
 let savedChatId = null;
 let groupSettingsAvatarBase64 = null;
 let isCurrentUserDeveloper = false;
@@ -4628,15 +4629,19 @@ auth.onAuthStateChanged(async user => {
     checkIsDeveloper();
     startPresenceTracking();
 
-    await loadAdminUsers();
-    await getOrCreateSavedChat();
-    await getOrCreateSystemChat(currentUser.uid);
-    await loadChats();
+await loadAdminUsers();
+await loadChats();
 
-    startGlobalChatsListener();
-    loadAllUsers();
-    loadLinkedAccounts();
-    checkAutoOpen();
+startGlobalChatsListener();
+
+setTimeout(() => {
+    getOrCreateSavedChat().catch(console.error);
+    getOrCreateSystemChat(currentUser.uid).catch(console.error);
+    loadAllUsers().catch(console.error);
+}, 1200);
+
+loadLinkedAccounts();
+checkAutoOpen();
 
     isSwitchingAccount = false;
 });
@@ -4672,15 +4677,60 @@ async function loadAdminUsers() {
 }
 
 async function getUserInfo(uid) {
-    if (uid === 'system') return { uid: 'system', username: 'Contegg', displayName: 'Contegg', avatarBase64: null, bio: '', email: '', isAdmin: true, isSystem: true };
-    if (usersCache[uid]) return usersCache[uid];
-    const snap = await db.collection('users').doc(uid).get();
-    const data = snap.exists ? snap.data() : { 
-        uid, username: 'user', displayName: 'Пользователь', 
-        avatarBase64: null, bio: '', email: '', isAdmin: false 
-    };
-    usersCache[uid] = data;
-    return data;
+    if (uid === 'system') {
+        return {
+            uid: 'system',
+            username: 'Contegg',
+            displayName: 'Contegg',
+            avatarBase64: null,
+            bio: '',
+            email: '',
+            isAdmin: true,
+            isSystem: true
+        };
+    }
+
+    if (usersCache[uid]) {
+        return usersCache[uid];
+    }
+
+    if (usersCachePromises[uid]) {
+        return usersCachePromises[uid];
+    }
+
+    usersCachePromises[uid] = db.collection('users').doc(uid).get()
+        .then(snap => {
+            const data = snap.exists ? snap.data() : {
+                uid,
+                username: 'user',
+                displayName: 'Пользователь',
+                avatarBase64: null,
+                bio: '',
+                email: '',
+                isAdmin: false
+            };
+
+            usersCache[uid] = data;
+            delete usersCachePromises[uid];
+
+            return data;
+        })
+        .catch(e => {
+            delete usersCachePromises[uid];
+            console.error('getUserInfo error:', e);
+
+            return {
+                uid,
+                username: 'user',
+                displayName: 'Пользователь',
+                avatarBase64: null,
+                bio: '',
+                email: '',
+                isAdmin: false
+            };
+        });
+
+    return usersCachePromises[uid];
 }
 
 async function loadAllUsers() {
@@ -4735,8 +4785,10 @@ function initSearchScroll() {
 async function loadChats() {
     const list = document.getElementById('chatsList');
     try {
-       const snap = await db.collection('chats')
+const snap = await db.collection('chats')
     .where('participants', 'array-contains', currentUser.uid)
+    .orderBy('lastMessageTime', 'desc')
+    .limit(80)
     .get();
         let chats = [];
         
@@ -4933,16 +4985,24 @@ function startGlobalChatsListener() {
         chatsGlobalListener = null;
     }
 
+    let firstSnapshot = true;
+
     chatsGlobalListener = db.collection('chats')
         .where('participants', 'array-contains', currentUser.uid)
         .onSnapshot(() => {
+            // Первый snapshot приходит сразу после подключения.
+            // У нас loadChats уже был, поэтому пропускаем.
+            if (firstSnapshot) {
+                firstSnapshot = false;
+                return;
+            }
+
             clearTimeout(loadChatsTimer);
-            loadChatsTimer = setTimeout(loadChats, 250);
+            loadChatsTimer = setTimeout(loadChats, 700);
         }, error => {
             console.error('Ошибка слушателя чатов:', error);
         });
 }
-
 function showChatContext(e, chatId, chatType) {
     e.preventDefault();
     window.__justOpenedPanel = true;
@@ -8784,6 +8844,9 @@ async function checkAutoOpen() {
         const chatIdFromUrl = params.get('chat');
 
         if (chatIdFromUrl) {
+            // ВАЖНО: убираем ?chat=... из адреса, чтобы при следующем заходе чат не открывался снова
+            window.history.replaceState({}, '', location.pathname);
+
             setTimeout(() => openChatById(chatIdFromUrl), 600);
             return;
         }
