@@ -5487,7 +5487,7 @@ function addDateDividerIfNeeded(container, d) {
 
     const snap = await db.collection('chats').doc(chatId)
         .collection('messages')
-        .orderBy('timestamp', 'asc')
+        .orderBy('timestamp', 'desc')
         .limit(200)
         .get();
 
@@ -5496,13 +5496,15 @@ function addDateDividerIfNeeded(container, d) {
     container.innerHTML = '';
     container.dataset.lastDateKey = '';
 
-    snap.forEach(doc => {
-        const msg = doc.data();
-        const d = msg.timestamp?.toDate?.() || new Date();
+const docs = snap.docs.slice().reverse();
 
-        addDateDividerIfNeeded(container, d);
-        renderMessage(doc.id, msg);
-    });
+docs.forEach(doc => {
+    const msg = doc.data();
+    const d = msg.timestamp?.toDate?.() || new Date();
+
+    addDateDividerIfNeeded(container, d);
+    renderMessage(doc.id, msg);
+});
 
     container.scrollTop = container.scrollHeight;
 
