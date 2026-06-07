@@ -6022,8 +6022,10 @@ if (msg.text) {
     
 // ===== ПК: ЛКМ = реакции, ПКМ = контекстное меню =====
 
+let ignoreNextClick = false;
+
 div.addEventListener('click', (e) => {
-    let ignoreNextClick = false;м
+    if (ignoreNextClick) return;
     if (e.target.closest('.reaction-badge')) return;
 
     if (
@@ -6074,7 +6076,6 @@ let touchTimer = null;
 let touchMoved = false;
 let touchStartX = 0;
 let touchStartY = 0;
-let ignoreNextClick = false;
 
 div.addEventListener('touchstart', (e) => {
     if (
@@ -6146,6 +6147,8 @@ div.addEventListener('touchend', (e) => {
         ignoreNextClick = false;
     }, 350);
 }, { passive: true });
+
+container.appendChild(div);
 }
     
 function updateMessageReactions(id, reactions) {
