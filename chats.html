@@ -4890,10 +4890,17 @@ function showChatOverlay() {
     if (!overlay) return;
 
     document.body.classList.add('chat-open');
+
+    if (typeof updateMobileKeyboardViewport === 'function') {
+        updateMobileKeyboardViewport();
+    }
+
     overlay.classList.add('show');
 
-    setTimeout(updateKeyboardState, 50);
-    setTimeout(updateKeyboardState, 250);
+    if (typeof updateMobileKeyboardViewport === 'function') {
+        setTimeout(updateMobileKeyboardViewport, 80);
+        setTimeout(updateMobileKeyboardViewport, 250);
+    }
 }
 
 function hideChatOverlay() {
@@ -4905,6 +4912,9 @@ function hideChatOverlay() {
     document.body.classList.remove('chat-open');
     document.body.classList.remove('keyboard-open');
     document.body.classList.remove('keyboard-closing');
+
+    document.documentElement.style.setProperty('--contegg-chat-vh', '100dvh');
+    document.documentElement.style.setProperty('--contegg-chat-top', '0px');
 }
 
   function getChannelRights(chat) {
@@ -8939,6 +8949,55 @@ if (postCommentInput) {
         }
     });
 }
+
+    function updateMobileKeyboardViewport() {
+    const root = document.documentElement;
+
+    if (!window.visualViewport) {
+        root.style.setProperty('--contegg-chat-vh', '100dvh');
+        root.style.setProperty('--contegg-chat-top', '0px');
+        document.body.classList.remove('keyboard-open');
+        return;
+    }
+
+    const vv = window.visualViewport;
+    const layoutHeight = window.innerHeight;
+    const keyboardHeight = Math.max(0, layoutHeight - vv.height - vv.offsetTop);
+    const keyboardOpen = keyboardHeight > 80;
+
+    root.style.setProperty('--contegg-chat-vh', `${vv.height}px`);
+    root.style.setProperty('--contegg-chat-top', `${vv.offsetTop}px`);
+
+    document.body.classList.toggle('keyboard-open', keyboardOpen);
+
+    const messages = document.getElementById('chatMessages');
+    const overlay = document.getElementById('chatOverlay');
+
+    if (messages && overlay?.classList.contains('show')) {
+        requestAnimationFrame(() => {
+            messages.scrollTop = messages.scrollHeight;
+        });
+    }
+}
+
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateMobileKeyboardViewport);
+    window.visualViewport.addEventListener('scroll', updateMobileKeyboardViewport);
+}
+
+window.addEventListener('resize', updateMobileKeyboardViewport);
+window.addEventListener('orientationchange', () => {
+    setTimeout(updateMobileKeyboardViewport, 250);
+});
+
+document.getElementById('chatInput')?.addEventListener('focus', () => {
+    setTimeout(updateMobileKeyboardViewport, 80);
+    setTimeout(updateMobileKeyboardViewport, 250);
+});
+
+document.getElementById('chatInput')?.addEventListener('blur', () => {
+    setTimeout(updateMobileKeyboardViewport, 120);
+});
 
 console.log('✅ Contegg Messenger · Полная версия с фото, видео и голосовыми');
 </script>
