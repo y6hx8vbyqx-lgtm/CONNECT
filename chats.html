@@ -2864,7 +2864,7 @@ async function sendImages(files) {
                 const updateData = {
                     lastMessage: '📷 Фото',
                     lastSender: currentUser.uid,
-                    lastMessageTime: firebase.firestore.fieldValie.serverTimestamp()
+        lastMessageTime: firebase.firestore.FieldValue.serverTimestamp()
                 };
 
                 if (unreadFor.length > 0) {
@@ -4375,6 +4375,7 @@ checkAutoOpen();
     
 async function loadUserData() {
     const snap = await db.collection('users').doc(currentUser.uid).get();
+
     if (!snap.exists) {
         userData = {
             uid: currentUser.uid,
@@ -4387,19 +4388,21 @@ async function loadUserData() {
             pinnedChats: [],
             isAdmin: false
         };
+
         await db.collection('users').doc(currentUser.uid).set(userData);
-} else {
-    userData = {
-        uid: currentUser.uid,
-        ...snap.data()
-    };
+    } else {
+        userData = {
+            uid: currentUser.uid,
+            ...snap.data()
+        };
 
-    userData.blockedUsers = userData.blockedUsers || [];
-    userData.pinnedChats = userData.pinnedChats || [];
-    userData.avatarUrl = userData.avatarUrl || null;
-    userData.avatarBase64 = userData.avatarBase64 || null;
+        userData.blockedUsers = userData.blockedUsers || [];
+        userData.pinnedChats = userData.pinnedChats || [];
+        userData.avatarUrl = userData.avatarUrl || null;
+        userData.avatarBase64 = userData.avatarBase64 || null;
+    }
 }
-
+    
 async function loadAdminUsers() {
     const snap = await db.collection('users').where('isAdmin', '==', true).get();
     adminUsers = [];
@@ -4524,28 +4527,28 @@ const snap = await db.collection('chats')
     .get();
         let chats = [];
         
-        for (const doc of snap.docs) {
-            const chat = doc.data();
-            if (!chat.participants?.includes(currentUser.uid)) continue;
-            
-if (chat.isSaved) {
-    chats.push({ id: doc.id, ...chat, type: 'saved' });
-} else if (chat.isChannel || chat.type === 'channel') {
-    chats.push({ id: doc.id, ...chat, type: 'channel' });
-} else if (chat.isGroup) {
-    chats.push({ id: doc.id, ...chat, type: 'group' });
-} else if (chat.isSystem) {
-                chats.push({ id: doc.id, ...chat, type: 'system' });
-            } else {
-                const otherId = chat.participants.find(id => id !== currentUser.uid);
-                if (!otherId) continue;
-                if (blockedUsers.includes(otherId)) continue;
-                const otherUser = await getUserInfo(otherId);
-                chats.push({ id: doc.id, ...chat, otherUser, otherId, type: 'dm' });
-            }
-        }
-        
-        const systemChats = chats.filter(c => c.type === 'system');
+      for (const doc of snap.docs) {
+    const chat = doc.data();
+    if (!chat.participants?.includes(currentUser.uid)) continue;
+
+    if (chat.isSaved) {
+        chats.push({ id: doc.id, ...chat, type: 'saved' });
+    } else if (chat.isChannel || chat.type === 'channel') {
+        chats.push({ id: doc.id, ...chat, type: 'channel' });
+    } else if (chat.isGroup) {
+        chats.push({ id: doc.id, ...chat, type: 'group' });
+    } else if (chat.isSystem) {
+        chats.push({ id: doc.id, ...chat, type: 'system' });
+    } else {
+        const otherId = chat.participants.find(id => id !== currentUser.uid);
+        if (!otherId) continue;
+        if (blockedUsers.includes(otherId)) continue;
+        const otherUser = await getUserInfo(otherId);
+        chats.push({ id: doc.id, ...chat, otherUser, otherId, type: 'dm' });
+    }
+}
+
+const systemChats = chats.filter(c => c.type === 'system');а
         const pinned = [];
         const unpinned = [];
         
