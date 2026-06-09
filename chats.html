@@ -4356,8 +4356,11 @@ auth.onAuthStateChanged(async user => {
     checkIsDeveloper();
     startPresenceTracking();
 
-await loadAdminUsers();
-await loadChats();
+loadChats().catch(console.error);
+
+loadAdminUsers()
+    .then(() => loadChats())
+    .catch(console.error);
 
 startGlobalChatsListener();
 
@@ -4401,6 +4404,9 @@ async function loadUserData() {
         userData.avatarUrl = userData.avatarUrl || null;
         userData.avatarBase64 = userData.avatarBase64 || null;
     }
+
+    blockedUsers = userData.blockedUsers || [];
+    pinnedChats = userData.pinnedChats || [];
 }
     
 async function loadAdminUsers() {
@@ -4525,29 +4531,57 @@ async function loadChats() {
 const snap = await db.collection('chats')
     .where('participants', 'array-contains', currentUser.uid)
     .get();
-        let chats = [];
-        
-      for (const doc of snap.docs) {
-    const chat = doc.data();
-    if (!chat.participants?.includes(currentUser.uid)) continue;
 
+const rawChats = snap.docs
+    .map(doc => ({ id: doc.id, ...doc.data() }))
+    .filter(chat => chat.participants?.includes(currentUser.uid));
+
+const dmUserIds = [
+    ...new Set(
+        rawChats
+            .filter(chat =>
+                !chat.isSaved &&
+                !chat.isChannel &&
+                chat.type !== 'channel' &&
+                !chat.isGroup &&
+                !chat.isSystem
+            )
+            .map(chat => chat.participants.find(id => id !== currentUser.uid))
+            .filter(Boolean)
+            .filter(id => !blockedUsers.includes(id))
+    )
+];
+
+await Promise.all(dmUserIds.map(uid => getUserInfo(uid)));
+
+let chats = [];
+
+for (const chat of rawChats) {
     if (chat.isSaved) {
-        chats.push({ id: doc.id, ...chat, type: 'saved' });
+        chats.push({ ...chat, type: 'saved' });
     } else if (chat.isChannel || chat.type === 'channel') {
-        chats.push({ id: doc.id, ...chat, type: 'channel' });
+        chats.push({ ...chat, type: 'channel' });
     } else if (chat.isGroup) {
-        chats.push({ id: doc.id, ...chat, type: 'group' });
+        chats.push({ ...chat, type: 'group' });
     } else if (chat.isSystem) {
-        chats.push({ id: doc.id, ...chat, type: 'system' });
+        chats.push({ ...chat, type: 'system' });
     } else {
         const otherId = chat.participants.find(id => id !== currentUser.uid);
+
         if (!otherId) continue;
         if (blockedUsers.includes(otherId)) continue;
-        const otherUser = await getUserInfo(otherId);
-        chats.push({ id: doc.id, ...chat, otherUser, otherId, type: 'dm' });
+
+        const otherUser = usersCache[otherId] || await getUserInfo(otherId);
+
+        chats.push({
+            ...chat,
+            otherUser,
+            otherId,
+            type: 'dm'
+        });
     }
 }
-
+        
 const systemChats = chats.filter(c => c.type === 'system');
         const pinned = [];
         const unpinned = [];
@@ -4683,7 +4717,7 @@ if (chat.type === 'saved') {
                 const isPinned = pinnedChats.includes(chat.id);
                 return `
                     <div class="chat-cell ${isUnread ? 'unread' : ''} ${isPinned ? 'pinned' : ''}" 
-                         onclick="openDirectChat('${chat.otherId}', '${u.username}')" data-chat-id="${chat.id}" data-chat-type="dm">
+                         onclick="openDirectChat('${chat.otherId}', '${esc(u.username || '')}', '${chat.id}')"  data-chat-id="${chat.id}" data-chat-type="dm">
                         <div class="chat-avatar">${avHTML}</div>
                         <div class="chat-content">
                             <div class="chat-top">
@@ -4730,15 +4764,21 @@ function startGlobalChatsListener() {
 
     let firstSnapshot = true;
 
- chatsGlobalListener = db.collection('chats')
-    .where('participants', 'array-contains', currentUser.uid)
-    .onSnapshot(() => {
-        clearTimeout(loadChatsTimer);
-        loadChatsTimer = setTimeout(loadChats, 250);
-    }, error => {
-        console.error('Ошибка слушателя чатов:', error);
-    });
+    chatsGlobalListener = db.collection('chats')
+        .where('participants', 'array-contains', currentUser.uid)
+        .onSnapshot(() => {
+            if (firstSnapshot) {
+                firstSnapshot = false;
+                return;
+            }
+
+            clearTimeout(loadChatsTimer);
+            loadChatsTimer = setTimeout(loadChats, 250);
+        }, error => {
+            console.error('Ошибка слушателя чатов:', error);
+        });
 }
+    
 function showChatContext(e, chatId, chatType) {
     e.preventDefault();
     window.__justOpenedPanel = true;
@@ -4822,33 +4862,36 @@ async function ctxDeleteChat() {
     } catch (e) { toast('Ошибка удаления'); }
 }
 
-async function openDirectChat(userId, username) {
+async function openDirectChat(userId, username, knownChatId = null) {
     currentChatUser = { uid: userId, username };
-currentChatIsGroup = false;
-currentChatIsSaved = false;
-currentChatIsSystem = false;
-currentChatIsChannel = false;
+    currentChatIsGroup = false;
+    currentChatIsSaved = false;
+    currentChatIsSystem = false;
+    currentChatIsChannel = false;
+
     clearChatNavbarActions();
 
-    let chatId = null;
+    let chatId = knownChatId || null;
 
-    const snap = await db.collection('chats')
-        .where('participants', 'array-contains', currentUser.uid)
-        .get();
+    if (!chatId) {
+        const snap = await db.collection('chats')
+            .where('participants', 'array-contains', currentUser.uid)
+            .get();
 
-    for (const doc of snap.docs) {
-        const c = doc.data();
+        for (const doc of snap.docs) {
+            const c = doc.data();
 
-if (
-    !c.isGroup &&
-    !c.isSaved &&
-    !c.isSystem &&
-    !c.isChannel &&
-    c.type !== 'channel' &&
-    c.participants?.includes(userId)
-) {
-            chatId = doc.id;
-            break;
+            if (
+                !c.isGroup &&
+                !c.isSaved &&
+                !c.isSystem &&
+                !c.isChannel &&
+                c.type !== 'channel' &&
+                c.participants?.includes(userId)
+            ) {
+                chatId = doc.id;
+                break;
+            }
         }
     }
 
@@ -4856,8 +4899,8 @@ if (
         const ref = await db.collection('chats').add({
             participants: [currentUser.uid, userId],
             lastMessage: '',
-            lastMessageTime: new Date(),
-            createdAt: new Date(),
+            lastMessageTime: firebase.firestore.FieldValue.serverTimestamp(),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             isGroup: false,
             isSaved: false,
             unreadFor: []
@@ -4869,6 +4912,7 @@ if (
     currentChatId = chatId;
     await openChatUI(userId, username, false);
 }
+    
 
 function showChatOverlay() {
     const overlay = document.getElementById('chatOverlay');
@@ -5001,8 +5045,8 @@ currentChatUser = null;
 
     currentChatParticipants = chat.participants || [];
 
-    const isAdmin = await isGroupAdmin(chatId, currentUser.uid);
-    const isOwner = await isGroupOwner(chatId, currentUser.uid);
+   const isOwner = chat.createdBy === currentUser.uid;
+const isAdmin = isOwner || (chat.admins || []).includes(currentUser.uid);
 
     if (token !== openChatToken) return;
 
@@ -5215,103 +5259,69 @@ function addDateDividerIfNeeded(container, d) {
 
  async function loadMessages() {
     const container = document.getElementById('chatMessages');
-    if (!currentChatId) return;
+    if (!currentChatId || !container) return;
 
     const chatId = currentChatId;
 
     container.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка...</span></div>';
     container.dataset.lastDateKey = '';
 
-    const snap = await db.collection('chats').doc(chatId)
-        .collection('messages')
-        .orderBy('timestamp', 'desc')
-        .limit(200)
-        .get();
+    if (chatMessagesListener) {
+        chatMessagesListener();
+        chatMessagesListener = null;
+    }
 
-    if (currentChatId !== chatId) return;
+    return new Promise(resolve => {
+        let firstLoad = true;
 
-    container.innerHTML = '';
-    container.dataset.lastDateKey = '';
+        chatMessagesListener = db.collection('chats')
+            .doc(chatId)
+            .collection('messages')
+            .orderBy('timestamp', 'asc')
+            .limitToLast(60)
+            .onSnapshot(snap => {
+                if (currentChatId !== chatId) {
+                    resolve();
+                    return;
+                }
 
-const docs = snap.docs.slice().reverse();
+                container.innerHTML = '';
+                container.dataset.lastDateKey = '';
 
-docs.forEach(doc => {
-    const msg = doc.data();
-    const d = msg.timestamp?.toDate?.() || new Date();
+                snap.docs.forEach(doc => {
+                    const msg = doc.data();
 
-    addDateDividerIfNeeded(container, d);
-    renderMessage(doc.id, msg);
-});
-
-    container.scrollTop = container.scrollHeight;
-
-    if (chatMessagesListener) chatMessagesListener();
-
-    chatMessagesListener = db.collection('chats').doc(chatId)
-        .collection('messages')
-        .orderBy('timestamp', 'asc')
-        .onSnapshot(snap => {
-            if (currentChatId !== chatId) return;
-
-            snap.docChanges().forEach(change => {
-                if (change.type === 'added') {
-                    const existing = document.querySelector(`[data-msg-id="${change.doc.id}"]`);
-
-                    if (!existing) {
-                        const msg = change.doc.data();
-                        const d = msg.timestamp?.toDate?.() || new Date();
-
-                        addDateDividerIfNeeded(container, d);
-                        renderMessage(change.doc.id, msg);
-
-                        container.scrollTop = container.scrollHeight;
+                    if (msg.deletedFor?.includes(currentUser.uid)) {
+                        return;
                     }
+
+                    const d = msg.timestamp?.toDate?.() || new Date();
+
+                    addDateDividerIfNeeded(container, d);
+                    renderMessage(doc.id, msg);
+                });
+
+                container.scrollTop = container.scrollHeight;
+
+                if (firstLoad) {
+                    firstLoad = false;
+                    resolve();
                 }
+            }, error => {
+                console.error('loadMessages listener error:', error);
 
-if (change.type === 'modified') {
-    const msg = change.doc.data();
-    const el = document.querySelector(`[data-msg-id="${change.doc.id}"]`);
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <div class="empty-state-title">Ошибка загрузки сообщений</div>
+                    </div>
+                `;
 
-    if (msg.deletedFor?.includes(currentUser.uid)) {
-        el?.remove();
-        return;
-    }
-
-    if (!el) return;
-
-    const textEl = el.querySelector('.msg-text, .msg-caption');
-
-    if (textEl && msg.text !== undefined) {
-        textEl.textContent = msg.text;
-    }
-
-    const timeEl = el.querySelector('.msg-time');
-
-    if (timeEl) {
-        const d = msg.timestamp?.toDate?.() || new Date();
-        const isOut = msg.senderId === currentUser.uid;
-        const hasVisualMedia = !!msg.imageUrl || !!msg.videoUrl;
-        const hasCaption = !!(msg.text && msg.text.trim());
-
-        timeEl.className = `msg-time ${hasVisualMedia && !hasCaption ? 'msg-time-overlay' : ''}`;
-        timeEl.textContent = buildMessageTimeText(msg, isOut, d);
-    }
-
-    const commentsCountEl = document.getElementById(`commentsCount_${change.doc.id}`);
-
-if (commentsCountEl) {
-    commentsCountEl.textContent = msg.commentsCount || 0;
-}
-
-    updateMessageReactions(change.doc.id, msg.reactions);
-}
-
-                if (change.type === 'removed') {
-                    document.querySelector(`[data-msg-id="${change.doc.id}"]`)?.remove();
-                }
+                resolve();
             });
-        });
+    });
 }
+    
 
 // ========== ФУНКЦИИ ДЛЯ ГОЛОСОВЫХ СООБЩЕНИЙ (ДОБАВИТЬ) ==========
 
