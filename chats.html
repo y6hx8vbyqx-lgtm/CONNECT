@@ -8882,7 +8882,7 @@ if (sendBtnElement) {
     });
 }
 
-    const postCommentInput = document.getElementById('postCommentInput');
+const postCommentInput = document.getElementById('postCommentInput');
 
 if (postCommentInput) {
     postCommentInput.addEventListener('input', function () {
@@ -8898,7 +8898,9 @@ if (postCommentInput) {
     });
 }
 
-    function updateMobileKeyboardViewport() {
+/* ===== MOBILE KEYBOARD VIEWPORT FIX ===== */
+
+function updateMobileKeyboardViewport() {
     const root = document.documentElement;
     const overlay = document.getElementById('chatOverlay');
     const chatIsOpen = overlay?.classList.contains('show');
@@ -8946,20 +8948,24 @@ if (window.visualViewport) {
 }
 
 window.addEventListener('resize', updateMobileKeyboardViewport);
+
 window.addEventListener('orientationchange', () => {
     setTimeout(updateMobileKeyboardViewport, 250);
 });
 
 document.getElementById('chatInput')?.addEventListener('focus', () => {
-    setTimeout(updateMobileKeyboardViewport, 80);
-    setTimeout(updateMobileKeyboardViewport, 250);
+    setTimeout(updateMobileKeyboardViewport, 50);
+    setTimeout(updateMobileKeyboardViewport, 180);
+    setTimeout(updateMobileKeyboardViewport, 350);
 });
 
 document.getElementById('chatInput')?.addEventListener('blur', () => {
-    setTimeout(updateMobileKeyboardViewport, 120);
+    setTimeout(updateMobileKeyboardViewport, 80);
+    setTimeout(updateMobileKeyboardViewport, 220);
 });
 
 console.log('✅ Contegg Messenger · Полная версия с фото, видео и голосовыми');
+    
 </script>
         
     <style id="FINAL-ZINDEX-FIX-FOR-CHAT-ACTIONS">
