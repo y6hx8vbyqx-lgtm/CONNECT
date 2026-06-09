@@ -4323,14 +4323,12 @@ auth.onAuthStateChanged(async user => {
 
     await loadUserData();
 
-    checkIsDeveloper();
-    startPresenceTracking();
+checkIsDeveloper();
+startPresenceTracking();
 
 loadChats().catch(console.error);
 
-loadAdminUsers()
-    .then(() => loadChats())
-    .catch(console.error);
+loadAdminUsers().catch(console.error);
 
 startGlobalChatsListener();
 
@@ -4338,6 +4336,10 @@ setTimeout(() => {
     getOrCreateSavedChat().catch(console.error);
     getOrCreateSystemChat(currentUser.uid).catch(console.error);
 }, 1200);
+
+setTimeout(() => {
+    loadAllUsers().catch(console.error);
+}, 2500);
 
 loadLinkedAccounts();
 checkAutoOpen();
@@ -9511,6 +9513,69 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
 body.keyboard-open {
     --chat-input-bottom: 0px !important;
 }]
+
+        /* ===== FINAL MOBILE KEYBOARD FIX ===== */
+
+:root {
+    --contegg-chat-vh: 100dvh;
+    --contegg-chat-top: 0px;
+    --contegg-input-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+body.keyboard-open {
+    --contegg-input-bottom: 0px;
+}
+
+.chat-overlay {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: var(--contegg-chat-top) !important;
+    bottom: auto !important;
+    width: 100% !important;
+    height: var(--contegg-chat-vh) !important;
+    max-height: var(--contegg-chat-vh) !important;
+    background: var(--bg-primary) !important;
+    z-index: 900 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    transform: translateX(100%) !important;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.chat-overlay.show {
+    transform: translateX(0) !important;
+}
+
+.chat-navbar {
+    flex: 0 0 auto !important;
+}
+
+.chat-messages {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    padding: 12px !important;
+    padding-bottom: 8px !important;
+}
+
+.chat-input-bar {
+    flex: 0 0 auto !important;
+    position: relative !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+
+    padding-top: 7px !important;
+    padding-left: max(10px, env(safe-area-inset-left)) !important;
+    padding-right: max(10px, env(safe-area-inset-right)) !important;
+    padding-bottom: calc(3px + var(--contegg-input-bottom)) !important;
+
+    margin: 0 !important;
+    transform: none !important;
+    border-top: 0.5px solid var(--separator) !important;
+}
         
 </style>
 
