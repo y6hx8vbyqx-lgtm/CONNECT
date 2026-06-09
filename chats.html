@@ -4367,7 +4367,6 @@ startGlobalChatsListener();
 setTimeout(() => {
     getOrCreateSavedChat().catch(console.error);
     getOrCreateSystemChat(currentUser.uid).catch(console.error);
-    loadAllUsers().catch(console.error);
 }, 1200);
 
 loadLinkedAccounts();
@@ -7984,16 +7983,22 @@ function saveChannelCropSettings() {
     toast('Фото канала готово');
 }
 
-function showCreateGroup() {
+async function showCreateGroup() {
     selectedGroupUsers.clear();
     groupAvatarBase64 = null;
+
     document.getElementById('groupNameInput').value = '';
     document.getElementById('groupAvatarPreview').innerHTML = '👥';
     document.getElementById('createGroupBtn').disabled = true;
-    renderGroupUsersList();
-    document.getElementById('groupModal').classList.add('show');
-}
 
+    document.getElementById('groupModal').classList.add('show');
+
+    if (!allUsers || allUsers.length === 0) {
+        await loadAllUsers();
+    }
+
+    renderGroupUsersList();
+}
 function closeGroupModal() {
     document.getElementById('groupModal').classList.remove('show');
 }
@@ -8145,10 +8150,16 @@ function closeUserProfile() {
 async function openGroupSettings() {
     if (!currentChatId || !currentChatIsGroup) return;
     
-    const chatDoc = await db.collection('chats').doc(currentChatId).get();
-    const chat = chatDoc.data();
-    const isAdmin = await isGroupAdmin(currentChatId, currentUser.uid);
-    const isOwner = await isGroupOwner(currentChatId, currentUser.uid);
+   const chatDoc = await db.collection('chats').doc(currentChatId).get();
+const chat = chatDoc.data();
+
+if (!chat) {
+    toast('Группа не найдена');
+    return;
+}
+
+const isOwner = chat.createdBy === currentUser.uid;
+const isAdmin = isOwner || (chat.admins || []).includes(currentUser.uid);
     
     if (!isAdmin && !isOwner && !isCurrentUserDeveloper) {
         toast('Недостаточно прав для управления группой');
@@ -8725,7 +8736,7 @@ if (chat.isSaved) {
 
         if (otherId) {
             const otherUser = await getUserInfo(otherId);
-            await openDirectChat(otherId, otherUser.username || '');
+            await openDirectChat(otherId, otherUser.username || '', chatId);
             return;
         }
 
