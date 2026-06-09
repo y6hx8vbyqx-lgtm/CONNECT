@@ -73,7 +73,7 @@
             --separator: rgba(84, 84, 88, 0.65);
             --tab-bar-bg: rgba(28, 28, 30, 0.92);
             --safe-bottom: env(safe-area-inset-bottom, 0px);
-            --chat-input-bottom: var(--safe-bottom);
+           --chat-input-bottom: env(safe-area-inset-bottom, 0px);
             --safe-top: env(safe-area-inset-top, 0px);
             --navbar-height: 44px;
         }
@@ -1874,37 +1874,7 @@ body {
     color: white;
     font-size: 14px;
 }
-
-        :root {
-    --vv-height: 100dvh;
-    --vv-offset-top: 0px;
-}
-
-/* ВАЖНО: чат должен жить в visible viewport, а не в старом 100dvh */
-.chat-overlay.show {
-    top: var(--vv-offset-top);
-    bottom: auto;
-    height: var(--vv-height);
-}
-
-/* Чтобы messages не создавали лишнюю пустоту */
-body.keyboard-open .chat-messages {
-    padding-bottom: 6px !important;
-}
-
-body.keyboard-open .chat-input-row {
-    padding-bottom: 0px !important;
-    margin-bottom: 0px !important;
-}
-
-
-body.keyboard-open .chat-input {
-    margin-bottom: 0px !important;
-}
-
-body.keyboard-open .media-buttons,
-body.keyboard-open .chat-send {
-    margin-bottom: 0px !important;
+        
 }
 
 html,
@@ -4919,6 +4889,9 @@ function showChatOverlay() {
 
     document.body.classList.add('chat-open');
     overlay.classList.add('show');
+
+    setTimeout(updateKeyboardState, 50);
+    setTimeout(updateKeyboardState, 250);
 }
 
 function hideChatOverlay() {
@@ -9486,6 +9459,58 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
     margin: 0 !important;
     transform: none !important;
 }
+
+        /* ===== FINAL IOS KEYBOARD GAP FIX ===== */
+
+.chat-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    background: var(--bg-primary) !important;
+    z-index: 900 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    transform: translateX(100%) !important;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.chat-overlay.show {
+    transform: translateX(0) !important;
+}
+
+.chat-navbar {
+    flex: 0 0 auto !important;
+}
+
+.chat-messages {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    padding: 12px !important;
+    padding-bottom: 8px !important;
+}
+
+.chat-input-bar {
+    flex: 0 0 auto !important;
+    position: relative !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    transform: none !important;
+
+    padding: 8px 10px !important;
+    padding-left: max(10px, env(safe-area-inset-left, 0px)) !important;
+    padding-right: max(10px, env(safe-area-inset-right, 0px)) !important;
+    padding-bottom: calc(8px + var(--chat-input-bottom, 0px)) !important;
+}
+
+body.keyboard-open {
+    --chat-input-bottom: 0px !important;
+}]
         
 </style>
 
