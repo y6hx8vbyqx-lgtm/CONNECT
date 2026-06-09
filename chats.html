@@ -1958,412 +1958,7 @@ body {
         body.keyboard-open .chat-messages {
     padding-bottom: 6px !important;
 }
-
-/* ===== FINAL iOS KEYBOARD GAP FIX ===== */
-
-:root {
-    --vv-height: 100dvh;
-    --vv-offset-top: 0px;
-    --chat-input-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-.chat-overlay.show {
-    top: var(--vv-offset-top) !important;
-    bottom: auto !important;
-    height: var(--vv-height) !important;
-    max-height: var(--vv-height) !important;
-}
-
-.chat-input-bar {
-    width: 100% !important;
-    max-width: 100% !important;
-    padding-top: 8px !important;
-    padding-left: max(10px, env(safe-area-inset-left)) !important;
-    padding-right: max(10px, env(safe-area-inset-right)) !important;
-    padding-bottom: calc(6px + var(--chat-input-bottom)) !important;
-    margin-bottom: 0 !important;
-}
-
-body.keyboard-open {
-    --chat-input-bottom: 0px;
-}
-
-body.keyboard-open .chat-input-bar {
-    padding-top: 6px !important;
-    padding-bottom: 0px !important;
-    margin-bottom: 0px !important;
-}
-
-body.keyboard-open .chat-input-row,
-body.keyboard-open #chatInputBar > div,
-body.keyboard-open .chat-input,
-body.keyboard-open .media-buttons,
-body.keyboard-open .chat-send {
-    padding-bottom: 0px !important;
-    margin-bottom: 0px !important;
-}
-
-body.keyboard-open .chat-messages {
-    padding-bottom: 6px !important;
-}
         
-    /* ========== КОНЕЦ СТИЛЕЙ ДЛЯ ГОЛОСОВЫХ ========== */
-
-/* ===== REAL FINAL CHAT LAYOUT FIX ===== */
-
-:root {
-    --vv-height: 100svh;
-    --vv-offset-top: 0px;
-    --chat-safe-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-.chat-overlay {
-    position: fixed !important;
-    left: 0 !important;
-    right: 0 !important;
-    top: 0 !important;
-    bottom: auto !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: var(--vv-height) !important;
-    max-height: var(--vv-height) !important;
-    overflow: hidden !important;
-    display: flex !important;
-    flex-direction: column !important;
-}
-
-.chat-overlay.show {
-    top: var(--vv-offset-top) !important;
-    height: var(--vv-height) !important;
-    max-height: var(--vv-height) !important;
-    transform: translateX(0) !important;
-}
-
-.chat-navbar {
-    flex: 0 0 auto !important;
-}
-
-.chat-messages {
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-    overflow-y: auto !important;
-    padding-bottom: 8px !important;
-}
-
-.chat-input-bar {
-    flex: 0 0 auto !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-
-    padding-top: 8px !important;
-    padding-left: max(10px, env(safe-area-inset-left)) !important;
-    padding-right: max(10px, env(safe-area-inset-right)) !important;
-    padding-bottom: calc(8px + var(--chat-safe-bottom)) !important;
-
-    margin: 0 !important;
-    transform: none !important;
-}
-
-body.keyboard-open .chat-input-bar {
-    padding-top: 6px !important;
-    padding-bottom: 8px !important;
-}
-
-body.keyboard-open .chat-input-row,
-body.keyboard-open #chatInputBar > div,
-body.keyboard-open .chat-input,
-body.keyboard-open .media-buttons,
-body.keyboard-open .chat-send {
-    margin-bottom: 0 !important;
-    padding-bottom: 0 !important;
-}
-
-.chat-input-row {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-}
-
-#chatInputBar > div {
-    min-width: 0 !important;
-    max-width: 100% !important;
-}
-
-.chat-input {
-    min-width: 0 !important;
-    max-width: 100% !important;
-}
-        /* ===== SMOOTH KEYBOARD: NO HEADER / MESSAGES JUMP ===== */
-
-.chat-overlay {
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    top: 0 !important;
-    bottom: auto !important;
-    height: var(--vv-height) !important;
-    max-height: var(--vv-height) !important;
-    transform: translateX(100%);
-    will-change: transform;
-}
-
-.chat-overlay.show {
-    transform: translateX(0) !important;
-}
-
-/* когда клавиатура двигает viewport — НЕ анимируем высоту */
-body.keyboard-open .chat-overlay,
-body.keyboard-closing .chat-overlay {
-    transition: none !important;
-}
-
-/* шапка не должна прыгать */
-.chat-navbar {
-    transform: translateZ(0);
-    will-change: auto;
-}
-
-/* сообщения не должны плавно пересчитываться */
-.chat-messages {
-    overflow-anchor: none;
-    scroll-behavior: auto !important;
-}
-
-/* input без анимаций при клавиатуре */
-.chat-input-bar {
-    transition: none !important;
-    transform: translateZ(0);
-}
-
-/* ===== ABSOLUTE FINAL iOS KEYBOARD STABILITY FIX ===== */
-
-.chat-overlay,
-.chat-overlay.show {
-    top: 0 !important;
-    bottom: auto !important;
-    height: var(--vv-height) !important;
-    max-height: var(--vv-height) !important;
-    transform: translateX(100%);
-    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-
-.chat-overlay.show {
-    transform: translateX(0) !important;
-}
-
-/* при открытии/закрытии клавиатуры не анимируем resize */
-body.keyboard-open .chat-overlay,
-body.keyboard-closing .chat-overlay {
-    transition: none !important;
-}
-
-.chat-navbar {
-    flex: 0 0 auto !important;
-    transform: translateZ(0);
-}
-
-.chat-messages {
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-    overflow-y: auto !important;
-    overflow-anchor: none;
-    scroll-behavior: auto !important;
-    overscroll-behavior: contain;
-}
-
-.chat-input-bar {
-    flex: 0 0 auto !important;
-    transition: none !important;
-    transform: translateZ(0);
-    margin: 0 !important;
-}
-
-body.keyboard-open .chat-input-bar {
-    padding-bottom: 8px !important;
-}
-        /* ===== EMERGENCY iOS CHAT OVERLAY FIX ===== */
-
-body.chat-open .app-container {
-    pointer-events: none !important;
-}
-
-.chat-overlay {
-    position: fixed !important;
-    left: 0 !important;
-    right: 0 !important;
-    top: var(--vv-offset-top, 0px) !important;
-    bottom: auto !important;
-
-    width: 100vw !important;
-    height: var(--vv-height, 100dvh) !important;
-    max-height: var(--vv-height, 100dvh) !important;
-
-    z-index: 99999 !important;
-    background: #000 !important;
-
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-
-    transform: translateX(100%) !important;
-    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-
-.chat-overlay.show {
-    transform: translateX(0) !important;
-}
-
-body.keyboard-open .chat-overlay,
-body.keyboard-closing .chat-overlay {
-    transition: none !important;
-}
-
-.chat-navbar {
-    flex: 0 0 auto !important;
-}
-
-.chat-messages {
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-    overflow-y: auto !important;
-    overscroll-behavior: contain !important;
-    padding-bottom: 8px !important;
-}
-
-.chat-input-bar {
-    flex: 0 0 auto !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-
-    padding-top: 8px !important;
-    padding-left: max(10px, env(safe-area-inset-left)) !important;
-    padding-right: max(10px, env(safe-area-inset-right)) !important;
-    padding-bottom: calc(8px + env(safe-area-inset-bottom)) !important;
-
-    margin: 0 !important;
-    transform: none !important;
-}
-
-body.keyboard-open .chat-input-bar {
-    padding-bottom: 8px !important;
-}
-
-        /* ===== TRUE LAST CHAT FIX ===== */
-
-body.chat-open .app-container {
-    visibility: hidden !important;
-    pointer-events: none !important;
-}
-
-body:not(.chat-open) .app-container {
-    visibility: visible !important;
-    pointer-events: auto !important;
-}
-
-.chat-overlay {
-    position: fixed !important;
-    left: 0 !important;
-    right: 0 !important;
-    top: var(--vv-offset-top, 0px) !important;
-    bottom: auto !important;
-
-    width: 100% !important;
-    height: var(--vv-height, 100dvh) !important;
-    max-height: var(--vv-height, 100dvh) !important;
-
-    z-index: 900 !important;
-    background: #000 !important;
-
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-
-    transform: translateX(100%) !important;
-    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-
-.chat-overlay.show {
-    transform: translateX(0) !important;
-}
-
-body.keyboard-open .chat-overlay,
-body.keyboard-closing .chat-overlay {
-    transition: none !important;
-}
-
-.chat-navbar {
-    flex: 0 0 auto !important;
-}
-
-.chat-messages {
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-    overflow-y: auto !important;
-    overscroll-behavior: contain !important;
-    padding-bottom: 8px !important;
-}
-
-.chat-input-bar {
-    flex: 0 0 auto !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-
-    padding-top: 8px !important;
-    padding-left: max(10px, env(safe-area-inset-left)) !important;
-    padding-right: max(10px, env(safe-area-inset-right)) !important;
-    padding-bottom: calc(8px + env(safe-area-inset-bottom)) !important;
-
-    margin: 0 !important;
-    transform: none !important;
-}
-
-body.keyboard-open .chat-input-bar {
-    padding-bottom: 8px !important;
-}
-
-.modal-overlay {
-    z-index: 2000 !important;
-}
-
-.context-menu,
-.reactions-panel {
-    z-index: 3000 !important;
-}
-
-.image-preview-overlay,
-.toast {
-    z-index: 4000 !important;
-}
-
-        /* ===== NO OFFSET TOP FIX — DO NOT MOVE CHAT UP ===== */
-
-:root {
-    --vv-offset-top: 0px;
-}
-
-.chat-overlay,
-.chat-overlay.show,
-body.keyboard-open .chat-overlay,
-body.keyboard-closing .chat-overlay {
-    top: 0 !important;
-    bottom: auto !important;
-    height: var(--vv-height, 100dvh) !important;
-    max-height: var(--vv-height, 100dvh) !important;
-}
-
-.chat-input-bar {
-    position: relative !important;
-    bottom: auto !important;
-    transform: none !important;
-}
-
-body.keyboard-open .chat-input-bar {
-    padding-bottom: 8px !important;
-}
-
-        /* ===== FIX MEDIA EMPTY GRAY SIDE GAP ===== */
-
 /* ===== TRUE FINAL MEDIA FIX ===== */
 
 .msg-visual-media {
@@ -2401,6 +1996,52 @@ body.keyboard-open .chat-input-bar {
 
 .media-shine {
     display: none !important;
+}
+        /* ===== SIMPLE CHAT LAYOUT WITHOUT KEYBOARD HACKS ===== */
+
+.chat-overlay {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    background: var(--bg-primary);
+    z-index: 900;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateX(100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chat-overlay.show {
+    transform: translateX(0);
+}
+
+.chat-navbar {
+    flex: 0 0 auto;
+}
+
+.chat-messages {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px;
+    padding-bottom: 12px;
+}
+
+.chat-input-bar {
+    flex: 0 0 auto;
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    margin: 0;
+    transform: none;
 }
     
     </style>
@@ -2648,14 +2289,14 @@ body.keyboard-open .chat-input-bar {
 </div>
 
 <div class="modal-overlay" id="postCommentsModal">
-    <div class="modal-sheet">
+    <div class="modal-sheet comments-sheet">
         <div class="modal-handle"></div>
         <div class="modal-title">Комментарии</div>
 
         <div class="modal-content">
-            <div id="postCommentsList" style="max-height:45vh;overflow-y:auto;margin-bottom:12px;"></div>
+            <div id="postCommentsList" class="comments-list"></div>
 
-            <div class="chat-input-row" id="postCommentInputRow">
+            <div class="comments-input-wrap">
                 <textarea 
                     class="chat-input" 
                     id="postCommentInput" 
@@ -2668,7 +2309,9 @@ body.keyboard-open .chat-input-bar {
                 </button>
             </div>
 
-            <button class="btn btn-secondary" onclick="closePostComments()">Закрыть</button>
+            <button class="btn btn-secondary" onclick="closePostComments()" style="margin-top:12px;">
+                Закрыть
+            </button>
         </div>
     </div>
 </div>
@@ -3221,7 +2864,7 @@ async function sendImages(files) {
                 const updateData = {
                     lastMessage: '📷 Фото',
                     lastSender: currentUser.uid,
-                    lastMessageTime: new Date()
+                    lastMessageTime: firebase.firestore.fieldValie.serverTimestamp()
                 };
 
                 if (unreadFor.length > 0) {
@@ -3433,7 +3076,6 @@ function cleanupPhotoEditor(clearFile = true) {
         canvas.width = 0;
         canvas.height = 0;
         canvas.style.display = 'none';
-        delete canvas.dataset.eventsAttached;
     }
 
     if (clearFile) {
@@ -3608,12 +3250,11 @@ function applyPhotoCropToCanvas() {
 function attachPhotoCanvasEvents() {
     const canvas = document.getElementById('photoEditCanvas');
 
-    if (!canvas || canvas.dataset.eventsAttached === 'true') return;
+    if (!canvas) return;
 
-    canvas.dataset.eventsAttached = 'true';
     canvas.style.touchAction = 'none';
 
-    canvas.addEventListener('pointerdown', e => {
+    canvas.onpointerdown = e => {
         if (photoEditorMode !== 'draw') return;
 
         e.preventDefault();
@@ -3624,9 +3265,9 @@ function attachPhotoCanvasEvents() {
         try {
             canvas.setPointerCapture(e.pointerId);
         } catch (_) {}
-    });
+    };
 
-    canvas.addEventListener('pointermove', e => {
+    canvas.onpointermove = e => {
         if (photoEditorMode !== 'draw' || !photoIsDrawing || !photoLastPoint) return;
 
         e.preventDefault();
@@ -3634,21 +3275,21 @@ function attachPhotoCanvasEvents() {
         const point = getPhotoCanvasPoint(e);
         drawPhotoMarker(photoLastPoint, point);
         photoLastPoint = point;
-    });
+    };
 
-    canvas.addEventListener('pointerup', e => {
+    canvas.onpointerup = e => {
         if (photoEditorMode !== 'draw') return;
 
         e.preventDefault();
 
         photoIsDrawing = false;
         photoLastPoint = null;
-    });
+    };
 
-    canvas.addEventListener('pointercancel', () => {
+    canvas.onpointercancel = () => {
         photoIsDrawing = false;
         photoLastPoint = null;
-    });
+    };
 }
 
 function getPhotoCanvasPoint(e) {
@@ -3816,6 +3457,30 @@ async function uploadImageBlobToStorage(blob) {
     return await snapshot.ref.getDownloadURL();
 }
 
+    async function uploadAvatarCanvasToStorage(canvas, folder = 'avatars') {
+    const blob = await new Promise(resolve => {
+        canvas.toBlob(resolve, 'image/jpeg', 0.85);
+    });
+
+    if (!blob) {
+        throw new Error('Не удалось подготовить аватар');
+    }
+
+    const fileName = `${currentUser.uid}_${Date.now()}.jpg`;
+    const fileRef = storage.ref().child(`${folder}/${fileName}`);
+
+    const snapshot = await fileRef.put(blob, {
+        contentType: 'image/jpeg',
+        cacheControl: 'public,max-age=31536000'
+    });
+
+    return await snapshot.ref.getDownloadURL();
+}
+
+function getAvatarSrc(user) {
+    return user?.avatarUrl || user?.avatarBase64 || null;
+}
+
 async function sendImageBlobToChat(blob) {
     if (!currentChatId) return;
 
@@ -3941,67 +3606,108 @@ async function sendVideo(file) {
 
 async function sendAudio(blob) {
     if (!currentChatId || !blob) return;
+
     if (!(await canSendToCurrentChat())) {
-    toast('Нет права публиковать в канал');
-    return;
-}
-    
+        toast('Нет права публиковать в канал');
+        return;
+    }
+
     const sendBtn = document.getElementById('sendBtn');
     const audioBtn = document.getElementById('audioRecordBtn');
-    
-    sendBtn.disabled = true;
-    audioBtn.disabled = true;
-    
+
+    if (sendBtn) sendBtn.disabled = true;
+    if (audioBtn) audioBtn.disabled = true;
+
     try {
-    const audioType = blob.type || 'audio/webm';
-const ext = audioType.includes('mp4') ? 'm4a' : 'webm';
-const file = new File([blob], `voice_${Date.now()}.${ext}`, { type: audioType });
-        const url = await uploadAudioToStorage(file);
-        
-        // ПОЛУЧАЕМ ДЛИТЕЛЬНОСТЬ
-        const duration = await getAudioDuration(blob);
-        
-        await db.collection('chats').doc(currentChatId).collection('messages').add({
-            audioUrl: url,
-            audioDuration: duration,  // 👈 ВАЖНО!
-            senderId: currentUser.uid,
-            timestamp: new Date(),
-            type: 'audio'
+        const audioType = blob.type || 'audio/webm';
+        const ext = audioType.includes('mp4') ? 'm4a' : 'webm';
+
+        const file = new File([blob], `voice_${Date.now()}.${ext}`, {
+            type: audioType
         });
-        
-        await db.collection('chats').doc(currentChatId).update({
+
+        const url = await uploadAudioToStorage(file);
+        const duration = await getAudioDuration(blob);
+
+        await db.collection('chats')
+            .doc(currentChatId)
+            .collection('messages')
+            .add({
+                audioUrl: url,
+                audioDuration: duration,
+                senderId: currentUser.uid,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                read: false,
+                type: 'audio'
+            });
+
+        let unreadFor = [];
+
+        if (currentChatIsGroup) {
+            unreadFor = currentChatParticipants.filter(id => id !== currentUser.uid);
+        } else if (currentChatUser && !currentChatIsSaved && !currentChatIsSystem) {
+            unreadFor = [currentChatUser.uid];
+        }
+
+        const updateData = {
             lastMessage: '🎤 Голосовое',
             lastSender: currentUser.uid,
-            lastMessageTime: new Date()
-        });
-        
-        toast('Голосовое отправлено');
-    } catch(e) { 
-        console.error(e);
-        toast('Ошибка загрузки аудио'); 
-    }
-    
-    sendBtn.disabled = false;
-    audioBtn.disabled = false;
-}
+            lastMessageTime: firebase.firestore.FieldValue.serverTimestamp()
+        };
 
+        if (unreadFor.length > 0) {
+            updateData.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
+        }
+
+        await db.collection('chats').doc(currentChatId).update(updateData);
+
+        toast('Голосовое отправлено');
+    } catch (e) {
+        console.error('sendAudio error:', e);
+        toast('Ошибка загрузки аудио');
+    } finally {
+        if (sendBtn) sendBtn.disabled = false;
+        if (audioBtn) audioBtn.disabled = false;
+    }
+}
+    
 // Функция получения длительности
 function getAudioDuration(blob) {
     return new Promise((resolve) => {
-        const audio = new Audio();
+        const audio = document.createElement('audio');
         const url = URL.createObjectURL(blob);
-        audio.addEventListener('loadedmetadata', () => {
+
+        let resolved = false;
+
+        function done(value) {
+            if (resolved) return;
+            resolved = true;
             URL.revokeObjectURL(url);
-            resolve(Math.round(audio.duration));
-        });
-        audio.addEventListener('error', () => {
-            URL.revokeObjectURL(url);
-            resolve(0);
-        });
+            resolve(Number.isFinite(value) && value > 0 ? Math.round(value) : 0);
+        }
+
+        audio.preload = 'metadata';
+
+        audio.onloadedmetadata = () => {
+            if (audio.duration === Infinity) {
+                audio.currentTime = 999999999;
+                audio.ontimeupdate = () => {
+                    audio.ontimeupdate = null;
+                    done(audio.duration);
+                };
+            } else {
+                done(audio.duration);
+            }
+        };
+
+        audio.onerror = () => done(0);
+
+        setTimeout(() => done(0), 3000);
+
         audio.src = url;
     });
 }
-
+    
 async function toggleRecording() {
     if (isRecording) {
         stopRecording();
@@ -4010,76 +3716,93 @@ async function toggleRecording() {
     }
 }
 
+let recordingStream = null;
+
 async function startRecording() {
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // ВАЖНО: меняем формат на MP4 для лучшей совместимости с телефонами
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/mp4' });
+        recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+        let mimeType = '';
+
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported('audio/mp4')) {
+            mimeType = 'audio/mp4';
+        } else if (window.MediaRecorder && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+            mimeType = 'audio/webm;codecs=opus';
+        } else if (window.MediaRecorder && MediaRecorder.isTypeSupported('audio/webm')) {
+            mimeType = 'audio/webm';
+        }
+
+        mediaRecorder = mimeType
+            ? new MediaRecorder(recordingStream, { mimeType })
+            : new MediaRecorder(recordingStream);
+
         audioChunks = [];
-        
-        mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0) {
+
+        mediaRecorder.ondataavailable = e => {
+            if (e.data && e.data.size > 0) {
                 audioChunks.push(e.data);
             }
         };
-        
+
         mediaRecorder.onstop = async () => {
-            // Создаем blob с правильным MIME типом
-            const audioBlob = new Blob(audioChunks, { type: 'audio/mp4' });
-            await sendAudio(audioBlob);
-            stream.getTracks().forEach(track => track.stop());
+            const type = mediaRecorder.mimeType || mimeType || 'audio/webm';
+            const audioBlob = new Blob(audioChunks, { type });
+
+            recordingStream?.getTracks().forEach(track => track.stop());
+            recordingStream = null;
+
+            if (audioBlob.size > 0) {
+                await sendAudio(audioBlob);
+            } else {
+                toast('Голосовое пустое');
+            }
         };
-        
-        mediaRecorder.start(100);
+
+        mediaRecorder.start(250);
         isRecording = true;
-        
+
         const btn = document.getElementById('audioRecordBtn');
-        btn.classList.add('recording');
-        btn.innerHTML = '<i class="fas fa-stop"></i>';
+
+        if (btn) {
+            btn.classList.add('recording');
+            btn.innerHTML = '<i class="fas fa-stop"></i>';
+        }
+
         toast('🎙️ Запись...');
-        
+
         setTimeout(() => {
             if (isRecording) stopRecording();
         }, 60000);
-        
-    } catch(e) {
-        console.error(e);
-        // Если MP4 не поддерживается, пробуем webm
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-            audioChunks = [];
-            
-            mediaRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0) audioChunks.push(e.data);
-            };
-            
-            mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                await sendAudio(audioBlob);
-                stream.getTracks().forEach(track => track.stop());
-            };
-            
-            mediaRecorder.start(100);
-            isRecording = true;
-            const btn = document.getElementById('audioRecordBtn');
-            btn.classList.add('recording');
-            btn.innerHTML = '<i class="fas fa-stop"></i>';
-            toast('🎙️ Запись...');
-        } catch(e2) {
-            toast('❌ Нет доступа к микрофону');
-        }
+
+    } catch (e) {
+        console.error('startRecording error:', e);
+
+        recordingStream?.getTracks().forEach(track => track.stop());
+        recordingStream = null;
+
+        toast('❌ Нет доступа к микрофону');
     }
 }
+    
 function stopRecording() {
-    if (mediaRecorder && isRecording) {
+    if (!mediaRecorder || !isRecording) return;
+
+    try {
         mediaRecorder.stop();
-        isRecording = false;
-        const btn = document.getElementById('audioRecordBtn');
+    } catch (e) {
+        console.error('stopRecording error:', e);
+    }
+
+    isRecording = false;
+
+    const btn = document.getElementById('audioRecordBtn');
+
+    if (btn) {
         btn.classList.remove('recording');
         btn.innerHTML = '<i class="fas fa-microphone"></i>';
-        toast('Отправка...');
     }
+
+    toast('Отправка...');
 }
 
 function toast(msg) {
@@ -4219,7 +3942,7 @@ function loadLinkedAccounts() {
                     uid: currentUser.uid,
                     email: currentUser.email,
                     displayName: currentUser.displayName || 'Пользователь',
-                    avatarBase64: userData.avatarBase64 || null
+                    avatarBase64: getAvatarSrc(userData)|| null
                 });
                 saveLinkedAccounts();
             } else {
@@ -4665,13 +4388,16 @@ async function loadUserData() {
             isAdmin: false
         };
         await db.collection('users').doc(currentUser.uid).set(userData);
-    } else {
-        userData = snap.data();
-        userData.blockedUsers = userData.blockedUsers || [];
-        userData.pinnedChats = userData.pinnedChats || [];
-    }
-    blockedUsers = userData.blockedUsers;
-    pinnedChats = userData.pinnedChats;
+} else {
+    userData = {
+        uid: currentUser.uid,
+        ...snap.data()
+    };
+
+    userData.blockedUsers = userData.blockedUsers || [];
+    userData.pinnedChats = userData.pinnedChats || [];
+    userData.avatarUrl = userData.avatarUrl || null;
+    userData.avatarBase64 = userData.avatarBase64 || null;
 }
 
 async function loadAdminUsers() {
@@ -4704,15 +4430,19 @@ async function getUserInfo(uid) {
 
     usersCachePromises[uid] = db.collection('users').doc(uid).get()
         .then(snap => {
-            const data = snap.exists ? snap.data() : {
-                uid,
-                username: 'user',
-                displayName: 'Пользователь',
-                avatarBase64: null,
-                bio: '',
-                email: '',
-                isAdmin: false
-            };
+const data = snap.exists ? {
+    uid,
+    ...snap.data()
+} : {
+    uid,
+    username: 'user',
+    displayName: 'Пользователь',
+    avatarBase64: null,
+    avatarUrl: null,
+    bio: '',
+    email: '',
+    isAdmin: false
+};
 
             usersCache[uid] = data;
             delete usersCachePromises[uid];
@@ -4848,9 +4578,10 @@ if (chat.isSaved) {
 if (chat.type === 'saved') {
     const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
     const isPinned = pinnedChats.includes(chat.id);
+    const isUnread = chat.unreadFor?.includes(currentUser.uid);
 
     return `
-        <div class="chat-cell saved ${isPinned ? 'pinned' : ''}" data-chat-id="${chat.id}" data-chat-type="saved" onclick="openSavedChat()">
+        <div class="chat-cell saved ${isPinned ? 'pinned' : ''} ${isUnread ? 'unread' : ''}" data-chat-id="${chat.id}" data-chat-type="saved" onclick="openSavedChat()">
             <div class="chat-avatar saved">
                 <i class="fas fa-bookmark" style="font-size:24px;"></i>
             </div>
@@ -4868,36 +4599,43 @@ if (chat.type === 'saved') {
                 <div class="chat-preview">${esc(chat.lastMessage || 'Сохранённые сообщения')}</div>
             </div>
 
-            <button class="chat-open-page-btn" type="button" onclick="openChatInOwnPage(event, '${chat.id}')">
-                <i class="fas fa-up-right-from-square"></i>
-            </button>
-        </div>`;
+            ${isUnread ? '<div class="unread-dot"></div>' : ''}
+        </div>
+    `;
 
 } else if (chat.type === 'channel') {
-    const avHTML = chat.avatarBase64
-        ? `<img src="${chat.avatarBase64}">`
+    const avatarSrc = getAvatarSrc(chat);
+
+    const avHTML = avatarSrc
+        ? `<img src="${avatarSrc}">`
         : '<i class="fas fa-bullhorn" style="font-size:22px;"></i>';
 
     const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
     const isPinned = pinnedChats.includes(chat.id);
+    const isUnread = chat.unreadFor?.includes(currentUser.uid);
 
     return `
-        <div class="chat-cell" onclick="openChannel('${chat.id}')" data-chat-id="${chat.id}" data-chat-type="channel">
+        <div class="chat-cell ${isUnread ? 'unread' : ''} ${isPinned ? 'pinned' : ''}" onclick="openChannel('${chat.id}')" data-chat-id="${chat.id}" data-chat-type="channel">
             <div class="chat-avatar" style="background:linear-gradient(135deg,#ff9f0a,#ff3b30);">
                 ${avHTML}
             </div>
+
             <div class="chat-content">
                 <div class="chat-top">
                     <span class="chat-name">
                         <i class="fas fa-bullhorn saved-icon"></i>
-                        ${esc(chat.name)}
+                        ${esc(chat.name || 'Канал')}
                         ${isPinned ? ' <i class="fas fa-thumbtack pinned-icon"></i>' : ''}
                     </span>
                     <span class="chat-time">${timeStr}</span>
                 </div>
+
                 <div class="chat-preview">${esc(chat.lastMessage || 'Канал')}</div>
             </div>
-        </div>`;
+
+            ${isUnread ? '<div class="unread-dot"></div>' : ''}
+        </div>
+    `;
                 
             } else if (chat.type === 'group') {
                 const avHTML = chat.avatarBase64 ? `<img src="${chat.avatarBase64}">` : '👥';
@@ -5081,18 +4819,6 @@ async function ctxDeleteChat() {
     } catch (e) { toast('Ошибка удаления'); }
 }
 
-    function openChatInOwnPage(e, chatId) {
-    if (e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
-
-    if (!chatId) return;
-
-    const url = `${location.origin}${location.pathname}?chat=${encodeURIComponent(chatId)}`;
-    window.open(url, '_blank');
-}
-
 async function openDirectChat(userId, username) {
     currentChatUser = { uid: userId, username };
 currentChatIsGroup = false;
@@ -5146,15 +4872,6 @@ function showChatOverlay() {
     if (!overlay) return;
 
     document.body.classList.add('chat-open');
-
-    if (window.visualViewport) {
-        document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
-    } else {
-        document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
-    }
-
-    document.documentElement.style.setProperty('--vv-offset-top', '0px');
-
     overlay.classList.add('show');
 }
 
@@ -5167,14 +4884,6 @@ function hideChatOverlay() {
     document.body.classList.remove('chat-open');
     document.body.classList.remove('keyboard-open');
     document.body.classList.remove('keyboard-closing');
-
-    document.documentElement.style.setProperty('--vv-offset-top', '0px');
-
-    if (window.visualViewport) {
-        document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
-    } else {
-        document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
-    }
 }
 
   function getChannelRights(chat) {
@@ -5207,6 +4916,31 @@ function canCurrentUserViewChannelSubscribers(chat) {
 
 function canCurrentUserEditChannel(chat) {
     return getChannelRights(chat).canEditChannel;
+}
+
+    async function getUnreadRecipientsForCurrentChat() {
+    if (!currentChatId || !currentUser) return [];
+
+    if (currentChatIsGroup) {
+        return currentChatParticipants.filter(id => id !== currentUser.uid);
+    }
+
+    if (currentChatIsChannel) {
+        const doc = await db.collection('chats').doc(currentChatId).get();
+        const chat = doc.data();
+
+        if (!chat) return [];
+
+        const ids = chat.subscribers || chat.participants || [];
+
+        return ids.filter(id => id !== currentUser.uid);
+    }
+
+    if (currentChatUser && !currentChatIsSaved && !currentChatIsSystem) {
+        return [currentChatUser.uid];
+    }
+
+    return [];
 }
 
 async function canSendToCurrentChat() {
@@ -6265,13 +5999,16 @@ async function renderPostComment(commentId, comment) {
 
     const user = await getUserInfo(comment.senderId);
     const d = comment.timestamp?.toDate?.() || new Date();
+    const isMine = comment.senderId === currentUser.uid;
 
-    const avatarHTML = user.avatarBase64
-        ? `<img src="${user.avatarBase64}">`
-        : esc((user.displayName || user.username || 'U')[0]?.toUpperCase());
+const avatarSrc = getAvatarSrc(user);
+
+const avatarHTML = avatarSrc
+    ? `<img src="${avatarSrc}">`
+    : esc((user.displayName || user.username || 'U')[0]?.toUpperCase());
 
     const div = document.createElement('div');
-    div.className = 'comment-item';
+    div.className = `comment-item ${isMine ? 'mine' : ''}`;
     div.setAttribute('data-comment-id', commentId);
 
     div.innerHTML = `
@@ -6279,9 +6016,9 @@ async function renderPostComment(commentId, comment) {
             ${avatarHTML}
         </div>
 
-        <div class="comment-body">
+        <div class="comment-bubble">
             <div class="comment-author" onclick="openCommentUserProfile('${comment.senderId}')">
-                ${esc(user.displayName || user.username || 'Пользователь')}
+                ${isMine ? 'Вы' : esc(user.displayName || user.username || 'Пользователь')}
                 ${user.isAdmin ? '<i class="fas fa-check-circle verified-icon"></i>' : ''}
             </div>
 
@@ -6292,7 +6029,7 @@ async function renderPostComment(commentId, comment) {
 
     list.appendChild(div);
 }
-
+    
 async function sendPostComment() {
     if (!currentChatId || !currentCommentsPostId) return;
 
@@ -6303,6 +6040,7 @@ async function sendPostComment() {
 
     try {
         input.value = '';
+        input.style.height = 'auto';
 
         const postRef = db.collection('chats')
             .doc(currentChatId)
@@ -6312,18 +6050,12 @@ async function sendPostComment() {
         await postRef.collection('comments').add({
             text,
             senderId: currentUser.uid,
-            timestamp: new Date()
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
 
         await postRef.update({
             commentsCount: firebase.firestore.FieldValue.increment(1)
         });
-
-        const countEl = document.getElementById(`commentsCount_${currentCommentsPostId}`);
-        if (countEl) {
-            const oldCount = parseInt(countEl.textContent || '0', 10);
-            countEl.textContent = oldCount + 1;
-        }
 
     } catch (e) {
         console.error('sendPostComment error:', e);
@@ -6399,7 +6131,7 @@ async function sendMessage() {
     const msgData = {
         text,
         senderId: currentUser.uid,
-        timestamp: new Date(),
+timestamp: firebase.firestore.FieldValue.serverTimestamp(),
         read: false,
         type: 'text'
     };
@@ -6420,18 +6152,12 @@ if (replyingTo) {
             .collection('messages')
             .add(msgData);
 
-        let unreadFor = [];
-
-        if (currentChatIsGroup) {
-            unreadFor = currentChatParticipants.filter(id => id !== currentUser.uid);
-        } else if (currentChatUser && !currentChatIsSaved && !currentChatIsSystem) {
-            unreadFor = [currentChatUser.uid];
-        }
+const unreadFor = await getUnreadRecipientsForCurrentChat();
 
         const updateData = {
             lastMessage: text,
             lastSender: currentUser.uid,
-            lastMessageTime: new Date()
+            lastMessageTime: firebase.firestore.FieldValue.serverTimestamp()
         };
 
         if (unreadFor.length > 0) {
@@ -6872,9 +6598,11 @@ async function ctxDeleteForAll() {
 
 async function renderProfile() {
     const container = document.getElementById('profileContent');
-    const avHTML = userData.avatarBase64
-        ? `<img src="${userData.avatarBase64}">`
-        : (userData.displayName?.[0]?.toUpperCase() || 'U');
+const myAvatarSrc = getAvatarSrc(userData);
+
+const avHTML = myAvatarSrc
+    ? `<img src="${myAvatarSrc}">`
+    : (userData.displayName?.[0]?.toUpperCase() || 'U');
     
     container.innerHTML = `
         <div class="profile-header">
@@ -7178,8 +6906,8 @@ function openProfileEdit() {
     document.getElementById('editBio').value = userData.bio || '';
     
     const av = document.getElementById('editAvatarPreview');
-    if (userData.avatarBase64) {
-        av.innerHTML = `<img src="${userData.avatarBase64}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+    if (getAvatarSrc(userData)) {
+        av.innerHTML = `<img src="${getAvatarSrc(userData)}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
         av.style.background = '';
     } else {
         av.innerHTML = userData.displayName?.[0]?.toUpperCase() || 'U';
@@ -7311,39 +7039,37 @@ function closeCrop() {
 
 async function saveCrop() {
     if (!cropper) return;
-    const canvas = cropper.getCroppedCanvas({ width: 300, height: 300 });
-    const base64 = canvas.toDataURL('image/jpeg', 0.85);
-    
+
+    const canvas = cropper.getCroppedCanvas({
+        width: 300,
+        height: 300
+    });
+
     try {
-        await db.collection('users').doc(currentUser.uid).update({ avatarBase64: base64 });
-        userData.avatarBase64 = base64;
+        const avatarUrl = await uploadAvatarCanvasToStorage(canvas, 'avatars');
+
+        await db.collection('users').doc(currentUser.uid).update({
+            avatarUrl,
+            avatarBase64: firebase.firestore.FieldValue.delete()
+        });
+
+        userData.avatarUrl = avatarUrl;
+        userData.avatarBase64 = null;
+
         usersCache = {};
+
         loadLinkedAccounts();
         closeCrop();
         renderProfile();
         loadChats();
+
         toast('Фото обновлено');
-    } catch (e) { toast('Ошибка'); }
+    } catch (e) {
+        console.error('saveCrop error:', e);
+        toast('Ошибка загрузки фото');
+    }
 }
-
-document.getElementById('groupAvatarInput').addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-        document.getElementById('groupCropImageTarget').src = ev.target.result;
-        document.getElementById('groupCropModal').classList.add('show');
-        setTimeout(() => {
-            if (groupCropper) groupCropper.destroy();
-            groupCropper = new Cropper(document.getElementById('groupCropImageTarget'), {
-                aspectRatio: 1, viewMode: 1, dragMode: 'move', autoCropArea: 1
-            });
-        }, 200);
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
-});
-
+    
 function closeGroupCrop() {
     document.getElementById('groupCropModal').classList.remove('show');
     if (groupCropper) { groupCropper.destroy(); groupCropper = null; }
@@ -7503,7 +7229,7 @@ async function createChannel() {
         await ref.collection('messages').add({
             text: `Канал "${name}" создан`,
             senderId: currentUser.uid,
-            timestamp: new Date(),
+           timestamp: firebase.firestore.FieldValue.serverTimestamp(),
             isSystemMessage: true,
             type: 'channel_post'
         });
@@ -8697,34 +8423,42 @@ async function searchUsersAndChats(q) {
     let hasUsers = false;
     let hasGroups = false;
     
-    try {
-        const usersSnap = await db.collection('users').get();
-        
-        for (const doc of usersSnap.docs) {
-            if (doc.id === currentUser.uid) continue;
-            
-            const u = doc.data();
-            const username = (u.username || '').toLowerCase();
-            const displayName = (u.displayName || '').toLowerCase();
-            
-            if (username.includes(searchTerm) || displayName.includes(searchTerm)) {
-                hasUsers = true;
-                const avHTML = u.avatarBase64 ? `<img src="${u.avatarBase64}">` : (displayName[0] || 'U');
-                html += `
-                    <div class="search-result-item" onclick="startChatWith('${doc.id}', '${esc(u.username)}')">
-                        <div class="chat-avatar" style="width:40px;height:40px;font-size:16px;">${avHTML}</div>
-                        <div>
-                            <div style="font-size:15px;">${esc(u.displayName || 'Пользователь')}</div>
-                            <div style="font-size:13px;color:var(--text-secondary);">@${esc(u.username)}</div>
-                        </div>
-                    </div>
-                `;
-            }
-        }
-    } catch(e) { 
-        console.error('Ошибка поиска пользователей:', e);
-        html += '<div style="padding:8px 16px;color:var(--danger);">Ошибка поиска пользователей</div>';
+   try {
+    if (!allUsers || allUsers.length === 0) {
+        await loadAllUsers();
     }
+
+    for (const u of allUsers) {
+        if (u.uid === currentUser.uid) continue;
+
+        const username = (u.username || '').toLowerCase();
+        const displayName = (u.displayName || '').toLowerCase();
+
+        if (username.includes(searchTerm) || displayName.includes(searchTerm)) {
+            hasUsers = true;
+
+            const avatarSrc = getAvatarSrc(u);
+
+            const avHTML = avatarSrc
+                ? `<img src="${avatarSrc}">`
+                : esc((u.displayName?.[0] || u.username?.[0] || 'U').toUpperCase());
+
+            html += `
+                <div class="search-result-item" onclick="startChatWith('${u.uid}', '${esc(u.username || '')}')">
+                    <div class="chat-avatar" style="width:40px;height:40px;font-size:16px;">${avHTML}</div>
+                    <div>
+                        <div style="font-size:15px;">${esc(u.displayName || 'Пользователь')}</div>
+                        <div style="font-size:13px;color:var(--text-secondary);">@${esc(u.username || '')}</div>
+                    </div>
+                </div>
+            `;
+        }
+    }
+} catch(e) {
+    console.error('Ошибка поиска пользователей:', e);
+    html += '<div style="padding:8px 16px;color:var(--danger);">Ошибка поиска пользователей</div>';
+}
+    
     
     if (hasUsers) {
         html = '<div style="padding:8px 16px; font-size:12px; color:var(--text-secondary); background:var(--bg-tertiary);">👥 ПОЛЬЗОВАТЕЛИ</div>' + html;
@@ -8764,13 +8498,12 @@ async function searchUsersAndChats(q) {
         console.error('Ошибка поиска групп:', e);
     }
 
-    let hasChannels = false;
+let hasChannels = false;
 
 try {
-const channelsSnap = await db.collection('chats')
-    .where('isChannel', '==', true)
-    .where('visibility', '==', 'public')
-    .get();
+    const channelsSnap = await db.collection('chats')
+        .where('isChannel', '==', true)
+        .get();
 
     let channelsHtml = '';
 
@@ -8779,37 +8512,54 @@ const channelsSnap = await db.collection('chats')
 
         const name = (chat.name || '').toLowerCase();
         const privateCode = (chat.privateCode || '').toLowerCase();
-        const isPublic = chat.visibility === 'public';
-        const isPrivateCodeMatch = privateCode && privateCode === searchTerm;
+        const visibility = chat.visibility || 'public';
 
-        if (
-            (isPublic && name.includes(searchTerm)) ||
-            isPrivateCodeMatch
-        ) {
-            hasChannels = true;
+        const isPublicMatch =
+            visibility === 'public' &&
+            name.includes(searchTerm);
 
-            const avHTML = chat.avatarBase64
-                ? `<img src="${chat.avatarBase64}">`
-                : '<i class="fas fa-bullhorn" style="font-size:16px;"></i>';
+        const isPrivateCodeMatch =
+            visibility === 'private' &&
+            privateCode &&
+            privateCode === searchTerm;
 
-            channelsHtml += `
-                <div class="search-result-item" onclick="joinAndOpenChannel('${doc.id}')">
-                    <div class="chat-avatar" style="width:40px;height:40px;font-size:16px;background:linear-gradient(135deg,#ff9f0a,#ff3b30);">
-                        ${avHTML}
-                    </div>
-                    <div>
-                        <div style="font-size:15px;">${esc(chat.name || 'Канал')}</div>
-                        <div style="font-size:13px;color:var(--text-secondary);">
-                            Канал · ${chat.subscribersCount || 0} подписчиков
-                        </div>
+        if (!isPublicMatch && !isPrivateCodeMatch) {
+            continue;
+        }
+
+        hasChannels = true;
+
+        const alreadySubscribed = (chat.subscribers || []).includes(currentUser.uid);
+
+        const avHTML = chat.avatarBase64
+            ? `<img src="${chat.avatarBase64}">`
+            : '<i class="fas fa-bullhorn" style="font-size:16px;"></i>';
+
+        channelsHtml += `
+            <div class="search-result-item" onclick="joinAndOpenChannel('${doc.id}')">
+                <div class="chat-avatar" style="width:40px;height:40px;font-size:16px;background:linear-gradient(135deg,#ff9f0a,#ff3b30);">
+                    ${avHTML}
+                </div>
+
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:15px;">${esc(chat.name || 'Канал')}</div>
+                    <div style="font-size:13px;color:var(--text-secondary);">
+                        ${visibility === 'private' ? 'Закрытый канал' : 'Канал'} · ${chat.subscribersCount || 0} подписчиков
                     </div>
                 </div>
-            `;
-        }
+
+                <button class="channel-open-btn" type="button">
+                    ${alreadySubscribed ? 'Открыть' : 'Войти'}
+                </button>
+            </div>
+        `;
     }
 
     if (hasChannels) {
-        channelsHtml = '<div style="padding:8px 16px; font-size:12px; color:var(--text-secondary); background:var(--bg-tertiary);">📣 КАНАЛЫ</div>' + channelsHtml;
+        channelsHtml =
+            '<div style="padding:8px 16px;font-size:12px;color:var(--text-secondary);background:var(--bg-tertiary);">📣 КАНАЛЫ</div>' +
+            channelsHtml;
+
         html = channelsHtml + html;
     }
 } catch (e) {
@@ -9138,115 +8888,6 @@ document.getElementById('channelCropSettingsModal')?.classList.remove('show');
     }
 });
 
-function setupKeyboardFix() {
-    const input = document.getElementById('chatInput');
-
-    let baseViewportHeight = window.visualViewport
-        ? window.visualViewport.height
-        : window.innerHeight;
-
-    let rafId = null;
-    let keyboardCloseTimer = null;
-
-    function setViewportHeight() {
-    if (window.visualViewport) {
-        document.documentElement.style.setProperty(
-            '--vv-height',
-            `${window.visualViewport.height}px`
-        );
-    } else {
-        document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
-    }
-
-    document.documentElement.style.setProperty('--vv-offset-top', '0px');
-}
-    function isKeyboardOpen() {
-        if (!window.visualViewport) return false;
-        return baseViewportHeight - window.visualViewport.height > 80;
-    }
-
-    function updateKeyboardState() {
-        if (rafId) cancelAnimationFrame(rafId);
-
-        rafId = requestAnimationFrame(() => {
-            setViewportHeight();
-
-            const open = isKeyboardOpen();
-
-            if (open) {
-                clearTimeout(keyboardCloseTimer);
-                document.body.classList.remove('keyboard-closing');
-                document.body.classList.add('keyboard-open');
-            } else {
-                document.body.classList.add('keyboard-closing');
-                document.body.classList.remove('keyboard-open');
-
-                clearTimeout(keyboardCloseTimer);
-                keyboardCloseTimer = setTimeout(() => {
-                    document.body.classList.remove('keyboard-closing');
-
-                    baseViewportHeight = window.visualViewport
-                        ? window.visualViewport.height
-                        : window.innerHeight;
-
-                    setViewportHeight();
-                }, 250);
-            }
-        });
-    }
-
-    setViewportHeight();
-
-    if (input) {
-        input.addEventListener('focus', () => {
-            setViewportHeight();
-            setTimeout(updateKeyboardState, 50);
-            setTimeout(updateKeyboardState, 180);
-            setTimeout(updateKeyboardState, 350);
-        });
-
-        input.addEventListener('blur', () => {
-            document.body.classList.add('keyboard-closing');
-            document.body.classList.remove('keyboard-open');
-
-            setTimeout(() => {
-                document.body.classList.remove('keyboard-closing');
-
-                baseViewportHeight = window.visualViewport
-                    ? window.visualViewport.height
-                    : window.innerHeight;
-
-                setViewportHeight();
-            }, 250);
-        });
-    }
-
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', updateKeyboardState);
-        window.visualViewport.addEventListener('scroll', updateKeyboardState);
-    }
-
-    window.addEventListener('resize', () => {
-        if (document.activeElement !== input) {
-            baseViewportHeight = window.visualViewport
-                ? window.visualViewport.height
-                : window.innerHeight;
-        }
-
-        updateKeyboardState();
-    });
-
-    window.addEventListener('orientationchange', () => {
-        setTimeout(() => {
-            baseViewportHeight = window.visualViewport
-                ? window.visualViewport.height
-                : window.innerHeight;
-
-            setViewportHeight();
-        }, 400);
-    });
-}
-
 function focusChatInput() {
     const input = document.getElementById('chatInput');
     if (!input) return;
@@ -9260,7 +8901,6 @@ function focusChatInput() {
 
 window.addEventListener('DOMContentLoaded', () => {
     initSearchScroll();
-    setupKeyboardFix();
 });
 
 const sendBtnElement = document.getElementById('sendBtn');
@@ -9281,6 +8921,22 @@ if (sendBtnElement) {
         if (isMobileLike) {
             requestAnimationFrame(focusChatInput);
             setTimeout(focusChatInput, 80);
+        }
+    });
+}
+
+    const postCommentInput = document.getElementById('postCommentInput');
+
+if (postCommentInput) {
+    postCommentInput.addEventListener('input', function () {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 90) + 'px';
+    });
+
+    postCommentInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendPostComment();
         }
     });
 }
@@ -9313,7 +8969,173 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
     z-index: 100030 !important;
 }
 
-</script>
+/* ===== CHANNEL / COMMENTS UI ===== */
+
+.channel-open-btn {
+    border: none;
+    border-radius: 999px;
+    padding: 8px 12px;
+    background: rgba(10, 132, 255, 0.18);
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    border: 0.5px solid rgba(10,132,255,0.28);
+}
+
+.channel-open-btn:active {
+    transform: scale(0.95);
+    background: rgba(10,132,255,0.28);
+}
+
+.post-comments-btn {
+    width: 100%;
+    margin-top: 8px;
+    border: none;
+    border-radius: 16px;
+    padding: 9px 12px;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(245,245,247,0.86);
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    cursor: pointer;
+}
+
+.post-comments-btn i {
+    color: var(--accent);
+}
+
+.post-comments-btn span {
+    min-width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    padding: 0 6px;
+    background: rgba(10, 132, 255, 0.22);
+    color: var(--accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+}
+
+.post-comments-btn:active {
+    transform: scale(0.98);
+    background: rgba(255,255,255,0.12);
+}
+
+.comments-sheet {
+    max-height: 88vh !important;
+    border-radius: 28px 28px 0 0 !important;
+    background: rgba(28, 28, 30, 0.96) !important;
+    backdrop-filter: blur(30px) saturate(180%);
+    -webkit-backdrop-filter: blur(30px) saturate(180%);
+}
+
+.comments-list {
+    max-height: 52vh;
+    overflow-y: auto;
+    padding: 6px 2px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.comment-item {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.comment-item.mine {
+    flex-direction: row-reverse;
+}
+
+.comment-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    overflow: hidden;
+    background: linear-gradient(135deg, #007aff, #5856d6);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.comment-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.comment-bubble {
+    max-width: 78%;
+    padding: 8px 11px;
+    border-radius: 18px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.16);
+}
+
+.comment-item.mine .comment-bubble {
+    background: var(--accent);
+    color: white;
+    border-bottom-right-radius: 6px;
+}
+
+.comment-item:not(.mine) .comment-bubble {
+    border-bottom-left-radius: 6px;
+}
+
+.comment-author {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 3px;
+}
+
+.comment-item.mine .comment-author {
+    color: rgba(255,255,255,0.82);
+}
+
+.comment-text {
+    font-size: 14px;
+    line-height: 1.35;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.comment-time {
+    font-size: 10px;
+    opacity: 0.65;
+    text-align: right;
+    margin-top: 3px;
+}
+
+.comments-input-wrap {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 0.5px solid var(--separator);
+}
+
+.comments-input-wrap textarea {
+    min-height: 36px;
+    max-height: 90px;
+    line-height: 18px;
+}
+        
+</style>
     <style id="CONTEGG-PHOTO-EDITOR-STYLES">
 .photo-editor-sheet {
     max-height: 92vh !important;
@@ -9591,6 +9413,56 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
     opacity: 0 !important;
     pointer-events: none !important;
 }
+
+        /* ===== FINAL SIMPLE CHAT LAYOUT ===== */
+
+.chat-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    background: var(--bg-primary) !important;
+    z-index: 900 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    transform: translateX(100%) !important;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.chat-overlay.show {
+    transform: translateX(0) !important;
+}
+
+.chat-navbar {
+    flex: 0 0 auto !important;
+}
+
+.chat-messages {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    padding: 12px !important;
+    padding-bottom: 12px !important;
+}
+
+.chat-input-bar {
+    flex: 0 0 auto !important;
+    position: relative !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 8px 10px !important;
+    padding-left: max(10px, env(safe-area-inset-left)) !important;
+    padding-right: max(10px, env(safe-area-inset-right)) !important;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+    margin: 0 !important;
+    transform: none !important;
+}
+        
 </style>
 
 <script id="CONTEGG-FULLSCREEN-ANY-CLICK">
@@ -9656,738 +9528,6 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
     }
 })();
 </script>
-    <style id="CONTEGG-OPEN-CHAT-PAGE-BTN">
-.chat-open-page-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    border: none;
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--accent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    flex-shrink: 0;
-    cursor: pointer;
-}
-
-.chat-open-page-btn:active {
-    transform: scale(0.92);
-    background: rgba(10, 132, 255, 0.18);
-}
-</style>
     
-<script id="CONTEGG-NUKE-KEYBOARD-GAP-FINAL-JS">
-(function () {
-    const root = document.documentElement;
-
-    let rafId = null;
-
-    function getVVHeight() {
-        if (window.visualViewport) {
-            return Math.max(320, Math.round(window.visualViewport.height));
-        }
-
-        return Math.max(320, Math.round(window.innerHeight));
-    }
-
-    function isChatOpen() {
-        return document.getElementById('chatOverlay')?.classList.contains('show');
-    }
-
-    function getInput() {
-        return document.getElementById('chatInput');
-    }
-
-    function getBar() {
-        return document.getElementById('chatInputBar');
-    }
-
-    function getMessages() {
-        return document.getElementById('chatMessages');
-    }
-
-    function keyboardShouldBeOpen() {
-        const input = getInput();
-        return input && document.activeElement === input;
-    }
-
-    function applyNoGapFix() {
-        const vh = getVVHeight();
-        const input = getInput();
-        const bar = getBar();
-        const messages = getMessages();
-
-        root.style.setProperty('--contegg-live-vh', vh + 'px', 'important');
-
-        /* гасим старые фиксы */
-        root.style.setProperty('--contegg-keyboard-height', '0px', 'important');
-        root.style.setProperty('--vv-height', vh + 'px', 'important');
-        root.style.setProperty('--vv-offset-top', '0px', 'important');
-
-        const keyboardOpen = keyboardShouldBeOpen();
-
-        document.body.classList.toggle('keyboard-open', keyboardOpen);
-        document.body.classList.remove('keyboard-closing');
-
-        if (bar) {
-            bar.style.setProperty('position', 'absolute', 'important');
-            bar.style.setProperty('bottom', '0px', 'important');
-            bar.style.setProperty('top', 'auto', 'important');
-            bar.style.setProperty('transform', 'none', 'important');
-            bar.style.setProperty('margin-bottom', '0px', 'important');
-
-            bar.style.setProperty(
-                'padding-bottom',
-                keyboardOpen
-                    ? '0px'
-                    : 'calc(8px + env(safe-area-inset-bottom, 0px))',
-                'important'
-            );
-
-            const barH = Math.ceil(bar.getBoundingClientRect().height || 64);
-            root.style.setProperty('--contegg-bar-h', barH + 'px', 'important');
-            root.style.setProperty('--contegg-input-height', barH + 'px', 'important');
-        }
-
-        if (messages && isChatOpen()) {
-            messages.style.setProperty(
-                'padding-bottom',
-                'calc(var(--contegg-bar-h) + 10px)',
-                'important'
-            );
-        }
-    }
-
-    function requestApply() {
-        if (rafId) cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(applyNoGapFix);
-    }
-
-    function burstApply() {
-        requestApply();
-        setTimeout(requestApply, 40);
-        setTimeout(requestApply, 120);
-        setTimeout(requestApply, 260);
-        setTimeout(requestApply, 500);
-        setTimeout(requestApply, 900);
-    }
-
-    const oldShowChatOverlay = window.showChatOverlay;
-    window.showChatOverlay = function () {
-        if (typeof oldShowChatOverlay === 'function') {
-            oldShowChatOverlay.apply(this, arguments);
-        } else {
-            document.body.classList.add('chat-open');
-            document.getElementById('chatOverlay')?.classList.add('show');
-        }
-
-        burstApply();
-    };
-
-    const oldHideChatOverlay = window.hideChatOverlay;
-    window.hideChatOverlay = function () {
-        if (typeof oldHideChatOverlay === 'function') {
-            oldHideChatOverlay.apply(this, arguments);
-        } else {
-            document.body.classList.remove('chat-open', 'keyboard-open', 'keyboard-closing');
-            document.getElementById('chatOverlay')?.classList.remove('show');
-        }
-
-        burstApply();
-    };
-
-/* ===== RESTORE OLD WORKING SCHEME: input moves only by keyboard height ===== */
-
-:root {
-    --contegg-layout-height: 100vh;
-    --contegg-keyboard-height: 0px;
-    --contegg-input-height: 64px;
-}
-
-/* чат НЕ должен становиться высотой visualViewport, иначе строка улетает вверх */
-#chatOverlay.chat-overlay {
-    position: fixed !important;
-    left: 0 !important;
-    right: 0 !important;
-    top: 0 !important;
-    bottom: auto !important;
-
-    width: 100% !important;
-    height: var(--contegg-layout-height) !important;
-    max-height: var(--contegg-layout-height) !important;
-
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-
-    background: #000 !important;
-    z-index: 99999 !important;
-
-    transform: translate3d(100%, 0, 0) !important;
-    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-
-#chatOverlay.chat-overlay.show {
-    transform: translate3d(0, 0, 0) !important;
-}
-
-body.keyboard-open #chatOverlay.chat-overlay,
-body.keyboard-closing #chatOverlay.chat-overlay {
-    transition: none !important;
-}
-
-#chatNavbar.chat-navbar {
-    flex: 0 0 auto !important;
-}
-
-/* сообщения получают место под input + клавиатуру */
-#chatMessages.chat-messages {
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-    overflow-y: auto !important;
-    overscroll-behavior: contain !important;
-    scroll-behavior: auto !important;
-    overflow-anchor: none !important;
-
-    padding: 12px 12px calc(
-        var(--contegg-input-height) + var(--contegg-keyboard-height) + 12px
-    ) !important;
-}
-
-/* строка ввода внизу полного layout и поднимается на высоту клавы */
-#chatInputBar.chat-input-bar {
-    position: absolute !important;
-    left: 0 !important;
-    right: 0 !important;
-    top: auto !important;
-    bottom: 0 !important;
-
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-
-    z-index: 100000 !important;
-
-    transform: translate3d(0, calc(-1 * var(--contegg-keyboard-height)), 0) !important;
-    transition: none !important;
-
-    margin: 0 !important;
-
-    padding-top: 8px !important;
-    padding-left: max(10px, env(safe-area-inset-left)) !important;
-    padding-right: max(10px, env(safe-area-inset-right)) !important;
-    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important;
-}
-
-/* вот это убирает щель, но НЕ ломает подъем строки */
-body.keyboard-open #chatInputBar.chat-input-bar {
-    padding-bottom: 0px !important;
-    margin-bottom: 0px !important;
-}
-
-body.keyboard-open #chatInputBar > div,
-body.keyboard-open #chatInputBar .chat-input-row,
-body.keyboard-open #chatInputBar .chat-input,
-body.keyboard-open #chatInputBar .media-buttons,
-body.keyboard-open #chatInputBar .media-btn,
-body.keyboard-open #chatInputBar .chat-send {
-    padding-bottom: 0px !important;
-    margin-bottom: 0px !important;
-}
-</style>
-
-(function () {
-    const root = document.documentElement;
-
-    let layoutHeight = 0;
-    let rafId = null;
-
-    function vv() {
-        return window.visualViewport || null;
-    }
-
-    function getStableHeight() {
-        const v = vv();
-
-        return Math.round(Math.max(
-            layoutHeight || 0,
-            window.innerHeight || 0,
-            document.documentElement.clientHeight || 0,
-            v ? v.height + v.offsetTop : 0
-        ));
-    }
-
-    function getVisibleBottom() {
-        const v = vv();
-
-        if (!v) return window.innerHeight || document.documentElement.clientHeight || 0;
-
-        return Math.round(v.height + v.offsetTop);
-    }
-
-    function getInput() {
-        return document.getElementById('chatInput');
-    }
-
-    function getBar() {
-        return document.getElementById('chatInputBar');
-    }
-
-    function getMessages() {
-        return document.getElementById('chatMessages');
-    }
-
-    function isChatOpen() {
-        return document.getElementById('chatOverlay')?.classList.contains('show');
-    }
-
-    function setInputHeight() {
-        const bar = getBar();
-        if (!bar) return;
-
-        const h = Math.ceil(bar.getBoundingClientRect().height || 64);
-        root.style.setProperty('--contegg-input-height', h + 'px');
-    }
-
-    function applyKeyboardFix() {
-        const input = getInput();
-        const bar = getBar();
-        const messages = getMessages();
-
-        if (!layoutHeight) {
-            layoutHeight = getStableHeight();
-        }
-
-        const inputActive = input && document.activeElement === input;
-
-        let keyboardHeight = 0;
-
-        if (inputActive && vv()) {
-            keyboardHeight = Math.max(0, layoutHeight - getVisibleBottom());
-
-            if (keyboardHeight < 80) {
-                keyboardHeight = 0;
-            }
-        }
-
-        root.style.setProperty('--contegg-layout-height', layoutHeight + 'px');
-        root.style.setProperty('--contegg-keyboard-height', Math.round(keyboardHeight) + 'px');
-
-        /* старые переменные пусть не двигают чат вверх */
-        root.style.setProperty('--vv-height', layoutHeight + 'px');
-        root.style.setProperty('--vv-offset-top', '0px');
-
-        document.body.classList.toggle('keyboard-open', keyboardHeight > 0);
-        document.body.classList.remove('keyboard-closing');
-
-        if (bar) {
-            bar.style.setProperty('position', 'absolute', 'important');
-            bar.style.setProperty('bottom', '0px', 'important');
-            bar.style.setProperty('top', 'auto', 'important');
-            bar.style.setProperty(
-                'transform',
-                'translate3d(0, calc(-1 * var(--contegg-keyboard-height)), 0)',
-                'important'
-            );
-            bar.style.setProperty('margin-bottom', '0px', 'important');
-            bar.style.setProperty(
-                'padding-bottom',
-                keyboardHeight > 0
-                    ? '0px'
-                    : 'calc(8px + env(safe-area-inset-bottom, 0px))',
-                'important'
-            );
-        }
-
-        setInputHeight();
-
-        if (messages && isChatOpen()) {
-            messages.style.setProperty(
-                'padding-bottom',
-                'calc(var(--contegg-input-height) + var(--contegg-keyboard-height) + 12px)',
-                'important'
-            );
-        }
-    }
-
-    function requestApply() {
-        if (rafId) cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(applyKeyboardFix);
-    }
-
-    function burstApply() {
-        requestApply();
-        setTimeout(requestApply, 50);
-        setTimeout(requestApply, 160);
-        setTimeout(requestApply, 320);
-        setTimeout(requestApply, 650);
-    }
-
-    const oldShowChatOverlay = window.showChatOverlay;
-    window.showChatOverlay = function () {
-        layoutHeight = getStableHeight();
-
-        if (typeof oldShowChatOverlay === 'function') {
-            oldShowChatOverlay.apply(this, arguments);
-        } else {
-            document.body.classList.add('chat-open');
-            document.getElementById('chatOverlay')?.classList.add('show');
-        }
-
-        burstApply();
-    };
-
-    const oldHideChatOverlay = window.hideChatOverlay;
-    window.hideChatOverlay = function () {
-        if (typeof oldHideChatOverlay === 'function') {
-            oldHideChatOverlay.apply(this, arguments);
-        } else {
-            document.body.classList.remove('chat-open', 'keyboard-open', 'keyboard-closing');
-            document.getElementById('chatOverlay')?.classList.remove('show');
-        }
-
-        root.style.setProperty('--contegg-keyboard-height', '0px');
-
-        setTimeout(function () {
-            layoutHeight = getStableHeight();
-            burstApply();
-        }, 120);
-    };
-
-    function init() {
-        const input = getInput();
-        const bar = getBar();
-
-        layoutHeight = getStableHeight();
-
-        if (input) {
-            input.addEventListener('focus', function () {
-                layoutHeight = getStableHeight();
-                burstApply();
-            });
-
-            input.addEventListener('blur', function () {
-                document.body.classList.remove('keyboard-open');
-                root.style.setProperty('--contegg-keyboard-height', '0px');
-
-                setTimeout(function () {
-                    layoutHeight = getStableHeight();
-                    burstApply();
-                }, 260);
-            });
-
-            input.addEventListener('input', burstApply);
-        }
-
-        if (window.visualViewport) {
-            window.visualViewport.addEventListener('resize', burstApply);
-            window.visualViewport.addEventListener('scroll', burstApply);
-        }
-
-        window.addEventListener('resize', function () {
-            if (document.activeElement !== getInput()) {
-                layoutHeight = getStableHeight();
-            }
-
-            burstApply();
-        });
-
-        window.addEventListener('orientationchange', function () {
-            setTimeout(function () {
-                layoutHeight = getStableHeight();
-                root.style.setProperty('--contegg-keyboard-height', '0px');
-                burstApply();
-            }, 500);
-        });
-
-        if (window.ResizeObserver && bar) {
-            new ResizeObserver(burstApply).observe(bar);
-        }
-
-        burstApply();
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
-    }
-})();
-</script>
-    
-     <style id="CONTEGG-ONE-KEYBOARD-FIX">
-:root {
-    --contegg-input-top: calc(100dvh - 64px);
-    --contegg-input-height: 64px;
-    --contegg-covered-bottom: 0px;
-}
-
-/* Чат не двигаем и не ресайзим под клаву */
-#chatOverlay.chat-overlay {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100% !important;
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-    overflow: hidden !important;
-    display: flex !important;
-    flex-direction: column !important;
-    background: #000 !important;
-    z-index: 99999 !important;
-
-    transform: translate3d(100%, 0, 0) !important;
-    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-
-#chatOverlay.chat-overlay.show {
-    transform: translate3d(0, 0, 0) !important;
-}
-
-body.keyboard-open #chatOverlay.chat-overlay {
-    transition: none !important;
-}
-
-#chatNavbar.chat-navbar {
-    flex: 0 0 auto !important;
-}
-
-/* Сообщения могут уходить за клаву, но получают запас снизу */
-#chatMessages.chat-messages {
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-    overflow-y: auto !important;
-    overscroll-behavior: contain !important;
-    scroll-behavior: auto !important;
-    overflow-anchor: none !important;
-
-    padding: 12px 12px calc(
-        var(--contegg-covered-bottom) + var(--contegg-input-height) + 14px
-    ) !important;
-}
-
-/* Строка ввода отдельно стоит над клавиатурой */
-#chatInputBar.chat-input-bar {
-    position: fixed !important;
-    left: 0 !important;
-    right: 0 !important;
-    top: var(--contegg-input-top) !important;
-    bottom: auto !important;
-
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-
-    z-index: 100000 !important;
-
-    transform: none !important;
-    transition: none !important;
-    margin: 0 !important;
-
-    padding-top: 8px !important;
-    padding-left: max(10px, env(safe-area-inset-left)) !important;
-    padding-right: max(10px, env(safe-area-inset-right)) !important;
-    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important;
-}
-
-body.keyboard-open #chatInputBar.chat-input-bar {
-    padding-bottom: 0px !important;
-    margin-bottom: 0px !important;
-}
-
-body.keyboard-open #chatInputBar > div,
-body.keyboard-open #chatInputBar .chat-input-row,
-body.keyboard-open #chatInputBar .chat-input,
-body.keyboard-open #chatInputBar .media-buttons,
-body.keyboard-open #chatInputBar .media-btn,
-body.keyboard-open #chatInputBar .chat-send {
-    padding-bottom: 0px !important;
-    margin-bottom: 0px !important;
-}
-</style>
-
-<script id="CONTEGG-ONE-KEYBOARD-FIX-JS">
-(function () {
-    const root = document.documentElement;
-
-    let rafId = null;
-    let installed = false;
-    let resizeObserver = null;
-
-    function getInput() {
-        return document.getElementById('chatInput');
-    }
-
-    function getBar() {
-        return document.getElementById('chatInputBar');
-    }
-
-    function getMessages() {
-        return document.getElementById('chatMessages');
-    }
-
-    function isChatOpen() {
-        return document.getElementById('chatOverlay')?.classList.contains('show');
-    }
-
-    function visibleBottom() {
-        const vv = window.visualViewport;
-
-        if (vv) {
-            return Math.round(vv.offsetTop + vv.height);
-        }
-
-        return Math.round(window.innerHeight || document.documentElement.clientHeight || 0);
-    }
-
-    function layoutBottom() {
-        return Math.round(Math.max(
-            window.innerHeight || 0,
-            document.documentElement.clientHeight || 0,
-            visibleBottom()
-        ));
-    }
-
-    function applyKeyboardFix() {
-        const input = getInput();
-        const bar = getBar();
-        const messages = getMessages();
-
-        if (!bar) return;
-
-        const vb = visibleBottom();
-        const lb = layoutBottom();
-
-        let coveredBottom = Math.max(0, lb - vb);
-
-        const keyboardOpen =
-            !!window.visualViewport &&
-            document.activeElement === input &&
-            coveredBottom > 80;
-
-        if (!keyboardOpen) {
-            coveredBottom = 0;
-        }
-
-        document.body.classList.toggle('keyboard-open', keyboardOpen);
-        document.body.classList.remove('keyboard-closing');
-
-        bar.style.setProperty('position', 'fixed', 'important');
-        bar.style.setProperty('bottom', 'auto', 'important');
-        bar.style.setProperty('transform', 'none', 'important');
-        bar.style.setProperty('margin-bottom', '0px', 'important');
-        bar.style.setProperty(
-            'padding-bottom',
-            keyboardOpen ? '0px' : 'calc(8px + env(safe-area-inset-bottom, 0px))',
-            'important'
-        );
-
-        const barHeight = Math.ceil(bar.getBoundingClientRect().height || 64);
-        const inputTop = Math.max(0, Math.round(vb - barHeight));
-
-        root.style.setProperty('--contegg-input-top', inputTop + 'px');
-        root.style.setProperty('--contegg-input-height', barHeight + 'px');
-        root.style.setProperty('--contegg-covered-bottom', Math.round(coveredBottom) + 'px');
-
-        /* Гасим старые переменные, чтобы они не тянули чат */
-        root.style.setProperty('--contegg-keyboard-height', '0px');
-        root.style.setProperty('--vv-offset-top', '0px');
-        root.style.setProperty('--vv-height', '100dvh');
-
-        if (messages) {
-            messages.style.setProperty(
-                'padding-bottom',
-                `calc(${Math.round(coveredBottom)}px + ${barHeight}px + 14px)`,
-                'important'
-            );
-
-            if (keyboardOpen && isChatOpen()) {
-                requestAnimationFrame(() => {
-                    messages.scrollTop = messages.scrollHeight;
-                });
-            }
-        }
-    }
-
-    function requestApply() {
-        if (rafId) cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(applyKeyboardFix);
-    }
-
-    function burstApply() {
-        requestApply();
-        setTimeout(requestApply, 50);
-        setTimeout(requestApply, 120);
-        setTimeout(requestApply, 180);
-        setTimeout(requestApply, 260);
-        setTimeout(requestApply, 350);
-        setTimeout(requestApply, 600);
-    }
-
-    function installKeyboardFix() {
-        if (installed) return;
-        installed = true;
-
-        const input = getInput();
-        const bar = getBar();
-
-        if (input) {
-            input.addEventListener('focus', burstApply);
-            input.addEventListener('blur', function () {
-                document.body.classList.remove('keyboard-open');
-                burstApply();
-            });
-            input.addEventListener('input', burstApply);
-        }
-
-        if (window.visualViewport) {
-            window.visualViewport.addEventListener('resize', burstApply);
-            window.visualViewport.addEventListener('scroll', burstApply);
-        }
-
-        window.addEventListener('resize', burstApply);
-        window.addEventListener('orientationchange', function () {
-            setTimeout(burstApply, 350);
-        });
-
-        if (window.ResizeObserver && bar) {
-            resizeObserver = new ResizeObserver(burstApply);
-            resizeObserver.observe(bar);
-        }
-
-        burstApply();
-    }
-
-    window.setupKeyboardFix = installKeyboardFix;
-
-    const oldShowChatOverlay = window.showChatOverlay;
-    window.showChatOverlay = function () {
-        const result = oldShowChatOverlay
-            ? oldShowChatOverlay.apply(this, arguments)
-            : undefined;
-
-        burstApply();
-        return result;
-    };
-
-    const oldHideChatOverlay = window.hideChatOverlay;
-    window.hideChatOverlay = function () {
-        const result = oldHideChatOverlay
-            ? oldHideChatOverlay.apply(this, arguments)
-            : undefined;
-
-        document.body.classList.remove('keyboard-open');
-        burstApply();
-        return result;
-    };
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', installKeyboardFix);
-    } else {
-        installKeyboardFix();
-    }
-})();
-</script>
 </body>
 </html>
