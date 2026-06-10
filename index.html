@@ -39,7 +39,6 @@
             --border-color: #333333;
             --error-color: #ff4d4d;
             --success-color: #4caf50;
-            --warning-color: #ffcc00;
             --card-shadow: 0 8px 30px rgba(0, 0, 0, 0.8);
         }
 
@@ -175,7 +174,7 @@
 
         .btn-primary:disabled {
             opacity: 0.6;
-            cursor: not-allowed;
+            cursor: default;
             transform: none;
         }
 
@@ -303,8 +302,9 @@
             font-size: 18px;
         }
 
+        /* Password strength — только регистрация */
         .password-strength {
-            margin: -8px 0 16px;
+            margin: -6px 0 16px;
         }
 
         .password-strength-track {
@@ -332,29 +332,29 @@
 
         .password-strength.weak .password-strength-fill {
             width: 33.33%;
-            background: var(--error-color);
+            background: #ff4d4d;
         }
 
         .password-strength.medium .password-strength-fill {
             width: 66.66%;
-            background: var(--warning-color);
+            background: #ffcc00;
         }
 
         .password-strength.strong .password-strength-fill {
             width: 100%;
-            background: var(--success-color);
+            background: #4caf50;
         }
 
         .password-strength.weak .password-strength-text {
-            color: var(--error-color);
+            color: #ff4d4d;
         }
 
         .password-strength.medium .password-strength-text {
-            color: var(--warning-color);
+            color: #ffcc00;
         }
 
         .password-strength.strong .password-strength-text {
-            color: var(--success-color);
+            color: #4caf50;
         }
 
         .error-message {
@@ -378,7 +378,6 @@
             text-align: center;
             font-size: 14px;
             border: 1px solid rgba(76, 175, 80, 0.2);
-            display: block;
         }
 
         .auto-login-badge {
@@ -457,6 +456,7 @@
 
 <body>
     <div class="container">
+        <!-- Welcome Screen -->
         <div id="welcomeScreen" class="welcome-screen">
             <div class="logo-wrapper">
                 <div class="logo-circle">
@@ -474,18 +474,19 @@
             <p class="app-subtitle">CONNECT · CHAT</p>
 
             <div class="buttons-container">
-                <button class="btn btn-primary" id="showRegisterBtn">
+                <button class="btn btn-primary" id="showRegisterBtn" type="button">
                     <i class="fas fa-pen"></i>
                     Создать аккаунт
                 </button>
 
-                <button class="btn btn-secondary" id="showLoginBtn">
+                <button class="btn btn-secondary" id="showLoginBtn" type="button">
                     <i class="fas fa-key"></i>
                     Войти
                 </button>
             </div>
         </div>
 
+        <!-- Register Form -->
         <div id="registerForm" class="auth-form hidden">
             <button class="back-button" id="backFromRegister" type="button">
                 <i class="fas fa-arrow-left"></i>
@@ -536,6 +537,7 @@
             <div id="registerError" class="error-message"></div>
         </div>
 
+        <!-- Login Form -->
         <div id="loginForm" class="auth-form hidden">
             <button class="back-button" id="backFromLogin" type="button">
                 <i class="fas fa-arrow-left"></i>
@@ -560,13 +562,6 @@
                     <i class="fas fa-eye toggle-password" onclick="togglePassword('loginPassword', this)"></i>
                 </div>
 
-                <div class="password-strength" id="loginPasswordStrength">
-                    <div class="password-strength-track">
-                        <div class="password-strength-fill"></div>
-                    </div>
-                    <div class="password-strength-text">Введите пароль</div>
-                </div>
-
                 <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
                     <span>Войти</span>
                     <i class="fas fa-arrow-right"></i>
@@ -578,8 +573,7 @@
     </div>
 
     <div class="auto-login-badge" id="autoLoginBadge" style="display: none;">
-        <i class="fas fa-user-check"></i>
-        Вы вошли
+        <i class="fas fa-user-check"></i> Вы вошли
     </div>
 
     <script>
@@ -662,6 +656,18 @@
             window.location.href = 'chats.html';
         }
 
+        function showError(element, message) {
+            element.textContent = message;
+            element.style.display = 'block';
+            element.className = 'error-message';
+        }
+
+        function showSuccess(element, message) {
+            element.textContent = message;
+            element.style.display = 'block';
+            element.className = 'success-message';
+        }
+
         function getPasswordStrength(password) {
             if (!password) {
                 return {
@@ -674,10 +680,10 @@
 
             if (password.length >= 6) score++;
             if (password.length >= 10) score++;
-            if (/[a-zа-яё]/.test(password)) score++;
-            if (/[A-ZА-ЯЁ]/.test(password)) score++;
+            if (/[a-zа-я]/i.test(password)) score++;
+            if (/[A-ZА-Я]/.test(password)) score++;
             if (/[0-9]/.test(password)) score++;
-            if (/[^a-zA-Zа-яА-ЯёЁ0-9]/.test(password)) score++;
+            if (/[^a-zA-Zа-яА-Я0-9]/.test(password)) score++;
 
             if (password.length < 6 || score <= 2) {
                 return {
@@ -699,9 +705,9 @@
             };
         }
 
-        function updatePasswordStrength(inputId, strengthId) {
-            const input = document.getElementById(inputId);
-            const strength = document.getElementById(strengthId);
+        function updatePasswordStrength() {
+            const input = document.getElementById('regPassword');
+            const strength = document.getElementById('regPasswordStrength');
 
             if (!input || !strength) return;
 
@@ -719,44 +725,16 @@
             }
         }
 
-        function resetPasswordStrength(inputId, strengthId) {
-            const input = document.getElementById(inputId);
-
-            if (input) {
-                input.value = '';
-            }
-
-            updatePasswordStrength(inputId, strengthId);
-        }
-
-        function showError(element, message) {
-            element.textContent = message;
-            element.style.display = 'block';
-            element.className = 'error-message';
-        }
-
-        function showSuccess(element, message) {
-            element.textContent = message;
-            element.style.display = 'block';
-            element.className = 'success-message';
-        }
-
         showRegisterBtn.addEventListener('click', () => {
             welcomeScreen.classList.add('hidden');
             loginForm.classList.add('hidden');
             registerForm.classList.remove('hidden');
-
-            registerError.style.display = 'none';
-            updatePasswordStrength('regPassword', 'regPasswordStrength');
         });
 
         showLoginBtn.addEventListener('click', () => {
             welcomeScreen.classList.add('hidden');
             registerForm.classList.add('hidden');
             loginForm.classList.remove('hidden');
-
-            loginError.style.display = 'none';
-            updatePasswordStrength('loginPassword', 'loginPasswordStrength');
         });
 
         backFromRegister.addEventListener('click', () => {
@@ -764,7 +742,7 @@
             welcomeScreen.classList.remove('hidden');
 
             registerFormElement.reset();
-            updatePasswordStrength('regPassword', 'regPasswordStrength');
+            updatePasswordStrength();
 
             registerError.style.display = 'none';
         });
@@ -774,18 +752,11 @@
             welcomeScreen.classList.remove('hidden');
 
             loginFormElement.reset();
-            updatePasswordStrength('loginPassword', 'loginPasswordStrength');
 
             loginError.style.display = 'none';
         });
 
-        document.getElementById('regPassword').addEventListener('input', () => {
-            updatePasswordStrength('regPassword', 'regPasswordStrength');
-        });
-
-        document.getElementById('loginPassword').addEventListener('input', () => {
-            updatePasswordStrength('loginPassword', 'loginPasswordStrength');
-        });
+        document.getElementById('regPassword').addEventListener('input', updatePasswordStrength);
 
         registerFormElement.addEventListener('submit', async (e) => {
             e.preventDefault();
