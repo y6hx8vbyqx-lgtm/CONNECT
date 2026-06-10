@@ -4,24 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Contegg · Messenger</title>
-    
+
     <meta name="theme-color" content="#0a0a0a">
     <meta name="mobile-web-app-capable" content="yes">
 
-    <!-- PWA иконки (добавить после meta-тегов) -->
-<link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/LOGO.png">
-<link rel="icon" type="image/png" href="/LOGO.png">
-<link rel="shortcut icon" href="/favicon.ico">
-    
-    <!-- Font Awesome -->
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/LOGO.png">
+    <link rel="icon" type="image/png" href="/LOGO.png">
+    <link rel="shortcut icon" href="/favicon.ico">
+
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    
-    <!-- Firebase SDK -->
+
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    
+
     <style>
         * {
             margin: 0;
@@ -42,6 +39,7 @@
             --border-color: #333333;
             --error-color: #ff4d4d;
             --success-color: #4caf50;
+            --warning-color: #ffcc00;
             --card-shadow: 0 8px 30px rgba(0, 0, 0, 0.8);
         }
 
@@ -61,7 +59,6 @@
             padding: 20px;
         }
 
-        /* Welcome Screen */
         .welcome-screen {
             display: flex;
             flex-direction: column;
@@ -88,6 +85,7 @@
             justify-content: center;
             box-shadow: 0 15px 30px rgba(43, 126, 245, 0.4);
             transform: rotate(5deg);
+            animation: float 3s ease-in-out infinite;
         }
 
         .logo-circle i {
@@ -111,6 +109,7 @@
             font-size: 26px;
             font-weight: bold;
             border: 3px solid var(--accent-color);
+            animation: pulse 2s ease-in-out infinite;
         }
 
         .rose-icon {
@@ -127,6 +126,7 @@
             color: var(--accent-color);
             font-size: 24px;
             border: 2px solid var(--border-color);
+            animation: spin 10s linear infinite;
         }
 
         .app-title {
@@ -146,7 +146,6 @@
             margin-bottom: 50px;
         }
 
-        /* Buttons */
         .btn {
             padding: 16px 24px;
             border: none;
@@ -174,6 +173,12 @@
             transform: translateY(-2px);
         }
 
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
         .btn-secondary {
             background: var(--bg-tertiary);
             color: var(--text-primary);
@@ -191,7 +196,6 @@
             gap: 12px;
         }
 
-        /* Auth Forms */
         .auth-form {
             background: var(--bg-secondary);
             border-radius: 30px;
@@ -199,6 +203,7 @@
             box-shadow: var(--card-shadow);
             border: 1px solid var(--border-color);
             position: relative;
+            animation: slideIn 0.3s ease;
         }
 
         .hidden {
@@ -253,7 +258,6 @@
             font-weight: 600;
         }
 
-        /* Input Groups */
         .input-group {
             position: relative;
             margin-bottom: 16px;
@@ -299,7 +303,60 @@
             font-size: 18px;
         }
 
-        /* Messages */
+        .password-strength {
+            margin: -8px 0 16px;
+        }
+
+        .password-strength-track {
+            width: 100%;
+            height: 6px;
+            background: #3a3a3a;
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .password-strength-fill {
+            width: 0%;
+            height: 100%;
+            border-radius: 999px;
+            background: transparent;
+            transition: width 0.25s ease, background 0.25s ease;
+        }
+
+        .password-strength-text {
+            margin-top: 6px;
+            font-size: 12px;
+            color: var(--text-muted);
+            text-align: left;
+        }
+
+        .password-strength.weak .password-strength-fill {
+            width: 33.33%;
+            background: var(--error-color);
+        }
+
+        .password-strength.medium .password-strength-fill {
+            width: 66.66%;
+            background: var(--warning-color);
+        }
+
+        .password-strength.strong .password-strength-fill {
+            width: 100%;
+            background: var(--success-color);
+        }
+
+        .password-strength.weak .password-strength-text {
+            color: var(--error-color);
+        }
+
+        .password-strength.medium .password-strength-text {
+            color: var(--warning-color);
+        }
+
+        .password-strength.strong .password-strength-text {
+            color: var(--success-color);
+        }
+
         .error-message {
             background: rgba(255, 77, 77, 0.1);
             color: var(--error-color);
@@ -321,9 +378,9 @@
             text-align: center;
             font-size: 14px;
             border: 1px solid rgba(76, 175, 80, 0.2);
+            display: block;
         }
 
-        /* Auto-login indicator */
         .auto-login-badge {
             position: fixed;
             top: 20px;
@@ -344,7 +401,6 @@
             color: white;
         }
 
-        /* Animations */
         @keyframes slideIn {
             from {
                 opacity: 0;
@@ -357,65 +413,72 @@
         }
 
         @keyframes float {
-            0%, 100% { transform: rotate(5deg) translateY(0); }
-            50% { transform: rotate(5deg) translateY(-8px); }
+            0%, 100% {
+                transform: rotate(5deg) translateY(0);
+            }
+            50% {
+                transform: rotate(5deg) translateY(-8px);
+            }
         }
 
         @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.1); }
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.1);
+            }
         }
 
         @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-
-        .logo-circle {
-            animation: float 3s ease-in-out infinite;
-        }
-
-        .at-badge {
-            animation: pulse 2s ease-in-out infinite;
-        }
-
-        .rose-icon {
-            animation: spin 10s linear infinite;
-        }
-
-        .auth-form {
-            animation: slideIn 0.3s ease;
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
         }
 
         @media (max-width: 480px) {
-            .container { padding: 16px; }
-            .auth-form { padding: 20px; }
-            .app-title { font-size: 42px; }
+            .container {
+                padding: 16px;
+            }
+
+            .auth-form {
+                padding: 20px;
+            }
+
+            .app-title {
+                font-size: 42px;
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="container">
-        <!-- Welcome Screen -->
         <div id="welcomeScreen" class="welcome-screen">
             <div class="logo-wrapper">
                 <div class="logo-circle">
                     <i class="fas fa-paper-plane"></i>
                 </div>
+
                 <div class="at-badge">@</div>
+
                 <div class="rose-icon">
                     <i class="fas fa-compass"></i>
                 </div>
             </div>
-            
+
             <h1 class="app-title">Contegg</h1>
             <p class="app-subtitle">CONNECT · CHAT</p>
-            
+
             <div class="buttons-container">
                 <button class="btn btn-primary" id="showRegisterBtn">
                     <i class="fas fa-pen"></i>
                     Создать аккаунт
                 </button>
+
                 <button class="btn btn-secondary" id="showLoginBtn">
                     <i class="fas fa-key"></i>
                     Войти
@@ -423,12 +486,11 @@
             </div>
         </div>
 
-        <!-- Register Form -->
         <div id="registerForm" class="auth-form hidden">
-            <button class="back-button" id="backFromRegister">
+            <button class="back-button" id="backFromRegister" type="button">
                 <i class="fas fa-arrow-left"></i>
             </button>
-            
+
             <div class="form-header">
                 <div class="mini-logo">
                     <i class="fas fa-user-plus"></i>
@@ -439,23 +501,30 @@
             <form id="registerFormElement">
                 <div class="input-group">
                     <i class="fas fa-envelope input-icon"></i>
-                    <input type="email" id="regEmail" placeholder="Электронная почта" required>
+                    <input type="email" id="regEmail" placeholder="Электронная почта" autocomplete="email" required>
                 </div>
 
                 <div class="input-group">
                     <i class="fas fa-user input-icon"></i>
-                    <input type="text" id="regUsername" placeholder="Имя пользователя" required>
+                    <input type="text" id="regUsername" placeholder="Имя пользователя" autocomplete="username" required>
                 </div>
 
                 <div class="input-group">
                     <i class="fas fa-lock input-icon"></i>
-                    <input type="password" id="regPassword" placeholder="Пароль" required>
+                    <input type="password" id="regPassword" placeholder="Пароль" autocomplete="new-password" required>
                     <i class="fas fa-eye toggle-password" onclick="togglePassword('regPassword', this)"></i>
                 </div>
 
+                <div class="password-strength" id="regPasswordStrength">
+                    <div class="password-strength-track">
+                        <div class="password-strength-fill"></div>
+                    </div>
+                    <div class="password-strength-text">Введите пароль</div>
+                </div>
+
                 <div class="input-group">
                     <i class="fas fa-lock input-icon"></i>
-                    <input type="password" id="regConfirm" placeholder="Подтвердите пароль" required>
+                    <input type="password" id="regConfirm" placeholder="Подтвердите пароль" autocomplete="new-password" required>
                 </div>
 
                 <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
@@ -467,12 +536,11 @@
             <div id="registerError" class="error-message"></div>
         </div>
 
-        <!-- Login Form -->
         <div id="loginForm" class="auth-form hidden">
-            <button class="back-button" id="backFromLogin">
+            <button class="back-button" id="backFromLogin" type="button">
                 <i class="fas fa-arrow-left"></i>
             </button>
-            
+
             <div class="form-header">
                 <div class="mini-logo">
                     <i class="fas fa-sign-in-alt"></i>
@@ -483,13 +551,20 @@
             <form id="loginFormElement">
                 <div class="input-group">
                     <i class="fas fa-envelope input-icon"></i>
-                    <input type="email" id="loginEmail" placeholder="Электронная почта" required>
+                    <input type="email" id="loginEmail" placeholder="Электронная почта" autocomplete="email" required>
                 </div>
 
                 <div class="input-group">
                     <i class="fas fa-lock input-icon"></i>
-                    <input type="password" id="loginPassword" placeholder="Пароль" required>
+                    <input type="password" id="loginPassword" placeholder="Пароль" autocomplete="current-password" required>
                     <i class="fas fa-eye toggle-password" onclick="togglePassword('loginPassword', this)"></i>
+                </div>
+
+                <div class="password-strength" id="loginPasswordStrength">
+                    <div class="password-strength-track">
+                        <div class="password-strength-fill"></div>
+                    </div>
+                    <div class="password-strength-text">Введите пароль</div>
                 </div>
 
                 <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
@@ -502,13 +577,12 @@
         </div>
     </div>
 
-    <!-- Индикатор авто-входа -->
     <div class="auto-login-badge" id="autoLoginBadge" style="display: none;">
-        <i class="fas fa-user-check"></i> Вы вошли
+        <i class="fas fa-user-check"></i>
+        Вы вошли
     </div>
 
     <script>
-        // Firebase Configuration
         const firebaseConfig = {
             apiKey: "AIzaSyBKTPyHKC_Mp1ZO6NDiCaJVz3w1u_PWfUo",
             authDomain: "contegg-b3b4b.firebaseapp.com",
@@ -518,31 +592,36 @@
             appId: "1:678323780149:web:9717ac593a21d97a19cf7c"
         };
 
-        // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
+
         const auth = firebase.auth();
         const db = firebase.firestore();
 
-        // DOM Elements
         const welcomeScreen = document.getElementById('welcomeScreen');
         const registerForm = document.getElementById('registerForm');
         const loginForm = document.getElementById('loginForm');
+
         const showRegisterBtn = document.getElementById('showRegisterBtn');
         const showLoginBtn = document.getElementById('showLoginBtn');
+
         const backFromRegister = document.getElementById('backFromRegister');
         const backFromLogin = document.getElementById('backFromLogin');
+
         const registerFormElement = document.getElementById('registerFormElement');
         const loginFormElement = document.getElementById('loginFormElement');
+
         const registerError = document.getElementById('registerError');
         const loginError = document.getElementById('loginError');
+
         const autoLoginBadge = document.getElementById('autoLoginBadge');
 
-        // Ключ для sessionStorage (запоминаем, вышел ли пользователь сам)
         const LOGOUT_FLAG_KEY = 'contegg_manual_logout';
 
-        // Toggle Password
         window.togglePassword = function(inputId, icon) {
             const input = document.getElementById(inputId);
+
+            if (!input || !icon) return;
+
             if (input.type === 'password') {
                 input.type = 'text';
                 icon.classList.remove('fa-eye');
@@ -554,12 +633,10 @@
             }
         };
 
-        // Проверка, вышел ли пользователь сам
         function hasManualLogout() {
             return sessionStorage.getItem(LOGOUT_FLAG_KEY) === 'true';
         }
 
-        // Установить флаг ручного выхода
         function setManualLogout(value) {
             if (value) {
                 sessionStorage.setItem(LOGOUT_FLAG_KEY, 'true');
@@ -568,60 +645,156 @@
             }
         }
 
-        // Показать индикатор авто-входа
         function showAutoLoginBadge() {
             autoLoginBadge.style.display = 'flex';
+
             setTimeout(() => {
                 autoLoginBadge.style.opacity = '0.7';
             }, 100);
         }
 
-        // Скрыть индикатор
         function hideAutoLoginBadge() {
             autoLoginBadge.style.display = 'none';
             autoLoginBadge.style.opacity = '1';
         }
 
-        // Redirect to chats
         function redirectToChats() {
             window.location.href = 'chats.html';
         }
 
-        // Navigation
+        function getPasswordStrength(password) {
+            if (!password) {
+                return {
+                    level: '',
+                    text: 'Введите пароль'
+                };
+            }
+
+            let score = 0;
+
+            if (password.length >= 6) score++;
+            if (password.length >= 10) score++;
+            if (/[a-zа-яё]/.test(password)) score++;
+            if (/[A-ZА-ЯЁ]/.test(password)) score++;
+            if (/[0-9]/.test(password)) score++;
+            if (/[^a-zA-Zа-яА-ЯёЁ0-9]/.test(password)) score++;
+
+            if (password.length < 6 || score <= 2) {
+                return {
+                    level: 'weak',
+                    text: 'Слабый пароль'
+                };
+            }
+
+            if (score <= 4) {
+                return {
+                    level: 'medium',
+                    text: 'Средний пароль'
+                };
+            }
+
+            return {
+                level: 'strong',
+                text: 'Надёжный пароль'
+            };
+        }
+
+        function updatePasswordStrength(inputId, strengthId) {
+            const input = document.getElementById(inputId);
+            const strength = document.getElementById(strengthId);
+
+            if (!input || !strength) return;
+
+            const textEl = strength.querySelector('.password-strength-text');
+            const result = getPasswordStrength(input.value);
+
+            strength.classList.remove('weak', 'medium', 'strong');
+
+            if (result.level) {
+                strength.classList.add(result.level);
+            }
+
+            if (textEl) {
+                textEl.textContent = result.text;
+            }
+        }
+
+        function resetPasswordStrength(inputId, strengthId) {
+            const input = document.getElementById(inputId);
+
+            if (input) {
+                input.value = '';
+            }
+
+            updatePasswordStrength(inputId, strengthId);
+        }
+
+        function showError(element, message) {
+            element.textContent = message;
+            element.style.display = 'block';
+            element.className = 'error-message';
+        }
+
+        function showSuccess(element, message) {
+            element.textContent = message;
+            element.style.display = 'block';
+            element.className = 'success-message';
+        }
+
         showRegisterBtn.addEventListener('click', () => {
             welcomeScreen.classList.add('hidden');
+            loginForm.classList.add('hidden');
             registerForm.classList.remove('hidden');
+
+            registerError.style.display = 'none';
+            updatePasswordStrength('regPassword', 'regPasswordStrength');
         });
 
         showLoginBtn.addEventListener('click', () => {
             welcomeScreen.classList.add('hidden');
+            registerForm.classList.add('hidden');
             loginForm.classList.remove('hidden');
+
+            loginError.style.display = 'none';
+            updatePasswordStrength('loginPassword', 'loginPasswordStrength');
         });
 
         backFromRegister.addEventListener('click', () => {
             registerForm.classList.add('hidden');
             welcomeScreen.classList.remove('hidden');
+
             registerFormElement.reset();
+            updatePasswordStrength('regPassword', 'regPasswordStrength');
+
             registerError.style.display = 'none';
         });
 
         backFromLogin.addEventListener('click', () => {
             loginForm.classList.add('hidden');
             welcomeScreen.classList.remove('hidden');
+
             loginFormElement.reset();
+            updatePasswordStrength('loginPassword', 'loginPasswordStrength');
+
             loginError.style.display = 'none';
         });
 
-        // Register
+        document.getElementById('regPassword').addEventListener('input', () => {
+            updatePasswordStrength('regPassword', 'regPasswordStrength');
+        });
+
+        document.getElementById('loginPassword').addEventListener('input', () => {
+            updatePasswordStrength('loginPassword', 'loginPasswordStrength');
+        });
+
         registerFormElement.addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             const email = document.getElementById('regEmail').value.trim();
             const username = document.getElementById('regUsername').value.trim();
             const password = document.getElementById('regPassword').value;
             const confirm = document.getElementById('regConfirm').value;
 
-            // Validation
             if (!email || !username || !password || !confirm) {
                 showError(registerError, 'Заполните все поля');
                 return;
@@ -632,8 +805,8 @@
                 return;
             }
 
-            if (password !== confirm) {
-                showError(registerError, 'Пароли не совпадают');
+            if (username.length < 3) {
+                showError(registerError, 'Имя пользователя должно быть не менее 3 символов');
                 return;
             }
 
@@ -642,33 +815,30 @@
                 return;
             }
 
-            if (username.length < 3) {
-                showError(registerError, 'Имя пользователя должно быть не менее 3 символов');
+            if (password !== confirm) {
+                showError(registerError, 'Пароли не совпадают');
                 return;
             }
 
-            // Show loading
             const submitBtn = registerFormElement.querySelector('button[type="submit"]');
             const originalText = submitBtn.innerHTML;
+
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Регистрация...';
             submitBtn.disabled = true;
 
             try {
-                // Create user with email and password
                 const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                 const user = userCredential.user;
-                
-                // Update profile with username
+
                 await user.updateProfile({
                     displayName: username
                 });
 
-                // Создаем запись пользователя в Firestore
                 await db.collection('users').doc(user.uid).set({
                     uid: user.uid,
-                    username: username,
+                    username,
                     displayName: username,
-                    email: email,
+                    email,
                     bio: 'Расскажите о себе...',
                     isAdmin: false,
                     blockedUsers: [],
@@ -676,20 +846,20 @@
                     createdAt: new Date()
                 });
 
-                // Убираем флаг ручного выхода при успешной регистрации
                 setManualLogout(false);
-                
+
                 showSuccess(registerError, 'Регистрация успешна! Перенаправление...');
-                
+
                 setTimeout(() => {
                     redirectToChats();
                 }, 1500);
 
             } catch (error) {
                 console.error('Registration error:', error);
-                
+
                 let message = 'Ошибка регистрации';
-                switch(error.code) {
+
+                switch (error.code) {
                     case 'auth/email-already-in-use':
                         message = 'Этот email уже зарегистрирован';
                         break;
@@ -702,18 +872,17 @@
                     default:
                         message = error.message;
                 }
-                
+
                 showError(registerError, message);
-                
+
                 submitBtn.innerHTML = originalText;
                 submitBtn.disabled = false;
             }
         });
 
-        // Login
         loginFormElement.addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             const email = document.getElementById('loginEmail').value.trim();
             const password = document.getElementById('loginPassword').value;
 
@@ -724,26 +893,27 @@
 
             const submitBtn = loginFormElement.querySelector('button[type="submit"]');
             const originalText = submitBtn.innerHTML;
+
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Вход...';
             submitBtn.disabled = true;
 
             try {
                 await auth.signInWithEmailAndPassword(email, password);
-                
-                // Убираем флаг ручного выхода при успешном входе
+
                 setManualLogout(false);
-                
+
                 showSuccess(loginError, 'Вход выполнен! Перенаправление...');
-                
+
                 setTimeout(() => {
                     redirectToChats();
                 }, 1500);
 
             } catch (error) {
                 console.error('Login error:', error);
-                
+
                 let message = 'Неверный email или пароль';
-                switch(error.code) {
+
+                switch (error.code) {
                     case 'auth/user-not-found':
                         message = 'Пользователь не найден';
                         break;
@@ -753,50 +923,47 @@
                     case 'auth/invalid-email':
                         message = 'Некорректный email';
                         break;
+                    default:
+                        message = 'Неверный email или пароль';
                 }
-                
+
                 showError(loginError, message);
-                
+
                 submitBtn.innerHTML = originalText;
                 submitBtn.disabled = false;
             }
         });
 
-        // Функция для выхода (будет вызвана из chats.html)
         window.logoutFromApp = async function() {
             try {
-                // Устанавливаем флаг ручного выхода
                 setManualLogout(true);
+
                 await auth.signOut();
+
                 hideAutoLoginBadge();
-                // Возвращаемся на страницу входа
+
                 window.location.href = 'index.html';
             } catch (error) {
                 console.error('Logout error:', error);
             }
         };
 
-        // Автоматический вход если пользователь уже залогинен и не вышел сам
         auth.onAuthStateChanged(async (user) => {
             if (user) {
                 console.log('User detected:', user.email);
-                
-                // Проверяем, не вышел ли пользователь сам
+
                 if (hasManualLogout()) {
                     console.log('Manual logout detected, staying on login page');
-                    // Если вышел сам - остаемся на странице входа
                     return;
                 }
-                
-                // Автоматический вход
+
                 console.log('Auto-login in progress...');
                 showAutoLoginBadge();
-                
-                // Проверяем, существует ли пользователь в Firestore
+
                 try {
                     const userDoc = await db.collection('users').doc(user.uid).get();
+
                     if (!userDoc.exists) {
-                        // Если нет в Firestore, создаем (на случай, если регистрация была через другой метод)
                         await db.collection('users').doc(user.uid).set({
                             uid: user.uid,
                             username: user.displayName || 'user_' + user.uid.slice(0, 8),
@@ -812,33 +979,18 @@
                 } catch (error) {
                     console.error('Error checking user document:', error);
                 }
-                
-                // Перенаправляем в чаты
+
                 setTimeout(() => {
                     redirectToChats();
                 }, 500);
             } else {
-                // Пользователь не залогинен, скрываем индикатор
                 hideAutoLoginBadge();
             }
         });
 
-        // Helper functions
-        function showError(element, message) {
-            element.textContent = message;
-            element.style.display = 'block';
-            element.className = 'error-message';
-        }
-
-        function showSuccess(element, message) {
-            element.textContent = message;
-            element.style.display = 'block';
-            element.className = 'success-message';
-        }
-
-        // Обработчик клика по индикатору (для отображения информации)
         autoLoginBadge.addEventListener('click', () => {
             const user = auth.currentUser;
+
             if (user) {
                 alert(`Вы вошли как: ${user.email}\nАвтоматический вход активен`);
             } else {
