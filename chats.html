@@ -2319,7 +2319,7 @@ body {
             </div>
         </div>
     </div>
-</div
+</div>
 
 <div class="modal-overlay" id="photoEditModal">
     <div class="modal-sheet photo-editor-sheet">
@@ -4154,16 +4154,15 @@ async function openSavedChatUI() {
     document.getElementById('audioRecordBtn').disabled = false;
     document.getElementById('chatInputBar').style.display = 'flex';
     await loadMessages();
-    
-if (!chatData?.isSystem) {
-    setTimeout(() => {
-        if (typeof updateMobileKeyboardViewport === 'function') {
-            updateMobileKeyboardViewport();
-        }
 
-        const messages = document.getElementById('chatMessages');
-        if (messages) messages.scrollTop = messages.scrollHeight;
-    }, 250);
+setTimeout(() => {
+    if (typeof updateMobileKeyboardViewport === 'function') {
+        updateMobileKeyboardViewport();
+    }
+
+    const messages = document.getElementById('chatMessages');
+    if (messages) messages.scrollTop = messages.scrollHeight;
+}, 250);
 }
 
 async function saveMessageToFavorites(messageId, messageData) {
@@ -4602,7 +4601,8 @@ if (chat.type === 'saved') {
     `;
                 
             } else if (chat.type === 'group') {
-                const avHTML = chat.avatarBase64 ? `<img src="${chat.avatarBase64}">` : '👥';
+                const groupAvatarSrc = getAvatarSrc(chat);
+const avHTML = groupAvatarSrc ? `<img src="${groupAvatarSrc}">` : '👥';
                 const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
                 const isPinned = pinnedChats.includes(chat.id);
                 return `
@@ -4638,7 +4638,8 @@ if (chat.type === 'saved') {
                     </div>`;
             } else {
                 const u = chat.otherUser;
-                const avHTML = u.avatarBase64 ? `<img src="${u.avatarBase64}">` : (u.displayName?.[0]?.toUpperCase() || 'U');
+                const userAvatarSrc = getAvatarSrc(u);
+const avHTML = userAvatarSrc ? `<img src="${userAvatarSrc}">` : (u.displayName?.[0]?.toUpperCase() || 'U');
                 const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
                 const isUnread = chat.unreadFor?.includes(currentUser.uid);
                 const isPinned = pinnedChats.includes(chat.id);
@@ -5120,19 +5121,21 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
     }
     
    showChatOverlay();
-    await loadMessages();
-    markAsRead();
-    
-if (!chatData?.isSystem) {
-setTimeout(() => {
-    if (typeof updateMobileKeyboardViewport === 'function') {
-        updateMobileKeyboardViewport();
-    }
+await loadMessages();
+markAsRead();
 
-    const messages = document.getElementById('chatMessages');
-    if (messages) messages.scrollTop = messages.scrollHeight;
-}, 250);
-    
+if (!chatData?.isSystem) {
+    setTimeout(() => {
+        if (typeof updateMobileKeyboardViewport === 'function') {
+            updateMobileKeyboardViewport();
+        }
+
+        const messages = document.getElementById('chatMessages');
+        if (messages) messages.scrollTop = messages.scrollHeight;
+    }, 250);
+}
+}
+
 function closeChat() {
     
     if (chatUserPresenceListener) {
@@ -8434,7 +8437,8 @@ async function searchUsersAndChats(q) {
             
             if (chatName.includes(searchTerm)) {
                 hasGroups = true;
-                const avHTML = chat.avatarBase64 ? `<img src="${chat.avatarBase64}">` : '👥';
+                const groupAvatarSrc = getAvatarSrc(chat);
+const avHTML = groupAvatarSrc ? `<img src="${groupAvatarSrc}">` : '👥';
                 groupsHtml += `
                     <div class="search-result-item" onclick="openGroupChat('${doc.id}')">
                         <div class="chat-avatar group" style="width:40px;height:40px;font-size:16px;">${avHTML}</div>
