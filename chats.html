@@ -4847,6 +4847,11 @@ function showChatOverlay() {
     if (!overlay) return;
 
     document.body.classList.add('chat-open');
+    window.__conteggBaseViewportHeight = Math.max(
+        window.innerHeight || 0,
+        window.visualViewport?.height || 0
+    );
+    document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
 
     overlay.classList.add('show');
 
@@ -4866,9 +4871,12 @@ function hideChatOverlay() {
     document.body.classList.remove('chat-open');
     document.body.classList.remove('keyboard-open');
     document.body.classList.remove('keyboard-closing');
+    document.body.classList.remove('keyboard-settling-in');
+    document.body.classList.remove('keyboard-settling-out');
 
     document.documentElement.style.setProperty('--contegg-chat-vh', '100dvh');
     document.documentElement.style.setProperty('--contegg-chat-top', '0px');
+    document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
 }
 
   function getChannelRights(chat) {
@@ -8864,6 +8872,11 @@ document.getElementById('chatInput').addEventListener('keydown', function(e) {
 document.getElementById('chatInput').addEventListener('input', function() {
     this.style.height = 'auto';
     this.style.height = Math.min(this.scrollHeight, 100) + 'px';
+
+    const inputBar = document.getElementById('chatInputBar');
+    if (inputBar) {
+        document.documentElement.style.setProperty('--contegg-input-bar-height', `${Math.ceil(inputBar.offsetHeight)}px`);
+    }
 });
 
     
@@ -8966,22 +8979,39 @@ function updateMobileKeyboardViewport() {
         const root = document.documentElement;
         const overlay = document.getElementById('chatOverlay');
         const input = document.getElementById('chatInput');
+        const inputBar = document.getElementById('chatInputBar');
         const chatIsOpen = overlay?.classList.contains('show');
 
         if (!chatIsOpen || !window.visualViewport) {
             root.style.setProperty('--contegg-chat-vh', '100dvh');
             root.style.setProperty('--contegg-chat-top', '0px');
+            root.style.setProperty('--contegg-keyboard-height', '0px');
             document.body.classList.remove('keyboard-open');
             return;
         }
 
         const vv = window.visualViewport;
         const keyboardOpen = document.activeElement === input || window.innerHeight - vv.height > 80;
+        const currentFullHeight = Math.max(window.innerHeight || 0, vv.height || 0);
 
-        root.style.setProperty('--contegg-chat-vh', keyboardOpen ? `${Math.round(vv.height)}px` : '100dvh');
-        root.style.setProperty('--contegg-chat-top', keyboardOpen ? `${Math.round(vv.offsetTop || 0)}px` : '0px');
+        if (!window.__conteggBaseViewportHeight || !keyboardOpen) {
+            window.__conteggBaseViewportHeight = currentFullHeight;
+        }
+
+        const baseHeight = Math.max(window.__conteggBaseViewportHeight || 0, currentFullHeight);
+        const keyboardHeight = keyboardOpen
+            ? Math.max(0, Math.round(baseHeight - vv.height - (vv.offsetTop || 0)))
+            : 0;
+
+        root.style.setProperty('--contegg-chat-vh', '100dvh');
+        root.style.setProperty('--contegg-chat-top', '0px');
+        root.style.setProperty('--contegg-keyboard-height', `${keyboardHeight}px`);
 
         document.body.classList.toggle('keyboard-open', keyboardOpen);
+
+        if (inputBar) {
+            root.style.setProperty('--contegg-input-bar-height', `${Math.ceil(inputBar.offsetHeight)}px`);
+        }
 
         const messages = document.getElementById('chatMessages');
 
@@ -9026,8 +9056,10 @@ document.getElementById('chatInput')?.addEventListener('focus', () => {
 
     document.documentElement.style.setProperty('--contegg-chat-vh', '100dvh');
     document.documentElement.style.setProperty('--contegg-chat-top', '0px');
+    document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
 
-    scheduleMobileKeyboardViewportUpdate(260);
+    setTimeout(updateMobileKeyboardViewport, 80);
+    setTimeout(updateMobileKeyboardViewport, 220);
     setTimeout(() => {
         document.body.classList.remove('keyboard-settling-in');
         scheduleMobileKeyboardViewportUpdate(40);
@@ -9038,6 +9070,7 @@ document.getElementById('chatInput')?.addEventListener('blur', () => {
     document.body.classList.remove('keyboard-open');
     document.body.classList.remove('keyboard-settling-in');
     document.body.classList.add('keyboard-settling-out');
+    document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
 
     setTimeout(() => {
         document.body.classList.remove('keyboard-settling-out');
@@ -9365,6 +9398,8 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
 :root {
     --contegg-chat-vh: 100dvh;
     --contegg-chat-top: 0px;
+    --contegg-keyboard-height: 0px;
+    --contegg-input-bar-height: 58px;
 
     /* Когда клавиатура закрыта — нормальный нижний отступ */
     --contegg-input-bottom: max(14px, env(safe-area-inset-bottom, 0px));
@@ -9382,18 +9417,17 @@ body.chat-open .app-container {
     position: fixed !important;
     left: 0 !important;
     right: 0 !important;
-    top: var(--contegg-chat-top) !important;
-    bottom: auto !important;
+    top: 0 !important;
+    bottom: 0 !important;
 
     width: 100% !important;
-    height: var(--contegg-chat-vh) !important;
-    max-height: var(--contegg-chat-vh) !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
 
     background: var(--bg-primary) !important;
     z-index: 900 !important;
 
-    display: flex !important;
-    flex-direction: column !important;
+    display: block !important;
     overflow: hidden !important;
 
     transform: translateX(100%) !important;
@@ -9406,34 +9440,42 @@ body.chat-open .app-container {
 
 .chat-overlay.show {
     transform: translateX(0) !important;
-    top: var(--contegg-chat-top) !important;
-    height: var(--contegg-chat-vh) !important;
-    max-height: var(--contegg-chat-vh) !important;
+    top: 0 !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
 }
 
 .chat-navbar {
-    flex: 0 0 auto !important;
-    position: sticky !important;
+    position: absolute !important;
     top: 0 !important;
-    z-index: 5 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 6 !important;
     min-height: var(--navbar-height) !important;
     transform: translateZ(0) !important;
 }
 
 .chat-messages {
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
+    position: absolute !important;
+    top: var(--navbar-height) !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: calc(var(--contegg-input-bar-height) + var(--contegg-keyboard-height)) !important;
     overflow-y: auto !important;
     padding: 12px !important;
     padding-bottom: 12px !important;
     -webkit-overflow-scrolling: touch !important;
     overflow-anchor: none !important;
+    transition: bottom 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
 }
 
 /* Строка ввода */
 .chat-input-bar {
-    flex: 0 0 auto !important;
-    position: relative !important;
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 7 !important;
 
     width: 100% !important;
     max-width: 100% !important;
@@ -9451,6 +9493,9 @@ body.chat-open .app-container {
     padding-bottom: calc(8px + var(--contegg-input-bottom)) !important;
 
     margin: 0 !important;
+    transform: translate3d(0, calc(-1 * var(--contegg-keyboard-height)), 0) !important;
+    transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), padding-bottom 0.18s ease !important;
+    will-change: transform !important;
 }
 
 /* Когда клавиатура открыта — убираем нижний подбородок */
@@ -9475,26 +9520,16 @@ body.keyboard-settling-out .chat-navbar {
 }
 
 body.keyboard-settling-in .chat-messages {
-    animation: keyboardFadeIn 0.18s ease both !important;
+    animation: none !important;
 }
 
 body.keyboard-settling-in .chat-input-bar {
-    animation: keyboardFadeIn 0.18s ease both !important;
+    animation: none !important;
 }
 
 body.keyboard-settling-out .chat-messages,
 body.keyboard-settling-out .chat-input-bar {
-    transition: opacity 0.16s ease !important;
-}
-
-@keyframes keyboardFadeIn {
-    from {
-        opacity: 0.985;
-    }
-
-    to {
-        opacity: 1;
-    }
+    transition: bottom 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
 }
 
 /* Fullscreen-кнопка на ПК НЕ скрывается */
