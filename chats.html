@@ -9111,14 +9111,15 @@ document.getElementById('chatInput')?.addEventListener('focus', () => {
 document.getElementById('chatInput')?.addEventListener('blur', () => {
     if (!isMobileLike) return;
 
+    document.body.classList.add('keyboard-no-transition');
     document.body.classList.remove('keyboard-settling-in');
-    document.body.classList.add('keyboard-settling-out');
+    document.body.classList.remove('keyboard-settling-out');
     document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
+    document.body.classList.remove('keyboard-open');
 
-    setTimeout(() => {
-        document.body.classList.remove('keyboard-open');
-        document.body.classList.remove('keyboard-settling-out');
-    }, 220);
+    requestAnimationFrame(() => {
+        document.body.classList.remove('keyboard-no-transition');
+    });
 });
 
 console.log('✅ Contegg Messenger · Полная версия с фото, видео и голосовыми');
@@ -9618,6 +9619,12 @@ body.keyboard-settling-in .chat-input-bar {
 body.keyboard-settling-out .chat-messages,
 body.keyboard-settling-out .chat-input-bar {
     transition: bottom 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+}
+
+body.keyboard-no-transition .chat-messages,
+body.keyboard-no-transition .chat-input-bar {
+    transition: none !important;
+    animation: none !important;
 }
 
 /* Fullscreen-кнопка на ПК НЕ скрывается */
