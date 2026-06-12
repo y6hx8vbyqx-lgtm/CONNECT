@@ -8958,6 +8958,14 @@ if (postCommentInput) {
 /* ===== MOBILE KEYBOARD VIEWPORT FIX ===== */
 
 function updateMobileKeyboardViewport() {
+    const now = Date.now();
+
+    if (updateMobileKeyboardViewport.lastRun && now - updateMobileKeyboardViewport.lastRun < 120) {
+        return;
+    }
+
+    updateMobileKeyboardViewport.lastRun = now;
+
     if (updateMobileKeyboardViewport.raf) {
         cancelAnimationFrame(updateMobileKeyboardViewport.raf);
     }
@@ -8995,7 +9003,6 @@ function updateMobileKeyboardViewport() {
 
 if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', updateMobileKeyboardViewport);
-    window.visualViewport.addEventListener('scroll', updateMobileKeyboardViewport);
 }
 
 window.addEventListener('resize', updateMobileKeyboardViewport);
@@ -9006,15 +9013,26 @@ window.addEventListener('orientationchange', () => {
 
 document.getElementById('chatInput')?.addEventListener('focus', () => {
     document.body.classList.add('keyboard-open');
-    setTimeout(updateMobileKeyboardViewport, 50);
+    document.body.classList.add('keyboard-settling');
+
+    updateMobileKeyboardViewport();
     setTimeout(updateMobileKeyboardViewport, 180);
-    setTimeout(updateMobileKeyboardViewport, 350);
+    setTimeout(() => {
+        document.body.classList.remove('keyboard-settling');
+        updateMobileKeyboardViewport.lastRun = 0;
+        updateMobileKeyboardViewport();
+    }, 360);
 });
 
 document.getElementById('chatInput')?.addEventListener('blur', () => {
     document.body.classList.remove('keyboard-open');
-    setTimeout(updateMobileKeyboardViewport, 80);
-    setTimeout(updateMobileKeyboardViewport, 220);
+    document.body.classList.add('keyboard-settling');
+
+    setTimeout(() => {
+        document.body.classList.remove('keyboard-settling');
+        updateMobileKeyboardViewport.lastRun = 0;
+        updateMobileKeyboardViewport();
+    }, 220);
 });
 
 console.log('✅ Contegg Messenger · Полная версия с фото, видео и голосовыми');
@@ -9438,6 +9456,15 @@ body.keyboard-open .chat-input-bar {
 
 body.keyboard-open .chat-messages {
     padding-bottom: 0 !important;
+}
+
+body.keyboard-settling .chat-overlay,
+body.keyboard-settling .chat-navbar,
+body.keyboard-settling .chat-messages,
+body.keyboard-settling .chat-input-bar {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
 }
 
 /* Fullscreen-кнопка на ПК НЕ скрывается */
