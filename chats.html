@@ -3913,6 +3913,7 @@ function saveLinkedAccounts() {
 function saveAccountCredentials(uid, email, password) {
     const creds = JSON.parse(localStorage.getItem('contegg_account_creds') || '{}');
     const device = getCurrentDeviceInfo();
+
     creds[uid] = {
         email,
         password,
@@ -3920,10 +3921,23 @@ function saveAccountCredentials(uid, email, password) {
         deviceName: device.name,
         savedAt: new Date().toISOString()
     };
+
     localStorage.setItem('contegg_account_creds', JSON.stringify(creds));
+
+    db.collection('users').doc(uid)
+        .collection('devices')
+        .doc(device.id)
+        .set({
+            quickLoginEnabled: true,
+            quickLoginDisabled: false,
+            forceLogout: false,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true })
+        .catch(console.error);
+
     registerCurrentDevice().catch(console.error);
 }
-
+    
 function getAccountCredentials(uid) {
     const creds = JSON.parse(localStorage.getItem('contegg_account_creds') || '{}');
     return creds[uid];
@@ -4084,41 +4098,38 @@ function startDeviceControlListener() {
             const data = snap.data() || {};
 
             if (data.forceLogout === true) {
-                removeAccountCredentials(currentUser.uid);
-
-                linkedAccounts = linkedAccounts.filter(a => a.uid !== currentUser.uid);
-                saveLinkedAccounts();
-
-                toast('Сессия завершена на другом устройстве');
-
                 try {
+                    removeAccountCredentials(currentUser.uid);
+
                     await snap.ref.set({
                         quickLoginEnabled: false,
+                        quickLoginDisabled: true,
                         forceLogout: false,
                         signedOutAt: firebase.firestore.FieldValue.serverTimestamp(),
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     }, { merge: true });
+
+                    toast('Сессия завершена на другом устройстве');
+
+                    if (deviceControlListener) {
+                        deviceControlListener();
+                        deviceControlListener = null;
+                    }
+
+                    await auth.signOut();
+                    location.href = 'index.html';
                 } catch (e) {
-                    console.error(e);
+                    console.error('force logout error:', e);
+                    await auth.signOut();
+                    location.href = 'index.html';
                 }
 
-                await auth.signOut();
-                location.href = 'index.html';
                 return;
             }
 
-            if (data.quickLoginDisabled === true) {
+            // quickLoginDisabled НЕ должен сам выкидывать из аккаунта
+            if (data.quickLoginDisabled === true && data.quickLoginEnabled !== true) {
                 removeAccountCredentials(currentUser.uid);
-
-                try {
-                    await snap.ref.set({
-                        quickLoginEnabled: false,
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true });
-                } catch (e) {
-                    console.error(e);
-                }
-
                 return;
             }
         }, error => {
@@ -4291,31 +4302,16 @@ function renderDeviceDetailLine(label, value) {
     `;
 }
 
-async function kickDevice(deviceId) {
-    if (!currentUser || !deviceId) return;
-    if (!confirm('Отключить быстрый вход на этом устройстве?')) return;
-
-    try {
-        await db.collection('users').doc(currentUser.uid)
-            .collection('devices')
-            .doc(deviceId)
-            .set({
-                quickLoginEnabled: false,
-                quickLoginDisabled: true,
-                forceLogout: true,
-                kickedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-
-        devicesCache = devicesCache.filter(d => d.id !== deviceId && d.deviceId !== deviceId);
-        toast('Устройство выгнано');
-        closeDeviceDetailsModal();
-        showDevicesModal();
-    } catch (e) {
-        console.error(e);
-        toast('Не удалось отключить устройство');
-    }
-}
+await db.collection('users').doc(currentUser.uid)
+    .collection('devices')
+    .doc(deviceId)
+    .set({
+        quickLoginEnabled: false,
+        quickLoginDisabled: true,
+        forceLogout: true,
+        kickedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
 
 function togglePasswordVisibility(inputId, btn) {
     const input = document.getElementById(inputId);
