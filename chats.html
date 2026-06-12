@@ -4094,7 +4094,9 @@ async function registerCurrentDevice() {
         quickLoginEnabled: quickEnabled,
         quickLoginDisabled: !quickEnabled,
         forceLogout: oldData.forceLogout === true,
-        isActiveSession: quickEnabled && oldData.forceLogout !== true,
+        // Активная сессия — это факт, что пользователь сейчас авторизован на устройстве.
+        // Она НЕ должна зависеть от быстрого входа.
+        isActiveSession: oldData.forceLogout !== true,
 
         createdAt: oldData.createdAt || firebase.firestore.FieldValue.serverTimestamp(),
         lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -4197,7 +4199,7 @@ function isDeviceQuickLoginActive(device) {
 }
 
 function isDeviceActiveSession(device) {
-    return device?.forceLogout !== true && device?.isActiveSession !== false && isDeviceQuickLoginActive(device);
+    return device?.forceLogout !== true && device?.isActiveSession === true;
 }
 
 function getDeviceStatusText(device, isCurrent = false) {
@@ -4234,7 +4236,7 @@ async function showDevicesModal() {
             quickLoginEnabled: hasQuickLogin(currentUser.uid),
             quickLoginDisabled: !hasQuickLogin(currentUser.uid),
             forceLogout: false,
-            isActiveSession: hasQuickLogin(currentUser.uid)
+            isActiveSession: true
         };
 
         // Как в Telegram: показываем только активные сессии.
@@ -4304,7 +4306,7 @@ function showDeviceDetails(deviceId) {
         quickLoginEnabled: hasQuickLogin(currentUser.uid),
         quickLoginDisabled: !hasQuickLogin(currentUser.uid),
         forceLogout: false,
-        isActiveSession: hasQuickLogin(currentUser.uid)
+        isActiveSession: true
     };
 
     const isCurrent = device.id === currentDevice.id || device.deviceId === currentDevice.id;
