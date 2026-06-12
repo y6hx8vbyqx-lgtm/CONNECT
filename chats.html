@@ -2103,6 +2103,14 @@ body {
     </div>
 </div>
 
+<div class="modal-overlay" id="deviceDetailsModal">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Устройство</div>
+        <div class="modal-content" id="deviceDetailsContent"></div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="groupModal">
     <div class="modal-sheet">
         <div class="modal-handle"></div>
@@ -2529,6 +2537,7 @@ let currentChatParticipants = [];
 let chatMessagesListener = null;
 let chatsGlobalListener = null;
 let chatUserPresenceListener = null;
+let deviceControlListener = null;
 let presenceInterval = null;
 let replyingTo = null;
 let selectedMsgId = null;
@@ -2552,6 +2561,7 @@ let groupSettingsAvatarBase64 = null;
 let isCurrentUserDeveloper = false;
 let linkedAccounts = [];
 let currentAccountIndex = 0;
+let devicesCache = [];
 let isSwitchingAccount = false;
 let mediaRecorder = null;
 let audioChunks = [];
@@ -3746,6 +3756,10 @@ function esc(s) {
         .replace(/'/g, '&#039;');
 }
 
+function jsString(s) {
+    return JSON.stringify(String(s ?? ''));
+}
+
 function timeAgo(d) {
     if (!d) return '';
     const sec = Math.floor((Date.now() - d) / 1000);
@@ -3936,32 +3950,52 @@ function getCurrentDeviceInfo() {
     const ua = navigator.userAgent || '';
     const platform = navigator.platform || '';
     const maxTouchPoints = navigator.maxTouchPoints || 0;
+    const language = navigator.language || 'unknown';
+    const region = (language.split('-')[1] || '').toUpperCase() || 'неизвестно';
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'неизвестно';
 
     let type = 'desktop';
     let name = 'Компьютер';
+    let model = 'Неизвестно';
+    let os = platform || 'Неизвестно';
 
     if (/iPhone/i.test(ua)) {
         type = 'phone';
         name = 'iPhone';
+        model = 'iPhone';
+        os = 'iOS';
     } else if (/iPad/i.test(ua) || (platform === 'MacIntel' && maxTouchPoints > 1)) {
         type = 'tablet';
         name = 'iPad';
+        model = 'iPad';
+        os = 'iPadOS';
     } else if (/Samsung|SM-|SAMSUNG/i.test(ua)) {
         type = /Mobile|Android/i.test(ua) ? 'phone' : 'tablet';
-        const model = ua.match(/SM-[A-Z0-9]+/i)?.[0];
-        name = model ? `Samsung ${model}` : 'Samsung Galaxy';
+        const samsungModel = ua.match(/SM-[A-Z0-9]+/i)?.[0];
+        model = samsungModel || 'Samsung Galaxy';
+        name = samsungModel ? `Samsung ${samsungModel}` : 'Samsung Galaxy';
+        os = 'Android';
     } else if (/Android/i.test(ua)) {
         type = /Mobile/i.test(ua) ? 'phone' : 'tablet';
-        name = type === 'phone' ? 'Android телефон' : 'Android планшет';
+        const androidModel = ua.match(/Android[^;]*;\s*([^;)]+?)(?:\s+Build|\))/i)?.[1]?.trim();
+        model = androidModel || (type === 'phone' ? 'Android телефон' : 'Android планшет');
+        name = model;
+        os = 'Android';
     } else if (/Macintosh|Mac OS X/i.test(ua)) {
         type = 'desktop';
         name = 'MacBook / Mac';
+        model = 'Mac';
+        os = 'macOS';
     } else if (/Windows/i.test(ua)) {
         type = 'desktop';
         name = 'Windows PC';
+        model = 'PC';
+        os = 'Windows';
     } else if (/Linux/i.test(ua)) {
         type = 'desktop';
         name = 'Linux PC';
+        model = 'PC';
+        os = 'Linux';
     }
 
     let browser = 'Браузер';
@@ -3976,7 +4010,12 @@ function getCurrentDeviceInfo() {
         id: getConteggDeviceId(),
         name,
         type,
+        model,
+        os,
         browser,
+        language,
+        region,
+        timeZone,
         label: `${name} · ${browser}`
     };
 }
@@ -4008,14 +4047,66 @@ async function registerCurrentDevice() {
         deviceId: device.id,
         name: device.name,
         type: device.type,
+        model: device.model,
+        os: device.os,
         browser: device.browser,
+        language: device.language,
+        region: device.region,
+        timeZone: device.timeZone,
         label: device.label,
         userAgent: navigator.userAgent || '',
         quickLoginEnabled: !disabled && hasQuickLogin(currentUser.uid),
         quickLoginDisabled: disabled,
+        forceLogout: snap.exists ? snap.data()?.forceLogout === true : false,
+        createdAt: snap.exists ? (snap.data()?.createdAt || firebase.firestore.FieldValue.serverTimestamp()) : firebase.firestore.FieldValue.serverTimestamp(),
         lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
+}
+
+function startDeviceControlListener() {
+    if (!currentUser) return;
+
+    if (deviceControlListener) {
+        deviceControlListener();
+        deviceControlListener = null;
+    }
+
+    const device = getCurrentDeviceInfo();
+
+    deviceControlListener = db.collection('users')
+        .doc(currentUser.uid)
+        .collection('devices')
+        .doc(device.id)
+        .onSnapshot(async snap => {
+            if (!snap.exists) return;
+
+            const data = snap.data() || {};
+
+            if (data.quickLoginDisabled === true || data.forceLogout === true) {
+                removeAccountCredentials(currentUser.uid);
+                linkedAccounts = linkedAccounts.filter(a => a.uid !== currentUser.uid);
+                saveLinkedAccounts();
+
+                toast('Сессия завершена на другом устройстве');
+
+                try {
+                    await snap.ref.set({
+                        quickLoginEnabled: false,
+                        forceLogout: false,
+                        signedOutAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                } catch (e) {
+                    console.error(e);
+                }
+
+                await auth.signOut();
+                location.href = 'index.html';
+            }
+        }, error => {
+            console.error('device listener error:', error);
+        });
 }
 
 function closeSettingsModal() {
@@ -4033,6 +4124,11 @@ function openAccountsFromSettings() {
 
 function closeDevicesModal() {
     document.getElementById('devicesModal').classList.remove('show');
+    closeDeviceDetailsModal();
+}
+
+function isDeviceQuickLoginActive(device) {
+    return device?.quickLoginEnabled === true && device?.quickLoginDisabled !== true;
 }
 
 async function showDevicesModal() {
@@ -4054,16 +4150,20 @@ async function showDevicesModal() {
             .get();
 
         const devices = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        devicesCache = devices;
         const current = devices.find(d => d.id === currentDevice.id || d.deviceId === currentDevice.id) || {
             id: currentDevice.id,
             ...currentDevice,
             quickLoginEnabled: hasQuickLogin(currentUser.uid)
         };
-        const others = devices.filter(d => (d.id !== currentDevice.id && d.deviceId !== currentDevice.id));
+        const others = devices.filter(d => {
+            const isThisDevice = d.id === currentDevice.id || d.deviceId === currentDevice.id;
+            return !isThisDevice && isDeviceQuickLoginActive(d);
+        });
 
         content.innerHTML = `
             <div style="font-size:13px;color:var(--text-secondary);line-height:1.4;margin-bottom:12px;">
-                Здесь показаны устройства, где этот аккаунт открывался в Contegg. Кнопка "Выгнать" отключает быстрый вход на выбранном устройстве.
+            Здесь показаны устройства, где для этого аккаунта включен быстрый вход. Кнопка "Выгнать" отключает быстрый вход и завершает сессию на выбранном устройстве.
             </div>
 
             <div style="font-size:13px;color:var(--text-tertiary);font-weight:600;margin:12px 0 8px;">Ваша сессия</div>
@@ -4088,11 +4188,12 @@ async function showDevicesModal() {
 function renderDeviceRow(device, isCurrent) {
     const type = device.type || 'desktop';
     const label = device.label || `${device.name || 'Устройство'} · ${device.browser || 'Браузер'}`;
-    const quickEnabled = device.quickLoginEnabled === true && device.quickLoginDisabled !== true;
+    const quickEnabled = isDeviceQuickLoginActive(device);
     const lastSeen = device.lastSeenAt?.toDate?.() ? timeAgo(device.lastSeenAt.toDate()) : 'недавно';
+    const deviceId = device.id || device.deviceId;
 
     return `
-        <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;margin-bottom:8px;background:${isCurrent ? 'rgba(0,122,255,0.1)' : 'rgba(255,255,255,0.04)'};">
+        <div onclick='showDeviceDetails(${jsString(deviceId)})' style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;margin-bottom:8px;background:${isCurrent ? 'rgba(0,122,255,0.1)' : 'rgba(255,255,255,0.04)'};cursor:pointer;">
             <div style="width:42px;height:42px;border-radius:12px;background:rgba(0,122,255,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">
                 <i class="fas ${getDeviceIcon(type)}"></i>
             </div>
@@ -4104,7 +4205,71 @@ function renderDeviceRow(device, isCurrent) {
                     ${quickEnabled ? 'Быстрый вход включен' : 'Быстрый вход отключен'} · ${lastSeen}
                 </div>
             </div>
-            ${isCurrent ? '<i class="fas fa-check-circle" style="color:var(--accent);font-size:19px;"></i>' : `<button class="btn btn-danger btn-small" onclick="kickDevice('${esc(device.id || device.deviceId)}')">Выгнать</button>`}
+            ${isCurrent ? '<i class="fas fa-check-circle" style="color:var(--accent);font-size:19px;"></i>' : `<button class="btn btn-danger btn-small" onclick='event.stopPropagation(); kickDevice(${jsString(deviceId)})'>Выгнать</button>`}
+        </div>
+    `;
+}
+
+function closeDeviceDetailsModal() {
+    document.getElementById('deviceDetailsModal').classList.remove('show');
+}
+
+function showDeviceDetails(deviceId) {
+    const currentDevice = getCurrentDeviceInfo();
+    const device = devicesCache.find(d => d.id === deviceId || d.deviceId === deviceId) || {
+        id: currentDevice.id,
+        ...currentDevice,
+        quickLoginEnabled: hasQuickLogin(currentUser.uid)
+    };
+
+    const isCurrent = device.id === currentDevice.id || device.deviceId === currentDevice.id;
+    const quickEnabled = isDeviceQuickLoginActive(device);
+    const lastSeen = device.lastSeenAt?.toDate?.()
+        ? device.lastSeenAt.toDate().toLocaleString()
+        : 'недавно';
+    const createdAt = device.createdAt?.toDate?.()
+        ? device.createdAt.toDate().toLocaleString()
+        : 'неизвестно';
+
+    document.getElementById('deviceDetailsContent').innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+            <div style="width:52px;height:52px;border-radius:14px;background:rgba(0,122,255,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:22px;">
+                <i class="fas ${getDeviceIcon(device.type || 'desktop')}"></i>
+            </div>
+            <div style="min-width:0;">
+                <div style="font-size:17px;font-weight:700;">${esc(device.label || device.name || 'Устройство')}</div>
+                <div style="font-size:13px;color:var(--text-secondary);">${isCurrent ? 'Это устройство' : (quickEnabled ? 'Быстрый вход включен' : 'Быстрый вход отключен')}</div>
+            </div>
+        </div>
+
+        ${renderDeviceDetailLine('Тип', getDeviceTypeName(device.type))}
+        ${renderDeviceDetailLine('Модель', device.model || device.name || 'Неизвестно')}
+        ${renderDeviceDetailLine('ОС', device.os || 'Неизвестно')}
+        ${renderDeviceDetailLine('Браузер', device.browser || 'Неизвестно')}
+        ${renderDeviceDetailLine('Последняя активность', lastSeen)}
+        ${renderDeviceDetailLine('Страна / регион', device.region || 'неизвестно')}
+        ${renderDeviceDetailLine('Язык', device.language || 'неизвестно')}
+        ${renderDeviceDetailLine('Часовой пояс', device.timeZone || 'неизвестно')}
+        ${renderDeviceDetailLine('Добавлено', createdAt)}
+
+        ${!isCurrent && quickEnabled ? `<button class="btn btn-danger" onclick='kickDevice(${jsString(device.id || device.deviceId)})'>Выгнать</button>` : ''}
+        <button class="btn btn-secondary" onclick="closeDeviceDetailsModal()">Закрыть</button>
+    `;
+
+    document.getElementById('deviceDetailsModal').classList.add('show');
+}
+
+function getDeviceTypeName(type) {
+    if (type === 'phone') return 'Телефон';
+    if (type === 'tablet') return 'Планшет';
+    return 'Компьютер';
+}
+
+function renderDeviceDetailLine(label, value) {
+    return `
+        <div style="display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:0.5px solid var(--separator);">
+            <span style="font-size:14px;color:var(--text-secondary);">${esc(label)}</span>
+            <span style="font-size:14px;text-align:right;word-break:break-word;">${esc(value || 'Неизвестно')}</span>
         </div>
     `;
 }
@@ -4120,11 +4285,14 @@ async function kickDevice(deviceId) {
             .set({
                 quickLoginEnabled: false,
                 quickLoginDisabled: true,
+                forceLogout: true,
                 kickedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
 
-        toast('Быстрый вход отключен');
+        devicesCache = devicesCache.filter(d => d.id !== deviceId && d.deviceId !== deviceId);
+        toast('Устройство выгнано');
+        closeDeviceDetailsModal();
         showDevicesModal();
     } catch (e) {
         console.error(e);
@@ -4494,6 +4662,11 @@ function startPresenceTracking() {
 
 auth.onAuthStateChanged(async user => {
     if (!user) { 
+        if (deviceControlListener) {
+            deviceControlListener();
+            deviceControlListener = null;
+        }
+
         if (!isSwitchingAccount) {
             location.href = 'index.html';
         }
@@ -4523,7 +4696,7 @@ setTimeout(() => {
 }, 2500);
 
 loadLinkedAccounts();
-registerCurrentDevice().catch(console.error);
+registerCurrentDevice().then(startDeviceControlListener).catch(console.error);
 checkAutoOpen();
 
     isSwitchingAccount = false;
@@ -9035,6 +9208,11 @@ async function logout() {
             chatUserPresenceListener = null;
         }
 
+        if (deviceControlListener) {
+            deviceControlListener();
+            deviceControlListener = null;
+        }
+
         linkedAccounts = linkedAccounts.filter(a => a.uid !== currentUser.uid);
         saveLinkedAccounts();
 
@@ -9181,6 +9359,7 @@ document.getElementById('channelCropSettingsModal')?.classList.remove('show');
         document.getElementById('addAccountModal').classList.remove('show');
         document.getElementById('settingsModal').classList.remove('show');
         document.getElementById('devicesModal').classList.remove('show');
+        document.getElementById('deviceDetailsModal').classList.remove('show');
         document.getElementById('reactionsPanel').style.display = 'none';
     }
 });
