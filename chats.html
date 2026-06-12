@@ -8958,14 +8958,6 @@ if (postCommentInput) {
 /* ===== MOBILE KEYBOARD VIEWPORT FIX ===== */
 
 function updateMobileKeyboardViewport() {
-    const now = Date.now();
-
-    if (updateMobileKeyboardViewport.lastRun && now - updateMobileKeyboardViewport.lastRun < 120) {
-        return;
-    }
-
-    updateMobileKeyboardViewport.lastRun = now;
-
     if (updateMobileKeyboardViewport.raf) {
         cancelAnimationFrame(updateMobileKeyboardViewport.raf);
     }
@@ -9007,14 +8999,24 @@ function updateMobileKeyboardViewport() {
     });
 }
 
-if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', updateMobileKeyboardViewport);
+function scheduleMobileKeyboardViewportUpdate(delay = 180) {
+    if (scheduleMobileKeyboardViewportUpdate.timer) {
+        clearTimeout(scheduleMobileKeyboardViewportUpdate.timer);
+    }
+
+    scheduleMobileKeyboardViewportUpdate.timer = setTimeout(() => {
+        updateMobileKeyboardViewport();
+    }, delay);
 }
 
-window.addEventListener('resize', updateMobileKeyboardViewport);
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => scheduleMobileKeyboardViewportUpdate(160));
+}
+
+window.addEventListener('resize', () => scheduleMobileKeyboardViewportUpdate(160));
 
 window.addEventListener('orientationchange', () => {
-    setTimeout(updateMobileKeyboardViewport, 250);
+    scheduleMobileKeyboardViewportUpdate(300);
 });
 
 document.getElementById('chatInput')?.addEventListener('focus', () => {
@@ -9022,13 +9024,14 @@ document.getElementById('chatInput')?.addEventListener('focus', () => {
     document.body.classList.remove('keyboard-settling-out');
     document.body.classList.add('keyboard-settling-in');
 
-    updateMobileKeyboardViewport();
-    setTimeout(updateMobileKeyboardViewport, 180);
+    document.documentElement.style.setProperty('--contegg-chat-vh', '100dvh');
+    document.documentElement.style.setProperty('--contegg-chat-top', '0px');
+
+    scheduleMobileKeyboardViewportUpdate(260);
     setTimeout(() => {
         document.body.classList.remove('keyboard-settling-in');
-        updateMobileKeyboardViewport.lastRun = 0;
-        updateMobileKeyboardViewport();
-    }, 260);
+        scheduleMobileKeyboardViewportUpdate(40);
+    }, 340);
 });
 
 document.getElementById('chatInput')?.addEventListener('blur', () => {
@@ -9038,8 +9041,7 @@ document.getElementById('chatInput')?.addEventListener('blur', () => {
 
     setTimeout(() => {
         document.body.classList.remove('keyboard-settling-out');
-        updateMobileKeyboardViewport.lastRun = 0;
-        updateMobileKeyboardViewport();
+        scheduleMobileKeyboardViewportUpdate(40);
     }, 220);
 });
 
@@ -9425,6 +9427,7 @@ body.chat-open .app-container {
     padding: 12px !important;
     padding-bottom: 12px !important;
     -webkit-overflow-scrolling: touch !important;
+    overflow-anchor: none !important;
 }
 
 /* Строка ввода */
@@ -9472,38 +9475,24 @@ body.keyboard-settling-out .chat-navbar {
 }
 
 body.keyboard-settling-in .chat-messages {
-    animation: keyboardMessagesIn 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both !important;
+    animation: keyboardFadeIn 0.18s ease both !important;
 }
 
 body.keyboard-settling-in .chat-input-bar {
-    animation: keyboardInputIn 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both !important;
+    animation: keyboardFadeIn 0.18s ease both !important;
 }
 
 body.keyboard-settling-out .chat-messages,
 body.keyboard-settling-out .chat-input-bar {
-    transition: transform 0.18s ease, opacity 0.18s ease !important;
+    transition: opacity 0.16s ease !important;
 }
 
-@keyframes keyboardMessagesIn {
+@keyframes keyboardFadeIn {
     from {
-        transform: translateY(10px);
-        opacity: 0.96;
+        opacity: 0.985;
     }
 
     to {
-        transform: translateY(0);
-        opacity: 1;
-    }
-}
-
-@keyframes keyboardInputIn {
-    from {
-        transform: translateY(12px);
-        opacity: 0.98;
-    }
-
-    to {
-        transform: translateY(0);
         opacity: 1;
     }
 }
