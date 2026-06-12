@@ -5255,9 +5255,7 @@ function addDateDividerIfNeeded(container, d) {
                         }
 
                         if (change.type === 'modified') {
-                            if (msgEl && msg.reactions !== undefined) {
-                                updateMessageReactions(change.doc.id, msg.reactions);
-                            }
+                            if (msgEl) updateRenderedMessage(change.doc.id, msg);
 
                             const commentsCount = msgEl?.querySelector(`#commentsCount_${change.doc.id}`);
                             if (commentsCount) commentsCount.textContent = msg.commentsCount || 0;
@@ -5860,6 +5858,32 @@ div.addEventListener('touchend', (e) => {
 }, { passive: true });
 
 container.appendChild(div);
+}
+
+function updateRenderedMessage(id, msg) {
+    const oldEl = document.querySelector(`[data-msg-id="${id}"]`);
+    if (!oldEl) {
+        renderMessage(id, msg);
+        return;
+    }
+
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+
+    const oldScrollBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const nextSibling = oldEl.nextSibling;
+
+    oldEl.remove();
+    renderMessage(id, msg);
+
+    const newEl = document.querySelector(`[data-msg-id="${id}"]`);
+    if (newEl && nextSibling && nextSibling.parentNode === container) {
+        container.insertBefore(newEl, nextSibling);
+    }
+
+    if (oldScrollBottom < 80) {
+        container.scrollTop = container.scrollHeight;
+    }
 }
     
 function updateMessageReactions(id, reactions) {
@@ -8934,6 +8958,11 @@ if (postCommentInput) {
 /* ===== MOBILE KEYBOARD VIEWPORT FIX ===== */
 
 function updateMobileKeyboardViewport() {
+    if (updateMobileKeyboardViewport.raf) {
+        cancelAnimationFrame(updateMobileKeyboardViewport.raf);
+    }
+
+    updateMobileKeyboardViewport.raf = requestAnimationFrame(() => {
     const root = document.documentElement;
     const overlay = document.getElementById('chatOverlay');
     const chatIsOpen = overlay?.classList.contains('show');
@@ -8960,9 +8989,10 @@ function updateMobileKeyboardViewport() {
 
     const keyboardHeight = Math.max(0, layoutHeight - visibleHeight - offsetTop);
     const keyboardOpen = keyboardHeight > 80;
+    const chatHeight = Math.round(visibleHeight + (keyboardOpen ? offsetTop : 0));
 
-    root.style.setProperty('--contegg-chat-vh', `${visibleHeight}px`);
-    root.style.setProperty('--contegg-chat-top', `${offsetTop}px`);
+    root.style.setProperty('--contegg-chat-vh', `${chatHeight}px`);
+    root.style.setProperty('--contegg-chat-top', '0px');
 
     document.body.classList.toggle('keyboard-open', keyboardOpen);
 
@@ -8973,6 +9003,7 @@ function updateMobileKeyboardViewport() {
             messages.scrollTop = messages.scrollHeight;
         });
     }
+    });
 }
 
 if (window.visualViewport) {
@@ -9403,11 +9434,11 @@ body.keyboard-open {
 }
 
 body.keyboard-open .chat-input-bar {
-    padding-bottom: 8px !important;
+    padding-bottom: 0 !important;
 }
 
 body.keyboard-open .chat-messages {
-    padding-bottom: 8px !important;
+    padding-bottom: 6px !important;
 }
 
 /* Fullscreen-кнопка на ПК НЕ скрывается */
