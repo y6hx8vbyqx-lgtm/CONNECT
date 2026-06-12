@@ -3924,18 +3924,35 @@ function saveAccountCredentials(uid, email, password) {
 
     localStorage.setItem('contegg_account_creds', JSON.stringify(creds));
 
+    // После ручного ввода пароля устройство снова становится активной сессией
+    // и снова появляется в списке устройств.
     db.collection('users').doc(uid)
         .collection('devices')
         .doc(device.id)
         .set({
+            deviceId: device.id,
+            name: device.name,
+            type: device.type,
+            model: device.model,
+            os: device.os,
+            browser: device.browser,
+            language: device.language,
+            region: device.region,
+            timeZone: device.timeZone,
+            label: device.label,
+            userAgent: navigator.userAgent || '',
+
             quickLoginEnabled: true,
             quickLoginDisabled: false,
             forceLogout: false,
+            isActiveSession: true,
+
+            lastLoginAt: firebase.firestore.FieldValue.serverTimestamp(),
+            lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         }, { merge: true })
+        .then(() => registerCurrentDevice())
         .catch(console.error);
-
-    registerCurrentDevice().catch(console.error);
 }
     
 function getAccountCredentials(uid) {
@@ -4049,14 +4066,18 @@ async function registerCurrentDevice() {
     if (!currentUser) return;
 
     const device = getCurrentDeviceInfo();
-    const ref = db.collection('users').doc(currentUser.uid).collection('devices').doc(device.id);
+    const ref = db.collection('users')
+        .doc(currentUser.uid)
+        .collection('devices')
+        .doc(device.id);
+
     const snap = await ref.get();
-    const disabled = snap.exists && snap.data()?.quickLoginDisabled === true;
+    const oldData = snap.exists ? (snap.data() || {}) : {};
+    const quickEnabled = hasQuickLogin(currentUser.uid);
 
-    if (disabled) {
-        removeAccountCredentials(currentUser.uid);
-    }
-
+    // Важно: quickLoginDisabled не должен быть вечной блокировкой.
+    // Если пользователь заново ввел пароль, hasQuickLogin станет true,
+    // и устройство снова станет активным.
     await ref.set({
         deviceId: device.id,
         name: device.name,
@@ -4069,10 +4090,13 @@ async function registerCurrentDevice() {
         timeZone: device.timeZone,
         label: device.label,
         userAgent: navigator.userAgent || '',
-        quickLoginEnabled: !disabled && hasQuickLogin(currentUser.uid),
-        quickLoginDisabled: disabled,
-        forceLogout: snap.exists ? snap.data()?.forceLogout === true : false,
-        createdAt: snap.exists ? (snap.data()?.createdAt || firebase.firestore.FieldValue.serverTimestamp()) : firebase.firestore.FieldValue.serverTimestamp(),
+
+        quickLoginEnabled: quickEnabled,
+        quickLoginDisabled: !quickEnabled,
+        forceLogout: oldData.forceLogout === true,
+        isActiveSession: quickEnabled && oldData.forceLogout !== true,
+
+        createdAt: oldData.createdAt || firebase.firestore.FieldValue.serverTimestamp(),
         lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
@@ -4097,37 +4121,50 @@ function startDeviceControlListener() {
 
             const data = snap.data() || {};
 
+            // Выкидывать устройство должна только команда forceLogout.
+            // quickLoginDisabled сам по себе только отключает сохраненный пароль.
             if (data.forceLogout === true) {
                 try {
                     removeAccountCredentials(currentUser.uid);
-
-                    await snap.ref.set({
-                        quickLoginEnabled: false,
-                        quickLoginDisabled: true,
-                        forceLogout: false,
-                        signedOutAt: firebase.firestore.FieldValue.serverTimestamp(),
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true });
-
-                    toast('Сессия завершена на другом устройстве');
 
                     if (deviceControlListener) {
                         deviceControlListener();
                         deviceControlListener = null;
                     }
 
+                    // Как в Telegram: выгнанная сессия пропадает из списка.
+                    try {
+                        await snap.ref.delete();
+                    } catch (deleteError) {
+                        console.error('device delete error:', deleteError);
+
+                        // Fallback, если правила Firestore запрещают delete.
+                        await snap.ref.set({
+                            quickLoginEnabled: false,
+                            quickLoginDisabled: true,
+                            forceLogout: false,
+                            isActiveSession: false,
+                            signedOutAt: firebase.firestore.FieldValue.serverTimestamp(),
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                    }
+
+                    toast('Сессия завершена на другом устройстве');
                     await auth.signOut();
                     location.href = 'index.html';
                 } catch (e) {
                     console.error('force logout error:', e);
-                    await auth.signOut();
+                    try {
+                        await auth.signOut();
+                    } catch (signOutError) {
+                        console.error(signOutError);
+                    }
                     location.href = 'index.html';
                 }
 
                 return;
             }
 
-            // quickLoginDisabled НЕ должен сам выкидывать из аккаунта
             if (data.quickLoginDisabled === true && data.quickLoginEnabled !== true) {
                 removeAccountCredentials(currentUser.uid);
                 return;
@@ -4156,7 +4193,18 @@ function closeDevicesModal() {
 }
 
 function isDeviceQuickLoginActive(device) {
-    return device?.quickLoginEnabled === true && device?.quickLoginDisabled !== true;
+    return device?.quickLoginEnabled === true && device?.quickLoginDisabled !== true && device?.forceLogout !== true;
+}
+
+function isDeviceActiveSession(device) {
+    return device?.forceLogout !== true && device?.isActiveSession !== false && isDeviceQuickLoginActive(device);
+}
+
+function getDeviceStatusText(device, isCurrent = false) {
+    if (isCurrent) return 'Это устройство';
+    if (device?.forceLogout === true) return 'Сессия завершается';
+    if (isDeviceQuickLoginActive(device)) return 'Быстрый вход включен';
+    return 'Быстрый вход отключен';
 }
 
 async function showDevicesModal() {
@@ -4179,26 +4227,33 @@ async function showDevicesModal() {
 
         const devices = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         devicesCache = devices;
+
         const current = devices.find(d => d.id === currentDevice.id || d.deviceId === currentDevice.id) || {
             id: currentDevice.id,
             ...currentDevice,
-            quickLoginEnabled: hasQuickLogin(currentUser.uid)
+            quickLoginEnabled: hasQuickLogin(currentUser.uid),
+            quickLoginDisabled: !hasQuickLogin(currentUser.uid),
+            forceLogout: false,
+            isActiveSession: hasQuickLogin(currentUser.uid)
         };
+
+        // Как в Telegram: показываем только активные сессии.
+        // Выгнанное устройство удаляется/помечается неактивным и пропадает из списка.
         const others = devices.filter(d => {
-    const isThisDevice = d.id === currentDevice.id || d.deviceId === currentDevice.id;
-    return !isThisDevice;
-});
+            const isThisDevice = d.id === currentDevice.id || d.deviceId === currentDevice.id;
+            return !isThisDevice && isDeviceActiveSession(d);
+        });
 
         content.innerHTML = `
             <div style="font-size:13px;color:var(--text-secondary);line-height:1.4;margin-bottom:12px;">
-            Здесь показаны устройства, где для этого аккаунта включен быстрый вход. Кнопка "Выгнать" отключает быстрый вход и завершает сессию на выбранном устройстве.
+                Здесь показаны активные сессии аккаунта. Кнопка "Выгнать" завершает сессию на выбранном устройстве, убирает его из списка и отключает быстрый вход. Чтобы устройство появилось снова, на нём нужно заново войти с паролем.
             </div>
 
             <div style="font-size:13px;color:var(--text-tertiary);font-weight:600;margin:12px 0 8px;">Ваша сессия</div>
             ${renderDeviceRow(current, true)}
 
-            <div style="font-size:13px;color:var(--text-tertiary);font-weight:600;margin:16px 0 8px;">Остальные устройства</div>
-            ${others.length ? others.map(device => renderDeviceRow(device, false)).join('') : '<div style="padding:14px;text-align:center;color:var(--text-secondary);">Других устройств пока нет</div>'}
+            <div style="font-size:13px;color:var(--text-tertiary);font-weight:600;margin:16px 0 8px;">Активные устройства</div>
+            ${others.length ? others.map(device => renderDeviceRow(device, false)).join('') : '<div style="padding:14px;text-align:center;color:var(--text-secondary);">Других активных устройств нет</div>'}
 
             <button class="btn btn-secondary" onclick="closeDevicesModal()">Закрыть</button>
         `;
@@ -4219,21 +4274,20 @@ function renderDeviceRow(device, isCurrent) {
     const quickEnabled = isDeviceQuickLoginActive(device);
     const lastSeen = device.lastSeenAt?.toDate?.() ? timeAgo(device.lastSeenAt.toDate()) : 'недавно';
     const deviceId = device.id || device.deviceId;
+    const statusText = getDeviceStatusText(device, isCurrent);
+    const statusColor = isCurrent || quickEnabled ? 'var(--online)' : 'var(--text-tertiary)';
 
     return `
-        <div onclick='showDeviceDetails(${jsString(deviceId)})' style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;margin-bottom:8px;background:${isCurrent ? 'rgba(0,122,255,0.1)' : 'rgba(255,255,255,0.04)'};cursor:pointer;">
-            <div style="width:42px;height:42px;border-radius:12px;background:rgba(0,122,255,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">
+        <div onclick='showDeviceDetails(${jsString(deviceId)})' style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;margin-bottom:8px;background:${isCurrent ? 'rgba(10,132,255,0.14)' : 'var(--bg-secondary)'};cursor:pointer;">
+            <div style="width:42px;height:42px;border-radius:14px;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:18px;">
                 <i class="fas ${getDeviceIcon(type)}"></i>
             </div>
             <div style="flex:1;min-width:0;">
-                <div style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                    ${isCurrent ? 'Ваша сессия · ' : ''}${esc(label)}
-                </div>
-                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">
-                    ${quickEnabled ? 'Быстрый вход включен' : 'Быстрый вход отключен'} · ${lastSeen}
-                </div>
+                <div style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(label)}</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:3px;">${esc(device.os || 'Неизвестная ОС')} · ${esc(lastSeen)}</div>
+                <div style="font-size:12px;color:${statusColor};margin-top:4px;">${esc(statusText)}</div>
             </div>
-            ${isCurrent ? '<i class="fas fa-check-circle" style="color:var(--accent);font-size:19px;"></i>' : `<button class="btn btn-danger btn-small" onclick='event.stopPropagation(); kickDevice(${jsString(deviceId)})'>Выгнать</button>`}
+            <i class="fas fa-chevron-right" style="color:var(--text-tertiary);font-size:12px;"></i>
         </div>
     `;
 }
@@ -4247,27 +4301,26 @@ function showDeviceDetails(deviceId) {
     const device = devicesCache.find(d => d.id === deviceId || d.deviceId === deviceId) || {
         id: currentDevice.id,
         ...currentDevice,
-        quickLoginEnabled: hasQuickLogin(currentUser.uid)
+        quickLoginEnabled: hasQuickLogin(currentUser.uid),
+        quickLoginDisabled: !hasQuickLogin(currentUser.uid),
+        forceLogout: false,
+        isActiveSession: hasQuickLogin(currentUser.uid)
     };
 
     const isCurrent = device.id === currentDevice.id || device.deviceId === currentDevice.id;
     const quickEnabled = isDeviceQuickLoginActive(device);
-    const lastSeen = device.lastSeenAt?.toDate?.()
-        ? device.lastSeenAt.toDate().toLocaleString()
-        : 'недавно';
-    const createdAt = device.createdAt?.toDate?.()
-        ? device.createdAt.toDate().toLocaleString()
-        : 'неизвестно';
+    const lastSeen = device.lastSeenAt?.toDate?.() ? timeAgo(device.lastSeenAt.toDate()) : 'недавно';
+    const createdAt = device.createdAt?.toDate?.() ? device.createdAt.toDate().toLocaleString('ru') : 'неизвестно';
+    const statusText = getDeviceStatusText(device, isCurrent);
 
-    document.getElementById('deviceDetailsContent').innerHTML = `
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
-            <div style="width:52px;height:52px;border-radius:14px;background:rgba(0,122,255,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:22px;">
+    const content = document.getElementById('deviceDetailsContent');
+    content.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:16px;">
+            <div style="width:62px;height:62px;border-radius:20px;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:28px;margin-bottom:10px;">
                 <i class="fas ${getDeviceIcon(device.type || 'desktop')}"></i>
             </div>
-            <div style="min-width:0;">
-                <div style="font-size:17px;font-weight:700;">${esc(device.label || device.name || 'Устройство')}</div>
-                <div style="font-size:13px;color:var(--text-secondary);">${isCurrent ? 'Это устройство' : (quickEnabled ? 'Быстрый вход включен' : 'Быстрый вход отключен')}</div>
-            </div>
+            <div style="font-size:17px;font-weight:600;">${esc(device.label || device.name || 'Устройство')}</div>
+            <div style="font-size:13px;color:${isCurrent || quickEnabled ? 'var(--online)' : 'var(--text-secondary)'};margin-top:4px;">${esc(statusText)}</div>
         </div>
 
         ${renderDeviceDetailLine('Тип', getDeviceTypeName(device.type))}
@@ -4302,16 +4355,34 @@ function renderDeviceDetailLine(label, value) {
     `;
 }
 
-await db.collection('users').doc(currentUser.uid)
-    .collection('devices')
-    .doc(deviceId)
-    .set({
-        quickLoginEnabled: false,
-        quickLoginDisabled: true,
-        forceLogout: true,
-        kickedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+async function kickDevice(deviceId) {
+    if (!currentUser || !deviceId) return;
+
+    if (!confirm('Выгнать это устройство? На нём аккаунт вылетит, быстрый вход отключится, и для возврата нужно будет заново ввести пароль.')) {
+        return;
+    }
+
+    try {
+        await db.collection('users').doc(currentUser.uid)
+            .collection('devices')
+            .doc(deviceId)
+            .set({
+                quickLoginEnabled: false,
+                quickLoginDisabled: true,
+                forceLogout: true,
+                isActiveSession: false,
+                kickedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+        toast('Устройство выгнано');
+        closeDeviceDetailsModal();
+        showDevicesModal();
+    } catch (e) {
+        console.error(e);
+        toast('Не удалось выгнать устройство');
+    }
+}
 
 function togglePasswordVisibility(inputId, btn) {
     const input = document.getElementById(inputId);
