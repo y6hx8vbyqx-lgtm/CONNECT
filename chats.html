@@ -4854,12 +4854,8 @@ function showChatOverlay() {
         window.visualViewport?.height || 0
     );
     document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
-    document.documentElement.style.setProperty('--contegg-navbar-offset', '0px');
 
     overlay.classList.add('show');
-    if (typeof syncChatNavbarPosition === 'function') {
-        syncChatNavbarPosition();
-    }
 
     if (typeof updateMobileKeyboardViewport === 'function') {
         updateMobileKeyboardViewport();
@@ -4892,7 +4888,6 @@ function hideChatOverlay() {
     document.documentElement.style.setProperty('--contegg-chat-vh', '100dvh');
     document.documentElement.style.setProperty('--contegg-chat-top', '0px');
     document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
-    document.documentElement.style.setProperty('--contegg-navbar-offset', '0px');
 }
 
   function getChannelRights(chat) {
@@ -9062,22 +9057,6 @@ function updateMobileKeyboardViewport() {
     });
 }
 
-function syncChatNavbarPosition() {
-    if (syncChatNavbarPosition.raf) {
-        cancelAnimationFrame(syncChatNavbarPosition.raf);
-    }
-
-    syncChatNavbarPosition.raf = requestAnimationFrame(() => {
-        const overlay = document.getElementById('chatOverlay');
-        const chatIsOpen = overlay?.classList.contains('show');
-        const top = chatIsOpen && window.visualViewport
-            ? Math.round(window.visualViewport.offsetTop || 0)
-            : 0;
-
-        document.documentElement.style.setProperty('--contegg-navbar-offset', `${top}px`);
-    });
-}
-
 function scheduleMobileKeyboardViewportUpdate(delay = 180) {
     if (scheduleMobileKeyboardViewportUpdate.timer) {
         clearTimeout(scheduleMobileKeyboardViewportUpdate.timer);
@@ -9090,12 +9069,9 @@ function scheduleMobileKeyboardViewportUpdate(delay = 180) {
 
 if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', () => scheduleMobileKeyboardViewportUpdate(160));
-    window.visualViewport.addEventListener('resize', syncChatNavbarPosition, { passive: true });
-    window.visualViewport.addEventListener('scroll', syncChatNavbarPosition, { passive: true });
 }
 
 window.addEventListener('resize', () => scheduleMobileKeyboardViewportUpdate(160));
-window.addEventListener('resize', syncChatNavbarPosition);
 
 window.addEventListener('orientationchange', () => {
     scheduleMobileKeyboardViewportUpdate(300);
@@ -9110,8 +9086,6 @@ document.getElementById('chatInput')?.addEventListener('focus', () => {
     document.documentElement.style.setProperty('--contegg-chat-top', '0px');
     document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
 
-    syncChatNavbarPosition();
-
     setTimeout(updateMobileKeyboardViewport, 80);
     setTimeout(updateMobileKeyboardViewport, 220);
     setTimeout(() => {
@@ -9125,7 +9099,6 @@ document.getElementById('chatInput')?.addEventListener('blur', () => {
     document.body.classList.remove('keyboard-settling-in');
     document.body.classList.add('keyboard-settling-out');
     document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
-    document.documentElement.style.setProperty('--contegg-navbar-offset', '0px');
 
     setTimeout(() => {
         document.body.classList.remove('keyboard-settling-out');
@@ -9455,7 +9428,6 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
     --contegg-chat-top: 0px;
     --contegg-keyboard-height: 0px;
     --contegg-input-bar-height: 58px;
-    --contegg-navbar-offset: 0px;
 
     /* Когда клавиатура закрыта — нормальный нижний отступ */
     --contegg-input-bottom: max(14px, env(safe-area-inset-bottom, 0px));
@@ -9512,8 +9484,8 @@ body.chat-open .app-container {
     background: rgba(0,0,0,0.92) !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
-    transform: translate3d(0, var(--contegg-navbar-offset), 0) !important;
-    will-change: transform !important;
+    transform: none !important;
+    will-change: auto !important;
     contain: layout paint !important;
     transition: none !important;
     animation: none !important;
@@ -9525,7 +9497,7 @@ body:not(.chat-open) .chat-navbar {
 
 body.chat-open .chat-navbar {
     display: flex !important;
-    transform: translate3d(0, var(--contegg-navbar-offset), 0) !important;
+    transform: none !important;
 }
 
 .chat-messages {
