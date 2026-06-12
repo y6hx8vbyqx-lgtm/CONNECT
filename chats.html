@@ -9446,13 +9446,30 @@ body.chat-open .app-container {
 }
 
 .chat-navbar {
-    position: absolute !important;
+    position: fixed !important;
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
-    z-index: 6 !important;
+    z-index: 100001 !important;
     min-height: var(--navbar-height) !important;
-    transform: translateZ(0) !important;
+    height: var(--navbar-height) !important;
+    background: rgba(0,0,0,0.92) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    transform: none !important;
+    will-change: auto !important;
+    contain: layout paint !important;
+    transition: none !important;
+    animation: none !important;
+}
+
+body:not(.chat-open) .chat-navbar {
+    display: none !important;
+}
+
+body.chat-open .chat-navbar {
+    display: flex !important;
+    transform: none !important;
 }
 
 .chat-messages {
