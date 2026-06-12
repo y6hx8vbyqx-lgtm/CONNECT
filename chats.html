@@ -4846,7 +4846,7 @@ function showChatOverlay() {
     const overlay = document.getElementById('chatOverlay');
     if (!overlay) return;
 
-    ensureChatNavbarLayer();
+    ensureChatNavbarInOverlay();
 
     document.body.classList.add('chat-open');
     window.__conteggBaseViewportHeight = Math.max(
@@ -4864,12 +4864,15 @@ function showChatOverlay() {
     }
 }
 
-function ensureChatNavbarLayer() {
+function ensureChatNavbarInOverlay() {
+    const overlay = document.getElementById('chatOverlay');
     const navbar = document.getElementById('chatNavbar');
-    if (!navbar) return;
+    const messages = document.getElementById('chatMessages');
 
-    if (navbar.parentElement !== document.body) {
-        document.body.appendChild(navbar);
+    if (!overlay || !navbar) return;
+
+    if (navbar.parentElement !== overlay) {
+        overlay.insertBefore(navbar, messages || overlay.firstChild);
     }
 }
     
@@ -9000,6 +9003,12 @@ if (postCommentInput) {
 /* ===== MOBILE KEYBOARD VIEWPORT FIX ===== */
 
 function updateMobileKeyboardViewport() {
+    if (!isMobileLike) {
+        document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
+        document.body.classList.remove('keyboard-open');
+        return;
+    }
+
     if (updateMobileKeyboardViewport.raf) {
         cancelAnimationFrame(updateMobileKeyboardViewport.raf);
     }
@@ -9067,17 +9076,22 @@ function scheduleMobileKeyboardViewportUpdate(delay = 180) {
     }, delay);
 }
 
-if (window.visualViewport) {
+if (isMobileLike && window.visualViewport) {
     window.visualViewport.addEventListener('resize', () => scheduleMobileKeyboardViewportUpdate(160));
 }
 
-window.addEventListener('resize', () => scheduleMobileKeyboardViewportUpdate(160));
+if (isMobileLike) {
+    window.addEventListener('resize', () => scheduleMobileKeyboardViewportUpdate(160));
+}
 
 window.addEventListener('orientationchange', () => {
+    if (!isMobileLike) return;
     scheduleMobileKeyboardViewportUpdate(300);
 });
 
 document.getElementById('chatInput')?.addEventListener('focus', () => {
+    if (!isMobileLike) return;
+
     document.body.classList.add('keyboard-open');
     document.body.classList.remove('keyboard-settling-out');
     document.body.classList.add('keyboard-settling-in');
@@ -9095,6 +9109,8 @@ document.getElementById('chatInput')?.addEventListener('focus', () => {
 });
 
 document.getElementById('chatInput')?.addEventListener('blur', () => {
+    if (!isMobileLike) return;
+
     document.body.classList.remove('keyboard-open');
     document.body.classList.remove('keyboard-settling-in');
     document.body.classList.add('keyboard-settling-out');
@@ -9467,18 +9483,18 @@ body.chat-open .app-container {
 }
 
 .chat-overlay.show {
-    transform: translateX(0) !important;
+    transform: none !important;
     top: 0 !important;
     height: 100dvh !important;
     max-height: 100dvh !important;
 }
 
 .chat-navbar {
-    position: fixed !important;
+    position: absolute !important;
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
-    z-index: 100001 !important;
+    z-index: 20 !important;
     min-height: var(--navbar-height) !important;
     height: var(--navbar-height) !important;
     background: rgba(0,0,0,0.92) !important;
@@ -9538,9 +9554,27 @@ body.chat-open .chat-navbar {
     padding-bottom: calc(8px + var(--contegg-input-bottom)) !important;
 
     margin: 0 !important;
-    transform: translate3d(0, calc(-1 * var(--contegg-keyboard-height)), 0) !important;
-    transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), padding-bottom 0.18s ease !important;
-    will-change: transform !important;
+    transform: none !important;
+    transition: padding-bottom 0.18s ease !important;
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+    .chat-input-bar {
+        transform: translate3d(0, calc(-1 * var(--contegg-keyboard-height)), 0) !important;
+        transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), padding-bottom 0.18s ease !important;
+        will-change: transform !important;
+    }
+}
+
+@media (min-width: 901px) and (pointer: fine) {
+    .chat-messages {
+        bottom: var(--contegg-input-bar-height) !important;
+        transition: none !important;
+    }
+
+    .chat-input-bar {
+        transform: none !important;
+    }
 }
 
 /* Когда клавиатура открыта — убираем нижний подбородок */
