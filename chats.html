@@ -26,7 +26,631 @@
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js">
+
+/* =========================================================
+   CONTEGG DEVICES / QUICK LOGIN / SECURITY NOTIFICATIONS V7
+   Правила:
+   - Ручной вход по email+паролю: сообщение бота о входе.
+   - Быстрый автоматический вход: без сообщения.
+   - Неверный пароль при существующей почте: сообщение бота.
+   - Быстрый вход живёт до кнопки "Выйти" или "Завершить сеанс".
+   - Кик не должен повторяться после повторного входа по паролю.
+   ========================================================= */
+
+function normalizeEmailV7(email) {
+    return (email || '').trim().toLowerCase();
+}
+
+function nowTextV7() {
+    try {
+        return new Date().toLocaleString('ru-RU');
+    } catch (_) {
+        return new Date().toString();
+    }
+}
+
+function getAccountCredentials(uid) {
+    try {
+        const creds = JSON.parse(localStorage.getItem('contegg_account_creds') || '{}');
+        return creds[uid] || null;
+    } catch (_) {
+        return null;
+    }
+}
+
+function hasQuickLogin(uid) {
+    const creds = getAccountCredentials(uid);
+    return !!(creds && creds.email && creds.password);
+}
+
+function saveAccountCredentials(uid, email, password) {
+    if (!uid || !email || !password) return;
+
+    const creds = JSON.parse(localStorage.getItem('contegg_account_creds') || '{}');
+    const device = getCurrentDeviceInfo();
+
+    creds[uid] = {
+        email: normalizeEmailV7(email),
+        password,
+        deviceId: device.id,
+        deviceName: device.name,
+        savedAt: new Date().toISOString()
+    };
+
+    localStorage.setItem('contegg_account_creds', JSON.stringify(creds));
+
+    // Сохраняем признак: на этом устройстве быстрый вход доступен.
+    // Это НЕ команда кикнуть, это просто статус устройства.
+    db.collection('users').doc(uid)
+        .collection('devices')
+        .doc(device.id)
+        .set({
+            deviceId: device.id,
+            name: device.name,
+            type: device.type,
+            model: device.model,
+            os: device.os,
+            browser: device.browser,
+            language: device.language,
+            region: device.region,
+            timeZone: device.timeZone,
+            label: device.label,
+            userAgent: navigator.userAgent || '',
+            isActiveSession: true,
+            quickLoginEnabled: true,
+            quickLoginDisabled: false,
+            forceLogout: false,
+            lastLoginMethod: 'password',
+            lastLoginAt: firebase.firestore.FieldValue.serverTimestamp(),
+            lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true })
+        .catch(console.error);
+}
+
+function removeAccountCredentials(uid) {
+    try {
+        const creds = JSON.parse(localStorage.getItem('contegg_account_creds') || '{}');
+        delete creds[uid];
+        localStorage.setItem('contegg_account_creds', JSON.stringify(creds));
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function registerCurrentDevice(options = {}) {
+    if (!currentUser) return;
+
+    const device = getCurrentDeviceInfo();
+    const quickEnabled = hasQuickLogin(currentUser.uid);
+
+    // ВАЖНО: не читаем старый forceLogout из базы и не переносим его.
+    // После успешного входа устройство снова активное.
+    await db.collection('users')
+        .doc(currentUser.uid)
+        .collection('devices')
+        .doc(device.id)
+        .set({
+            deviceId: device.id,
+            name: device.name,
+            type: device.type,
+            model: device.model,
+            os: device.os,
+            browser: device.browser,
+            language: device.language,
+            region: device.region,
+            timeZone: device.timeZone,
+            label: device.label,
+            userAgent: navigator.userAgent || '',
+            isActiveSession: true,
+            quickLoginEnabled: quickEnabled,
+            quickLoginDisabled: !quickEnabled,
+            forceLogout: false,
+            lastLoginMethod: options.loginMethod || 'session',
+            lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+}
+
+function startDeviceControlListener() {
+    if (!currentUser) return;
+
+    if (deviceControlListener) {
+        deviceControlListener();
+        deviceControlListener = null;
+    }
+
+    const device = getCurrentDeviceInfo();
+
+    deviceControlListener = db.collection('users')
+        .doc(currentUser.uid)
+        .collection('devices')
+        .doc(device.id)
+        .onSnapshot(async snap => {
+            if (!snap.exists) return;
+
+            const data = snap.data() || {};
+
+            // Единственная команда, которая выкидывает устройство — forceLogout:true.
+            // quickLoginDisabled / isActiveSession:false сами по себе НЕ кикают.
+            if (data.forceLogout !== true) return;
+
+            try {
+                removeAccountCredentials(currentUser.uid);
+
+                if (deviceControlListener) {
+                    deviceControlListener();
+                    deviceControlListener = null;
+                }
+
+                await snap.ref.set({
+                    forceLogout: false,
+                    isActiveSession: false,
+                    quickLoginEnabled: false,
+                    quickLoginDisabled: true,
+                    signedOutAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+
+                toast('Сеанс завершён на другом устройстве');
+                await auth.signOut();
+                location.href = 'index.html';
+            } catch (e) {
+                console.error('force logout error:', e);
+                try { await auth.signOut(); } catch (_) {}
+                location.href = 'index.html';
+            }
+        }, error => {
+            console.error('device listener error:', error);
+        });
+}
+
+function isDeviceActiveSession(device) {
+    return device?.isActiveSession === true && device?.forceLogout !== true;
+}
+
+function isDeviceQuickLoginActive(device) {
+    return device?.quickLoginEnabled === true && device?.quickLoginDisabled !== true;
+}
+
+function getDeviceStatusText(device) {
+    if (!isDeviceActiveSession(device)) return 'Сессия завершена';
+    return isDeviceQuickLoginActive(device) ? 'Быстрый вход включен' : 'Быстрый вход недоступен';
+}
+
+async function showDevicesModal() {
+    document.getElementById('settingsModal').classList.remove('show');
+
+    const modal = document.getElementById('devicesModal');
+    const content = document.getElementById('devicesContent');
+
+    modal.classList.add('show');
+    content.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка...</span></div>';
+
+    try {
+        await registerCurrentDevice({ loginMethod: 'session' });
+
+        const currentDevice = getCurrentDeviceInfo();
+        const snap = await db.collection('users')
+            .doc(currentUser.uid)
+            .collection('devices')
+            .orderBy('lastSeenAt', 'desc')
+            .get();
+
+        const devices = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        devicesCache = devices;
+
+        const current = devices.find(d => d.id === currentDevice.id || d.deviceId === currentDevice.id) || {
+            id: currentDevice.id,
+            ...currentDevice,
+            isActiveSession: true,
+            quickLoginEnabled: hasQuickLogin(currentUser.uid),
+            quickLoginDisabled: !hasQuickLogin(currentUser.uid),
+            forceLogout: false
+        };
+
+        const others = devices.filter(d => {
+            const isThisDevice = d.id === currentDevice.id || d.deviceId === currentDevice.id;
+            return !isThisDevice && isDeviceActiveSession(d);
+        });
+
+        content.innerHTML = `
+            <div style="font-size:13px;color:var(--text-secondary);line-height:1.4;margin-bottom:12px;">
+                Активные устройства этого аккаунта. Быстрый вход включается автоматически после входа по паролю и отключается только при выходе или завершении сеанса.
+            </div>
+
+            <div style="font-size:13px;color:var(--text-tertiary);font-weight:600;margin:12px 0 8px;">Это устройство</div>
+            ${renderDeviceRow(current, true)}
+
+            <div style="font-size:13px;color:var(--text-tertiary);font-weight:600;margin:16px 0 8px;">Другие активные устройства</div>
+            ${others.length ? others.map(device => renderDeviceRow(device, false)).join('') : '<div style="padding:14px;text-align:center;color:var(--text-secondary);">Других активных устройств нет</div>'}
+
+            <button class="btn btn-secondary" onclick="closeDevicesModal()">Закрыть</button>
+        `;
+    } catch (e) {
+        console.error(e);
+        content.innerHTML = `
+            <div style="padding:16px;text-align:center;color:var(--text-secondary);line-height:1.4;">
+                Не удалось загрузить устройства.
+            </div>
+            <button class="btn btn-secondary" onclick="closeDevicesModal()">Закрыть</button>
+        `;
+    }
+}
+
+function renderDeviceRow(device, isCurrent) {
+    const type = device.type || 'desktop';
+    const label = device.label || `${device.name || 'Устройство'} · ${device.browser || 'Браузер'}`;
+    const status = getDeviceStatusText(device);
+    const lastSeen = device.lastSeenAt?.toDate?.() ? timeAgo(device.lastSeenAt.toDate()) : 'недавно';
+    const deviceId = device.id || device.deviceId;
+
+    return `
+        <div onclick='showDeviceDetails(${jsString(deviceId)})'
+             style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;margin-bottom:8px;background:${isCurrent ? 'rgba(0,122,255,0.1)' : 'rgba(255,255,255,0.04)'};cursor:pointer;">
+            <div style="width:42px;height:42px;border-radius:12px;background:rgba(0,122,255,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">
+                <i class="fas ${getDeviceIcon(type)}"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                    ${isCurrent ? 'Это устройство · ' : ''}${esc(label)}
+                </div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">
+                    ${esc(status)} · ${esc(lastSeen)}
+                </div>
+            </div>
+            ${isCurrent ? '<i class="fas fa-check-circle" style="color:var(--accent);font-size:19px;"></i>' : `<button class="btn btn-danger btn-small" onclick='event.stopPropagation(); kickDevice(${jsString(deviceId)})'>Завершить</button>`}
+        </div>
+    `;
+}
+
+function showDeviceDetails(deviceId) {
+    const currentDevice = getCurrentDeviceInfo();
+    const device = devicesCache.find(d => d.id === deviceId || d.deviceId === deviceId) || {
+        id: currentDevice.id,
+        ...currentDevice,
+        isActiveSession: true,
+        quickLoginEnabled: hasQuickLogin(currentUser.uid),
+        quickLoginDisabled: !hasQuickLogin(currentUser.uid),
+        forceLogout: false
+    };
+
+    const isCurrent = device.id === currentDevice.id || device.deviceId === currentDevice.id;
+    const status = getDeviceStatusText(device);
+    const lastSeen = device.lastSeenAt?.toDate?.() ? device.lastSeenAt.toDate().toLocaleString() : 'недавно';
+    const createdAt = device.createdAt?.toDate?.() ? device.createdAt.toDate().toLocaleString() : 'неизвестно';
+
+    document.getElementById('deviceDetailsContent').innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+            <div style="width:52px;height:52px;border-radius:14px;background:rgba(0,122,255,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:22px;">
+                <i class="fas ${getDeviceIcon(device.type || 'desktop')}"></i>
+            </div>
+            <div style="min-width:0;">
+                <div style="font-size:17px;font-weight:700;">${esc(device.label || device.name || 'Устройство')}</div>
+                <div style="font-size:13px;color:var(--text-secondary);">${esc(isCurrent ? 'Это устройство' : status)}</div>
+            </div>
+        </div>
+
+        ${renderDeviceDetailLine('Тип', getDeviceTypeName(device.type))}
+        ${renderDeviceDetailLine('Модель', device.model || device.name || 'Неизвестно')}
+        ${renderDeviceDetailLine('ОС', device.os || 'Неизвестно')}
+        ${renderDeviceDetailLine('Браузер', device.browser || 'Неизвестно')}
+        ${renderDeviceDetailLine('Последняя активность', lastSeen)}
+        ${renderDeviceDetailLine('Регион', device.region || 'неизвестно')}
+        ${renderDeviceDetailLine('Язык', device.language || 'неизвестно')}
+        ${renderDeviceDetailLine('Часовой пояс', device.timeZone || 'неизвестно')}
+        ${renderDeviceDetailLine('Добавлено', createdAt)}
+
+        ${!isCurrent && isDeviceActiveSession(device) ? `<button class="btn btn-danger" onclick='kickDevice(${jsString(device.id || device.deviceId)})'>Завершить сеанс</button>` : ''}
+        <button class="btn btn-secondary" onclick="closeDeviceDetailsModal()">Закрыть</button>
+    `;
+
+    document.getElementById('deviceDetailsModal').classList.add('show');
+}
+
+async function kickDevice(deviceId) {
+    if (!currentUser || !deviceId) return;
+
+    if (!confirm('Завершить сеанс на этом устройстве? Быстрый вход на нём будет отключён до следующего входа по паролю.')) {
+        return;
+    }
+
+    try {
+        await db.collection('users')
+            .doc(currentUser.uid)
+            .collection('devices')
+            .doc(deviceId)
+            .set({
+                forceLogout: true,
+                isActiveSession: false,
+                quickLoginEnabled: false,
+                quickLoginDisabled: true,
+                kickedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+        toast('Сеанс завершён');
+        closeDeviceDetailsModal();
+        showDevicesModal();
+    } catch (e) {
+        console.error(e);
+        toast('Не удалось завершить сеанс');
+    }
+}
+
+async function deactivateCurrentDeviceSession() {
+    if (!currentUser) return;
+
+    const device = getCurrentDeviceInfo();
+    removeAccountCredentials(currentUser.uid);
+
+    try {
+        await db.collection('users')
+            .doc(currentUser.uid)
+            .collection('devices')
+            .doc(device.id)
+            .set({
+                isActiveSession: false,
+                quickLoginEnabled: false,
+                quickLoginDisabled: true,
+                forceLogout: false,
+                signedOutAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function logout() {
+    if (!confirm('Выйти из аккаунта?')) return;
+
+    try {
+        await setMyPresence(false);
+
+        if (chatsGlobalListener) { chatsGlobalListener(); chatsGlobalListener = null; }
+        if (chatMessagesListener) { chatMessagesListener(); chatMessagesListener = null; }
+        if (chatUserPresenceListener) { chatUserPresenceListener(); chatUserPresenceListener = null; }
+        if (deviceControlListener) { deviceControlListener(); deviceControlListener = null; }
+
+        await deactivateCurrentDeviceSession();
+        linkedAccounts = linkedAccounts.filter(a => a.uid !== currentUser.uid);
+        saveLinkedAccounts();
+
+        await auth.signOut();
+        location.href = 'index.html';
+    } catch (e) {
+        console.error(e);
+        toast('Ошибка выхода');
+    }
+}
+
+async function findUserByEmailV7(email) {
+    const normalized = normalizeEmailV7(email);
+    if (!normalized) return null;
+
+    let snap = await db.collection('users').where('emailLower', '==', normalized).limit(1).get();
+    if (!snap.empty) return { uid: snap.docs[0].id, ...snap.docs[0].data() };
+
+    snap = await db.collection('users').where('email', '==', normalized).limit(1).get();
+    if (!snap.empty) return { uid: snap.docs[0].id, ...snap.docs[0].data() };
+
+    return null;
+}
+
+function makeDeviceSecurityTextV7(prefix, extraText = '') {
+    const device = getCurrentDeviceInfo();
+    return `${prefix}\n\n` +
+        `Устройство: ${device.label || device.name || 'Неизвестное устройство'}\n` +
+        `ОС: ${device.os || 'Неизвестно'}\n` +
+        `Браузер: ${device.browser || 'Неизвестно'}\n` +
+        `Регион: ${device.region || 'Неизвестно'}\n` +
+        `Часовой пояс: ${device.timeZone || 'Неизвестно'}\n` +
+        `Дата: ${nowTextV7()}` +
+        (extraText ? `\n\n${extraText}` : '');
+}
+
+async function sendSecurityBotMessageV7(userId, text, notificationType = 'security') {
+    if (!userId || !text) return;
+
+    const systemChatId = await getOrCreateSystemChat(userId);
+
+    await db.collection('chats').doc(systemChatId).collection('messages').add({
+        text,
+        senderId: 'system',
+        senderName: 'Contegg',
+        timestamp: new Date(),
+        isSystemMessage: true,
+        notificationType
+    });
+
+    await db.collection('chats').doc(systemChatId).update({
+        lastMessage: text,
+        lastSender: 'system',
+        lastMessageTime: new Date(),
+        unreadFor: firebase.firestore.FieldValue.arrayUnion(userId)
+    });
+}
+
+async function notifyPasswordLoginV7(userId) {
+    await sendSecurityBotMessageV7(
+        userId,
+        makeDeviceSecurityTextV7(
+            '🔐 Выполнен вход в аккаунт по почте и паролю.',
+            'Если это были не вы: Профиль → Устройства → выберите устройство → Завершить сеанс.'
+        ),
+        'password_login'
+    );
+}
+
+async function notifyFailedPasswordAttemptV7(email, error) {
+    try {
+        const found = await findUserByEmailV7(email);
+        if (!found || !found.uid) return;
+
+        await sendSecurityBotMessageV7(
+            found.uid,
+            makeDeviceSecurityTextV7(
+                `⚠️ Неудачная попытка входа.\nПочта: ${normalizeEmailV7(email)}\nПричина: неверный пароль.`,
+                'Если это были не вы, рекомендуем сменить пароль.'
+            ),
+            'failed_password_login'
+        );
+    } catch (e) {
+        console.error('failed password notification error:', e);
+    }
+}
+
+async function addNewAccount() {
+    const email = document.getElementById('addAccountEmail').value.trim();
+    const password = document.getElementById('addAccountPassword').value;
+
+    if (!email || !password) {
+        toast('Заполните все поля');
+        return;
+    }
+
+    if (linkedAccounts.length >= 2) {
+        toast('Максимум 2 аккаунта');
+        return;
+    }
+
+    try {
+        const result = await auth.signInWithEmailAndPassword(email, password);
+        const newUser = result.user;
+
+        const exists = linkedAccounts.find(a => a.uid === newUser.uid);
+        if (!exists) {
+            linkedAccounts.push({
+                uid: newUser.uid,
+                email: newUser.email,
+                displayName: newUser.displayName || 'Пользователь',
+                avatarBase64: null
+            });
+            saveLinkedAccounts();
+        }
+
+        saveAccountCredentials(newUser.uid, email, password);
+        await registerCurrentDevice({ loginMethod: 'password' });
+        await notifyPasswordLoginV7(newUser.uid);
+
+        closeAddAccountModal();
+        toast('Аккаунт добавлен');
+        renderProfile();
+        showAccountSwitcher();
+    } catch (error) {
+        if (isWrongPasswordErrorV7(error)) {
+            await notifyFailedPasswordAttemptV7(email, error);
+        }
+        toast('Ошибка входа: ' + error.message);
+    }
+}
+
+async function switchToAccount(index) {
+    const account = linkedAccounts[index];
+    if (!account || account.uid === currentUser.uid) {
+        closeAccountSwitcher();
+        return;
+    }
+
+    isSwitchingAccount = true;
+
+    try {
+        let creds = getAccountCredentials(account.uid);
+        let usedManualPassword = false;
+
+        if (!creds || !creds.password) {
+            const password = prompt(`Введите пароль для аккаунта ${account.email}:`);
+            if (!password) {
+                isSwitchingAccount = false;
+                return;
+            }
+            creds = { email: account.email, password };
+            usedManualPassword = true;
+        }
+
+        if (chatsGlobalListener) { chatsGlobalListener(); chatsGlobalListener = null; }
+        if (chatMessagesListener) { chatMessagesListener(); chatMessagesListener = null; }
+        if (deviceControlListener) { deviceControlListener(); deviceControlListener = null; }
+
+        await auth.signOut();
+        await auth.signInWithEmailAndPassword(creds.email, creds.password);
+
+        if (usedManualPassword) {
+            saveAccountCredentials(account.uid, account.email, creds.password);
+            await notifyPasswordLoginV7(account.uid);
+        }
+
+        closeAccountSwitcher();
+        toast(`Переключено на ${account.displayName}`);
+    } catch (error) {
+        console.error('Ошибка переключения:', error);
+        isSwitchingAccount = false;
+
+        if (isWrongPasswordErrorV7(error)) {
+            await notifyFailedPasswordAttemptV7(account.email, error);
+        }
+
+        removeAccountCredentials(account.uid);
+        toast('Ошибка переключения: ' + error.message);
+
+        const password = prompt(`Не удалось войти автоматически. Введите пароль для ${account.email}:`);
+        if (password) {
+            try {
+                await auth.signOut();
+                await auth.signInWithEmailAndPassword(account.email, password);
+                saveAccountCredentials(account.uid, account.email, password);
+                await notifyPasswordLoginV7(account.uid);
+                closeAccountSwitcher();
+                toast(`Переключено на ${account.displayName}`);
+            } catch (e) {
+                if (isWrongPasswordErrorV7(e)) {
+                    await notifyFailedPasswordAttemptV7(account.email, e);
+                }
+                toast('Неверный пароль');
+            }
+        }
+    }
+}
+
+function isWrongPasswordErrorV7(error) {
+    return [
+        'auth/wrong-password',
+        'auth/invalid-credential',
+        'auth/invalid-login-credentials'
+    ].includes(error?.code);
+}
+
+async function consumePasswordLoginNoticeFromIndexV7(user) {
+    if (!user) return;
+
+    try {
+        const raw = sessionStorage.getItem('contegg_password_login_notice_pending');
+        if (!raw) return;
+
+        sessionStorage.removeItem('contegg_password_login_notice_pending');
+        const data = JSON.parse(raw);
+
+        if (normalizeEmailV7(data.email) !== normalizeEmailV7(user.email)) return;
+
+        await notifyPasswordLoginV7(user.uid);
+    } catch (e) {
+        console.error('consume login notice error:', e);
+        sessionStorage.removeItem('contegg_password_login_notice_pending');
+    }
+}
+
+// Второй listener только для сообщения после входа с index.html.
+// Быстрый вход не ставит contegg_password_login_notice_pending — значит сообщения не будет.
+auth.onAuthStateChanged(async user => {
+    if (!user) return;
+    await consumePasswordLoginNoticeFromIndexV7(user);
+});
+
+
+</script>
     
     <!-- Firebase (ВСЕ 4 компонента в правильном порядке) -->
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
@@ -3913,7 +4537,6 @@ function saveLinkedAccounts() {
 function saveAccountCredentials(uid, email, password) {
     const creds = JSON.parse(localStorage.getItem('contegg_account_creds') || '{}');
     const device = getCurrentDeviceInfo();
-
     creds[uid] = {
         email,
         password,
@@ -3921,40 +4544,10 @@ function saveAccountCredentials(uid, email, password) {
         deviceName: device.name,
         savedAt: new Date().toISOString()
     };
-
     localStorage.setItem('contegg_account_creds', JSON.stringify(creds));
-    clearQuickLoginDisabledLocally(uid, device.id);
-
-    // После ручного входа по паролю быстрый вход для ЭТОГО устройства снова включается.
-    db.collection('users').doc(uid)
-        .collection('devices')
-        .doc(device.id)
-        .set({
-            deviceId: device.id,
-            name: device.name,
-            type: device.type,
-            model: device.model,
-            os: device.os,
-            browser: device.browser,
-            language: device.language,
-            region: device.region,
-            timeZone: device.timeZone,
-            label: device.label,
-            userAgent: navigator.userAgent || '',
-
-            quickLoginEnabled: true,
-            quickLoginDisabled: false,
-            forceLogout: false,
-            isActiveSession: true,
-
-            lastLoginAt: firebase.firestore.FieldValue.serverTimestamp(),
-            lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true })
-        .then(() => registerCurrentDevice())
-        .catch(console.error);
+    registerCurrentDevice().catch(console.error);
 }
-    
+
 function getAccountCredentials(uid) {
     const creds = JSON.parse(localStorage.getItem('contegg_account_creds') || '{}');
     return creds[uid];
@@ -3964,143 +4557,6 @@ function removeAccountCredentials(uid) {
     const creds = JSON.parse(localStorage.getItem('contegg_account_creds') || '{}');
     delete creds[uid];
     localStorage.setItem('contegg_account_creds', JSON.stringify(creds));
-}
-
-function getQuickLoginLocalKey(uid, deviceId) {
-    return `contegg_quick_login_disabled_${uid}_${deviceId}`;
-}
-
-function getQuickLoginFreshOpenAckKey(uid, deviceId) {
-    return `contegg_quick_login_fresh_open_ack_${uid}_${deviceId}`;
-}
-
-function getBrowserSessionKey(uid, deviceId) {
-    return `contegg_browser_session_alive_${uid}_${deviceId}`;
-}
-
-
-function getManualPasswordLoginKey() {
-    return 'contegg_manual_password_login_pending';
-}
-
-function markManualPasswordLogin(email) {
-    if (!email) return;
-    sessionStorage.setItem(getManualPasswordLoginKey(), String(email).trim().toLowerCase());
-}
-
-function consumeManualPasswordLogin(user) {
-    const expected = sessionStorage.getItem(getManualPasswordLoginKey());
-    const actual = String(user?.email || '').trim().toLowerCase();
-
-    if (expected && expected === actual) {
-        sessionStorage.removeItem(getManualPasswordLoginKey());
-        return true;
-    }
-
-    return false;
-}
-
-function markQuickLoginDisabledLocally(uid, deviceId) {
-    localStorage.setItem(getQuickLoginLocalKey(uid, deviceId), '1');
-}
-
-function clearQuickLoginDisabledLocally(uid, deviceId) {
-    localStorage.removeItem(getQuickLoginLocalKey(uid, deviceId));
-    localStorage.removeItem(getQuickLoginFreshOpenAckKey(uid, deviceId));
-}
-
-function isQuickLoginDisabledLocally(uid, deviceId) {
-    return localStorage.getItem(getQuickLoginLocalKey(uid, deviceId)) === '1';
-}
-
-function markBrowserSessionAlive(uid, deviceId) {
-    sessionStorage.setItem(getBrowserSessionKey(uid, deviceId), '1');
-}
-
-function isBrowserSessionAlive(uid, deviceId) {
-    return sessionStorage.getItem(getBrowserSessionKey(uid, deviceId)) === '1';
-}
-
-async function enforceQuickLoginOnFreshOpen(user) {
-    const device = getCurrentDeviceInfo();
-    const uid = user.uid;
-    const ref = db.collection('users').doc(uid).collection('devices').doc(device.id);
-
-    // Если прямо сейчас пользователь ввёл пароль вручную, старый кик надо погасить сразу.
-    // Иначе onAuthStateChanged увидит старые forceLogout/isActiveSession:false и снова выкинет.
-    const manualPasswordLogin = consumeManualPasswordLogin(user);
-    const lastSignInTime = user.metadata?.lastSignInTime ? new Date(user.metadata.lastSignInTime).getTime() : 0;
-    const recentlySignedIn = lastSignInTime && (Date.now() - lastSignInTime < 45000);
-    const looksLikeManualPasswordLogin = manualPasswordLogin || (recentlySignedIn && !hasQuickLogin(uid));
-
-    if (looksLikeManualPasswordLogin) {
-        clearQuickLoginDisabledLocally(uid, device.id);
-        markBrowserSessionAlive(uid, device.id);
-
-        await ref.set({
-            deviceId: device.id,
-            name: device.name,
-            type: device.type,
-            model: device.model,
-            os: device.os,
-            browser: device.browser,
-            language: device.language,
-            region: device.region,
-            timeZone: device.timeZone,
-            label: device.label,
-            userAgent: navigator.userAgent || '',
-
-            quickLoginEnabled: true,
-            quickLoginDisabled: false,
-            forceLogout: false,
-            isActiveSession: true,
-
-            lastLoginAt: firebase.firestore.FieldValue.serverTimestamp(),
-            lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-
-        return true;
-    }
-
-    // Внутри одной уже открытой вкладки не выкидываем: ползунок должен влиять на следующий заход.
-    if (isBrowserSessionAlive(uid, device.id)) return true;
-
-    const snap = await ref.get();
-    const data = snap.exists ? (snap.data() || {}) : null;
-
-    const disabledInBase = data && (
-        data.forceLogout === true ||
-        data.isActiveSession === false ||
-        data.quickLoginEnabled === false ||
-        data.quickLoginDisabled === true
-    );
-
-    const disabledLocally = isQuickLoginDisabledLocally(uid, device.id);
-
-    if (disabledInBase || disabledLocally) {
-        removeAccountCredentials(uid);
-        markQuickLoginDisabledLocally(uid, device.id);
-
-        try {
-            await ref.set({
-                quickLoginEnabled: false,
-                quickLoginDisabled: true,
-                forceLogout: false,
-                isActiveSession: false,
-                signedOutAt: firebase.firestore.FieldValue.serverTimestamp(),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-        } catch (e) {
-            console.error(e);
-        }
-
-        await auth.signOut();
-        location.href = 'index.html';
-        return false;
-    }
-
-    return true;
 }
 
 function getConteggDeviceId() {
@@ -4203,19 +4659,13 @@ async function registerCurrentDevice() {
     if (!currentUser) return;
 
     const device = getCurrentDeviceInfo();
-    const ref = db.collection('users')
-        .doc(currentUser.uid)
-        .collection('devices')
-        .doc(device.id);
-
+    const ref = db.collection('users').doc(currentUser.uid).collection('devices').doc(device.id);
     const snap = await ref.get();
-    const oldData = snap.exists ? (snap.data() || {}) : {};
+    const disabled = snap.exists && snap.data()?.quickLoginDisabled === true;
 
-    // После успешного входа текущая вкладка — активная сессия.
-    // Не переносим старый forceLogout/isActiveSession:false, иначе устройство может кикать повторно.
-    const disabledByToggle = oldData.quickLoginEnabled === false || oldData.quickLoginDisabled === true;
-    const disabledLocally = isQuickLoginDisabledLocally(currentUser.uid, device.id);
-    const quickEnabled = hasQuickLogin(currentUser.uid) && !disabledByToggle && !disabledLocally;
+    if (disabled) {
+        removeAccountCredentials(currentUser.uid);
+    }
 
     await ref.set({
         deviceId: device.id,
@@ -4229,13 +4679,10 @@ async function registerCurrentDevice() {
         timeZone: device.timeZone,
         label: device.label,
         userAgent: navigator.userAgent || '',
-
-        quickLoginEnabled: quickEnabled,
-        quickLoginDisabled: !quickEnabled,
-        forceLogout: false,
-        isActiveSession: true,
-
-        createdAt: oldData.createdAt || firebase.firestore.FieldValue.serverTimestamp(),
+        quickLoginEnabled: !disabled && hasQuickLogin(currentUser.uid),
+        quickLoginDisabled: disabled,
+        forceLogout: snap.exists ? snap.data()?.forceLogout === true : false,
+        createdAt: snap.exists ? (snap.data()?.createdAt || firebase.firestore.FieldValue.serverTimestamp()) : firebase.firestore.FieldValue.serverTimestamp(),
         lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
@@ -4260,55 +4707,26 @@ function startDeviceControlListener() {
 
             const data = snap.data() || {};
 
-            // Моментальный кик должен идти только по forceLogout.
-            // isActiveSession:false — это состояние списка, а не вечная команда выкидывать.
-            if (data.forceLogout === true) {
+            if (data.quickLoginDisabled === true || data.forceLogout === true) {
+                removeAccountCredentials(currentUser.uid);
+                linkedAccounts = linkedAccounts.filter(a => a.uid !== currentUser.uid);
+                saveLinkedAccounts();
+
+                toast('Сессия завершена на другом устройстве');
+
                 try {
-                    removeAccountCredentials(currentUser.uid);
-                    markQuickLoginDisabledLocally(currentUser.uid, device.id);
-
-                    if (deviceControlListener) {
-                        deviceControlListener();
-                        deviceControlListener = null;
-                    }
-
-                    // Как в Telegram: завершённая сессия пропадает из списка.
-                    try {
-                        await snap.ref.delete();
-                    } catch (deleteError) {
-                        console.error('device delete error:', deleteError);
-
-                        await snap.ref.set({
-                            quickLoginEnabled: false,
-                            quickLoginDisabled: true,
-                            forceLogout: false,
-                            isActiveSession: false,
-                            signedOutAt: firebase.firestore.FieldValue.serverTimestamp(),
-                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                        }, { merge: true });
-                    }
-
-                    toast('Сессия завершена на другом устройстве');
-                    await auth.signOut();
-                    location.href = 'index.html';
+                    await snap.ref.set({
+                        quickLoginEnabled: false,
+                        forceLogout: false,
+                        signedOutAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
                 } catch (e) {
-                    console.error('force logout error:', e);
-                    try {
-                        await auth.signOut();
-                    } catch (signOutError) {
-                        console.error(signOutError);
-                    }
-                    location.href = 'index.html';
+                    console.error(e);
                 }
 
-                return;
-            }
-
-            // Ползунок выключили: текущая сессия НЕ вылетает, но автологин на следующий заход отключается.
-            if (data.quickLoginEnabled === false || data.quickLoginDisabled === true) {
-                removeAccountCredentials(currentUser.uid);
-                markQuickLoginDisabledLocally(currentUser.uid, device.id);
-                return;
+                await auth.signOut();
+                location.href = 'index.html';
             }
         }, error => {
             console.error('device listener error:', error);
@@ -4334,21 +4752,7 @@ function closeDevicesModal() {
 }
 
 function isDeviceQuickLoginActive(device) {
-    return device?.quickLoginEnabled === true && device?.quickLoginDisabled !== true && device?.forceLogout !== true;
-}
-
-function isDeviceActiveSession(device) {
-    return device?.forceLogout !== true && device?.isActiveSession === true;
-}
-
-function getDeviceStatusText(device, isCurrent = false) {
-    if (device?.forceLogout === true || device?.isActiveSession === false) return 'Сессия завершена';
-
-    const quickText = isDeviceQuickLoginActive(device)
-        ? 'Быстрый вход включен'
-        : 'Быстрый вход выключен';
-
-    return isCurrent ? `Это устройство · ${quickText}` : quickText;
+    return device?.quickLoginEnabled === true && device?.quickLoginDisabled !== true;
 }
 
 async function showDevicesModal() {
@@ -4371,33 +4775,26 @@ async function showDevicesModal() {
 
         const devices = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         devicesCache = devices;
-
         const current = devices.find(d => d.id === currentDevice.id || d.deviceId === currentDevice.id) || {
             id: currentDevice.id,
             ...currentDevice,
-            quickLoginEnabled: hasQuickLogin(currentUser.uid),
-            quickLoginDisabled: !hasQuickLogin(currentUser.uid),
-            forceLogout: false,
-            isActiveSession: true
+            quickLoginEnabled: hasQuickLogin(currentUser.uid)
         };
-
-        // Как в Telegram: показываем только активные сессии.
-        // Выгнанное устройство удаляется/помечается неактивным и пропадает из списка.
         const others = devices.filter(d => {
             const isThisDevice = d.id === currentDevice.id || d.deviceId === currentDevice.id;
-            return !isThisDevice && isDeviceActiveSession(d);
+            return !isThisDevice && isDeviceQuickLoginActive(d);
         });
 
         content.innerHTML = `
             <div style="font-size:13px;color:var(--text-secondary);line-height:1.4;margin-bottom:12px;">
-                Здесь показаны активные сессии аккаунта. Кнопка "Выгнать" завершает сессию на выбранном устройстве, убирает его из списка и отключает быстрый вход. Чтобы устройство появилось снова, на нём нужно заново войти с паролем.
+            Здесь показаны устройства, где для этого аккаунта включен быстрый вход. Кнопка "Выгнать" отключает быстрый вход и завершает сессию на выбранном устройстве.
             </div>
 
             <div style="font-size:13px;color:var(--text-tertiary);font-weight:600;margin:12px 0 8px;">Ваша сессия</div>
             ${renderDeviceRow(current, true)}
 
-            <div style="font-size:13px;color:var(--text-tertiary);font-weight:600;margin:16px 0 8px;">Активные устройства</div>
-            ${others.length ? others.map(device => renderDeviceRow(device, false)).join('') : '<div style="padding:14px;text-align:center;color:var(--text-secondary);">Других активных устройств нет</div>'}
+            <div style="font-size:13px;color:var(--text-tertiary);font-weight:600;margin:16px 0 8px;">Остальные устройства</div>
+            ${others.length ? others.map(device => renderDeviceRow(device, false)).join('') : '<div style="padding:14px;text-align:center;color:var(--text-secondary);">Других устройств пока нет</div>'}
 
             <button class="btn btn-secondary" onclick="closeDevicesModal()">Закрыть</button>
         `;
@@ -4418,20 +4815,21 @@ function renderDeviceRow(device, isCurrent) {
     const quickEnabled = isDeviceQuickLoginActive(device);
     const lastSeen = device.lastSeenAt?.toDate?.() ? timeAgo(device.lastSeenAt.toDate()) : 'недавно';
     const deviceId = device.id || device.deviceId;
-    const statusText = getDeviceStatusText(device, isCurrent);
-    const statusColor = isCurrent || quickEnabled ? 'var(--online)' : 'var(--text-tertiary)';
 
     return `
-        <div onclick='showDeviceDetails(${jsString(deviceId)})' style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;margin-bottom:8px;background:${isCurrent ? 'rgba(10,132,255,0.14)' : 'var(--bg-secondary)'};cursor:pointer;">
-            <div style="width:42px;height:42px;border-radius:14px;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:18px;">
+        <div onclick='showDeviceDetails(${jsString(deviceId)})' style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;margin-bottom:8px;background:${isCurrent ? 'rgba(0,122,255,0.1)' : 'rgba(255,255,255,0.04)'};cursor:pointer;">
+            <div style="width:42px;height:42px;border-radius:12px;background:rgba(0,122,255,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">
                 <i class="fas ${getDeviceIcon(type)}"></i>
             </div>
             <div style="flex:1;min-width:0;">
-                <div style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(label)}</div>
-                <div style="font-size:12px;color:var(--text-secondary);margin-top:3px;">${esc(device.os || 'Неизвестная ОС')} · ${esc(lastSeen)}</div>
-                <div style="font-size:12px;color:${statusColor};margin-top:4px;">${esc(statusText)}</div>
+                <div style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                    ${isCurrent ? 'Ваша сессия · ' : ''}${esc(label)}
+                </div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">
+                    ${quickEnabled ? 'Быстрый вход включен' : 'Быстрый вход отключен'} · ${lastSeen}
+                </div>
             </div>
-            <i class="fas fa-chevron-right" style="color:var(--text-tertiary);font-size:12px;"></i>
+            ${isCurrent ? '<i class="fas fa-check-circle" style="color:var(--accent);font-size:19px;"></i>' : `<button class="btn btn-danger btn-small" onclick='event.stopPropagation(); kickDevice(${jsString(deviceId)})'>Выгнать</button>`}
         </div>
     `;
 }
@@ -4445,41 +4843,27 @@ function showDeviceDetails(deviceId) {
     const device = devicesCache.find(d => d.id === deviceId || d.deviceId === deviceId) || {
         id: currentDevice.id,
         ...currentDevice,
-        quickLoginEnabled: hasQuickLogin(currentUser.uid),
-        quickLoginDisabled: !hasQuickLogin(currentUser.uid),
-        forceLogout: false,
-        isActiveSession: true
+        quickLoginEnabled: hasQuickLogin(currentUser.uid)
     };
 
     const isCurrent = device.id === currentDevice.id || device.deviceId === currentDevice.id;
     const quickEnabled = isDeviceQuickLoginActive(device);
-    const lastSeen = device.lastSeenAt?.toDate?.() ? timeAgo(device.lastSeenAt.toDate()) : 'недавно';
-    const createdAt = device.createdAt?.toDate?.() ? device.createdAt.toDate().toLocaleString('ru') : 'неизвестно';
-    const statusText = getDeviceStatusText(device, isCurrent);
-    const targetDeviceId = device.id || device.deviceId;
+    const lastSeen = device.lastSeenAt?.toDate?.()
+        ? device.lastSeenAt.toDate().toLocaleString()
+        : 'недавно';
+    const createdAt = device.createdAt?.toDate?.()
+        ? device.createdAt.toDate().toLocaleString()
+        : 'неизвестно';
 
-    const content = document.getElementById('deviceDetailsContent');
-    content.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:16px;">
-            <div style="width:62px;height:62px;border-radius:20px;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:28px;margin-bottom:10px;">
+    document.getElementById('deviceDetailsContent').innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+            <div style="width:52px;height:52px;border-radius:14px;background:rgba(0,122,255,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:22px;">
                 <i class="fas ${getDeviceIcon(device.type || 'desktop')}"></i>
             </div>
-            <div style="font-size:17px;font-weight:600;">${esc(device.label || device.name || 'Устройство')}</div>
-            <div style="font-size:13px;color:${quickEnabled ? 'var(--online)' : 'var(--text-secondary)'};margin-top:4px;">${esc(statusText)}</div>
-        </div>
-
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:0.5px solid var(--separator);margin-bottom:6px;">
-            <div>
-                <div style="font-size:15px;font-weight:600;">Быстрый вход</div>
-                <div style="font-size:12px;color:var(--text-secondary);line-height:1.35;margin-top:3px;">
-                    Если выключить, после закрытия сайта это устройство не войдёт автоматически.
-                </div>
+            <div style="min-width:0;">
+                <div style="font-size:17px;font-weight:700;">${esc(device.label || device.name || 'Устройство')}</div>
+                <div style="font-size:13px;color:var(--text-secondary);">${isCurrent ? 'Это устройство' : (quickEnabled ? 'Быстрый вход включен' : 'Быстрый вход отключен')}</div>
             </div>
-            <label style="position:relative;display:inline-block;width:52px;height:30px;flex-shrink:0;">
-                <input type="checkbox" ${quickEnabled ? 'checked' : ''} onchange='toggleDeviceQuickLogin(${jsString(targetDeviceId)}, this.checked, this)' style="opacity:0;width:0;height:0;">
-                <span style="position:absolute;cursor:pointer;inset:0;background:${quickEnabled ? 'var(--accent)' : 'var(--bg-tertiary)'};border-radius:999px;transition:.2s;border:0.5px solid var(--separator);"></span>
-                <span style="position:absolute;height:24px;width:24px;left:${quickEnabled ? '25px' : '3px'};top:3px;background:white;border-radius:50%;transition:.2s;box-shadow:0 2px 8px rgba(0,0,0,.35);"></span>
-            </label>
         </div>
 
         ${renderDeviceDetailLine('Тип', getDeviceTypeName(device.type))}
@@ -4492,7 +4876,7 @@ function showDeviceDetails(deviceId) {
         ${renderDeviceDetailLine('Часовой пояс', device.timeZone || 'неизвестно')}
         ${renderDeviceDetailLine('Добавлено', createdAt)}
 
-        ${!isCurrent ? `<button class="btn btn-danger" onclick='kickDevice(${jsString(targetDeviceId)})'>Завершить сеанс</button>` : ''}
+        ${!isCurrent && quickEnabled ? `<button class="btn btn-danger" onclick='kickDevice(${jsString(device.id || device.deviceId)})'>Выгнать</button>` : ''}
         <button class="btn btn-secondary" onclick="closeDeviceDetailsModal()">Закрыть</button>
     `;
 
@@ -4514,75 +4898,9 @@ function renderDeviceDetailLine(label, value) {
     `;
 }
 
-async function toggleDeviceQuickLogin(deviceId, enabled, checkboxEl) {
-    if (!currentUser || !deviceId) return;
-
-    const currentDevice = getCurrentDeviceInfo();
-    const isCurrent = deviceId === currentDevice.id;
-    const ref = db.collection('users').doc(currentUser.uid).collection('devices').doc(deviceId);
-
-    try {
-        if (enabled && isCurrent && !hasQuickLogin(currentUser.uid)) {
-            const password = prompt('Чтобы включить быстрый вход на этом устройстве, введите пароль от аккаунта:');
-
-            if (!password) {
-                if (checkboxEl) checkboxEl.checked = false;
-                return;
-            }
-
-            markManualPasswordLogin(currentUser.email);
-            await auth.signInWithEmailAndPassword(currentUser.email, password);
-            saveAccountCredentials(currentUser.uid, currentUser.email, password);
-            toast('Быстрый вход включен');
-            setTimeout(showDevicesModal, 300);
-            return;
-        }
-
-        if (enabled) {
-            if (isCurrent) {
-                clearQuickLoginDisabledLocally(currentUser.uid, currentDevice.id);
-            }
-
-            await ref.set({
-                quickLoginEnabled: true,
-                quickLoginDisabled: false,
-                forceLogout: false,
-                isActiveSession: true,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-
-            toast('Быстрый вход включен');
-        } else {
-            if (isCurrent) {
-                removeAccountCredentials(currentUser.uid);
-                markQuickLoginDisabledLocally(currentUser.uid, currentDevice.id);
-            }
-
-            await ref.set({
-                quickLoginEnabled: false,
-                quickLoginDisabled: true,
-                forceLogout: false,
-                isActiveSession: true,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-
-            toast('Быстрый вход выключен');
-        }
-
-        await showDevicesModal();
-    } catch (e) {
-        console.error(e);
-        toast('Не удалось изменить быстрый вход');
-        if (checkboxEl) checkboxEl.checked = !enabled;
-    }
-}
-
 async function kickDevice(deviceId) {
     if (!currentUser || !deviceId) return;
-
-    if (!confirm('Завершить сеанс на этом устройстве? Аккаунт вылетит моментально, быстрый вход отключится, а устройство пропадёт из списка до следующего входа по паролю.')) {
-        return;
-    }
+    if (!confirm('Отключить быстрый вход на этом устройстве?')) return;
 
     try {
         await db.collection('users').doc(currentUser.uid)
@@ -4592,17 +4910,17 @@ async function kickDevice(deviceId) {
                 quickLoginEnabled: false,
                 quickLoginDisabled: true,
                 forceLogout: true,
-                isActiveSession: false,
                 kickedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
 
-        toast('Сеанс завершён');
+        devicesCache = devicesCache.filter(d => d.id !== deviceId && d.deviceId !== deviceId);
+        toast('Устройство выгнано');
         closeDeviceDetailsModal();
         showDevicesModal();
     } catch (e) {
         console.error(e);
-        toast('Не удалось завершить сеанс');
+        toast('Не удалось отключить устройство');
     }
 }
 
@@ -4980,11 +5298,6 @@ auth.onAuthStateChanged(async user => {
     }
 
     currentUser = user;
-
-    const canContinueSession = await enforceQuickLoginOnFreshOpen(user);
-    if (!canContinueSession) return;
-
-    markBrowserSessionAlive(user.uid, getCurrentDeviceInfo().id);
 
     await loadUserData();
 
@@ -6325,10 +6638,6 @@ if (msg.audioUrl) {
 if (msg.text) {
     html += `<div class="${hasVisualMedia ? 'msg-caption' : 'msg-text'}">${esc(msg.text)}</div>`;
 }
-
-if (msg.isSystemMessage && msg.action && typeof renderSystemActionButton === 'function') {
-    html += renderSystemActionButton(msg);
-}
     
         // Используем data-атрибуты вместо onclick для лучшей совместимости
     
@@ -7555,7 +7864,6 @@ async function addNewAccount() {
     }
     
     try {
-        markManualPasswordLogin(email);
         const result = await auth.signInWithEmailAndPassword(email, password);
         const newUser = result.user;
         
@@ -7614,7 +7922,6 @@ async function switchToAccount(index) {
         }
         
         await auth.signOut();
-        if (!getAccountCredentials(account.uid)?.password || getAccountCredentials(account.uid)?.password !== creds.password) markManualPasswordLogin(creds.email);
         await auth.signInWithEmailAndPassword(creds.email, creds.password);
         
         closeAccountSwitcher();
@@ -7630,7 +7937,6 @@ async function switchToAccount(index) {
             saveAccountCredentials(account.uid, account.email, password);
             try {
                 await auth.signOut();
-                markManualPasswordLogin(account.email);
                 await auth.signInWithEmailAndPassword(account.email, password);
                 closeAccountSwitcher();
                 toast(`Переключено на ${account.displayName}`);
@@ -10456,1502 +10762,5 @@ body.keyboard-no-transition .chat-input-bar {
     document.addEventListener('keydown', onFirstUserAction, true);
 })();
 </script>
-
-<script>
-/* ===== Contegg devices/security v5 override =====
-   Сессия, быстрый вход и кик разделены:
-   - isActiveSession: устройство отображается в списке активных
-   - quickLoginEnabled: ползунок быстрого входа
-   - forceLogout: одноразовая команда моментального кика
-*/
-
-function getDeviceRefFor(uid, deviceId) {
-    return db.collection('users').doc(uid).collection('devices').doc(deviceId);
-}
-
-function getDeviceNotificationKey(uid, deviceId) {
-    return `contegg_login_notified_${uid}_${deviceId}`;
-}
-
-function markLoginNotificationSent(uid, deviceId) {
-    sessionStorage.setItem(getDeviceNotificationKey(uid, deviceId), '1');
-}
-
-function wasLoginNotificationSent(uid, deviceId) {
-    return sessionStorage.getItem(getDeviceNotificationKey(uid, deviceId)) === '1';
-}
-
-function getDeviceDateTimeText() {
-    try {
-        return new Date().toLocaleString('ru-RU', {
-            year: 'numeric', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', second: '2-digit'
-        });
-    } catch (e) {
-        return new Date().toISOString();
-    }
-}
-
-function buildDeviceSecurityText(title, device, extra = '') {
-    return `${title}\n\n` +
-        `Устройство: ${device.label || device.name || 'Устройство'}\n` +
-        `Тип: ${getDeviceTypeName(device.type)}\n` +
-        `ОС: ${device.os || 'Неизвестно'}\n` +
-        `Браузер: ${device.browser || 'Неизвестно'}\n` +
-        `Регион: ${device.region || 'неизвестно'}\n` +
-        `Часовой пояс: ${device.timeZone || 'неизвестно'}\n` +
-        `Дата и время: ${getDeviceDateTimeText()}` +
-        (extra ? `\n\n${extra}` : '');
-}
-
-async function notifyLoginSecurity(userId, device, method = 'Вход по паролю') {
-    if (!userId || !device) return;
-    if (wasLoginNotificationSent(userId, device.id)) return;
-
-    markLoginNotificationSent(userId, device.id);
-
-    await sendSystemNotification(userId, 'security_login', {
-        message: buildDeviceSecurityText(`✅ Выполнен вход в аккаунт`, device, `Способ: ${method}`),
-        deviceId: device.id,
-        action: {
-            type: 'terminate_session',
-            deviceId: device.id,
-            label: 'Завершить сеанс'
-        }
-    });
-}
-
-async function notifyFailedLoginByEmail(email, error) {
-    try {
-        if (!email) return;
-
-        const normalizedEmail = String(email).trim().toLowerCase();
-        const snap = await db.collection('users')
-            .where('email', '==', normalizedEmail)
-            .limit(1)
-            .get();
-
-        if (snap.empty) return;
-
-        const userId = snap.docs[0].id;
-        const device = getCurrentDeviceInfo();
-
-        await sendSystemNotification(userId, 'security_failed_login', {
-            message: buildDeviceSecurityText(
-                '⚠️ Неудачная попытка входа в аккаунт',
-                device,
-                `Email: ${normalizedEmail}\nПричина: неверный пароль или ошибка авторизации.\n\nЕсли это были не вы — рекомендуем сменить пароль.`
-            ),
-            action: {
-                type: 'change_password',
-                label: 'Сменить пароль'
-            }
-        });
-    } catch (e) {
-        console.error('failed login notification error:', e);
-    }
-}
-
-async function sendSystemNotification(userId, type, data = {}) {
-    try {
-        const systemChatId = await getOrCreateSystemChat(userId);
-
-        let notificationText = '';
-        switch(type) {
-            case 'security_login':
-            case 'security_failed_login':
-                notificationText = data.message || 'Событие безопасности';
-                break;
-            case 'username_changed':
-                notificationText = `🔔 Ваш никнейм был изменен на @${data.newUsername}`;
-                break;
-            case 'password_changed':
-                notificationText = '🔐 Ваш пароль был успешно изменен';
-                break;
-            case 'profile_updated':
-                notificationText = `⚙️ Настройки профиля обновлены`;
-                break;
-            case 'account_settings':
-                notificationText = `⚙️ ${data.changes || 'Настройки аккаунта обновлены'}`;
-                break;
-            default:
-                notificationText = `📢 ${data.message || 'Системное уведомление'}`;
-        }
-
-        const msg = {
-            text: notificationText,
-            senderId: 'system',
-            senderName: 'Contegg',
-            timestamp: new Date(),
-            isSystemMessage: true,
-            notificationType: type
-        };
-
-        if (data.action) msg.action = data.action;
-        if (data.deviceId) msg.deviceId = data.deviceId;
-
-        await db.collection('chats').doc(systemChatId).collection('messages').add(msg);
-
-        await db.collection('chats').doc(systemChatId).update({
-            lastMessage: notificationText.split('\n')[0] || notificationText,
-            lastSender: 'system',
-            lastMessageTime: new Date(),
-            unreadFor: firebase.firestore.FieldValue.arrayUnion(userId)
-        });
-    } catch (e) {
-        console.error('Ошибка отправки уведомления:', e);
-    }
-}
-
-function renderSystemActionButton(msg) {
-    if (!msg || !msg.action) return '';
-
-    const label = esc(msg.action.label || 'Открыть');
-    const payload = esc(JSON.stringify(msg.action));
-
-    return `
-        <button
-            class="btn btn-danger"
-            style="margin-top:10px;padding:10px 12px;font-size:14px;border-radius:12px;"
-            onclick='event.stopPropagation(); handleSystemNotificationAction(${payload})'
-        >${label}</button>
-    `;
-}
-
-async function handleSystemNotificationAction(action) {
-    if (!action || !action.type) return;
-
-    if (action.type === 'terminate_session') {
-        if (!action.deviceId) {
-            toast('Устройство не найдено');
-            return;
-        }
-
-        await kickDevice(action.deviceId);
-        return;
-    }
-
-    if (action.type === 'change_password') {
-        if (typeof openChangePasswordModal === 'function') {
-            openChangePasswordModal();
-        } else {
-            toast('Откройте профиль → Настройки → Сменить пароль');
-        }
-    }
-}
-
-function hasQuickLogin(uid) {
-    const device = getCurrentDeviceInfo();
-    const creds = getAccountCredentials(uid);
-    return !!(creds && creds.email && creds.password && creds.deviceId === device.id);
-}
-
-function isDeviceQuickLoginActive(device) {
-    return device?.quickLoginEnabled === true && device?.quickLoginDisabled !== true && device?.forceLogout !== true;
-}
-
-function isDeviceActiveSession(device) {
-    return device?.forceLogout !== true && device?.isActiveSession === true;
-}
-
-function getDeviceStatusText(device, isCurrent = false) {
-    if (device?.forceLogout === true || device?.isActiveSession === false) return 'Сессия завершена';
-
-    const quickText = isDeviceQuickLoginActive(device)
-        ? 'Быстрый вход включен'
-        : 'Быстрый вход выключен';
-
-    return isCurrent ? `Это устройство · ${quickText}` : quickText;
-}
-
-function saveAccountCredentials(uid, email, password) {
-    const creds = JSON.parse(localStorage.getItem('contegg_account_creds') || '{}');
-    const device = getCurrentDeviceInfo();
-
-    creds[uid] = {
-        email,
-        password,
-        deviceId: device.id,
-        deviceName: device.name,
-        savedAt: new Date().toISOString()
-    };
-
-    localStorage.setItem('contegg_account_creds', JSON.stringify(creds));
-    clearQuickLoginDisabledLocally(uid, device.id);
-    markBrowserSessionAlive(uid, device.id);
-
-    getDeviceRefFor(uid, device.id).set({
-        deviceId: device.id,
-        name: device.name,
-        type: device.type,
-        model: device.model,
-        os: device.os,
-        browser: device.browser,
-        language: device.language,
-        region: device.region,
-        timeZone: device.timeZone,
-        label: device.label,
-        userAgent: navigator.userAgent || '',
-
-        quickLoginEnabled: true,
-        quickLoginDisabled: false,
-        forceLogout: false,
-        isActiveSession: true,
-
-        lastLoginAt: firebase.firestore.FieldValue.serverTimestamp(),
-        lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true })
-        .then(() => notifyLoginSecurity(uid, device, 'Вход по паролю'))
-        .catch(console.error);
-}
-
-async function registerCurrentDevice() {
-    if (!currentUser) return;
-
-    const device = getCurrentDeviceInfo();
-    const ref = getDeviceRefFor(currentUser.uid, device.id);
-    const snap = await ref.get();
-    const oldData = snap.exists ? (snap.data() || {}) : {};
-
-    // Ползунок из базы сохраняем. Если это новый вход по паролю, saveAccountCredentials уже поставит true.
-    const disabledLocally = isQuickLoginDisabledLocally(currentUser.uid, device.id);
-    const quickEnabled = hasQuickLogin(currentUser.uid) && oldData.quickLoginEnabled !== false && oldData.quickLoginDisabled !== true && !disabledLocally;
-
-    await ref.set({
-        deviceId: device.id,
-        name: device.name,
-        type: device.type,
-        model: device.model,
-        os: device.os,
-        browser: device.browser,
-        language: device.language,
-        region: device.region,
-        timeZone: device.timeZone,
-        label: device.label,
-        userAgent: navigator.userAgent || '',
-
-        quickLoginEnabled: quickEnabled,
-        quickLoginDisabled: !quickEnabled,
-        forceLogout: false,
-        isActiveSession: true,
-
-        createdAt: oldData.createdAt || firebase.firestore.FieldValue.serverTimestamp(),
-        lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-}
-
-async function enforceQuickLoginOnFreshOpen(user) {
-    const device = getCurrentDeviceInfo();
-    const uid = user.uid;
-    const ref = getDeviceRefFor(uid, device.id);
-
-    const manualPasswordLogin = consumeManualPasswordLogin(user);
-    const lastSignInTime = user.metadata?.lastSignInTime ? new Date(user.metadata.lastSignInTime).getTime() : 0;
-    const recentlySignedIn = lastSignInTime && (Date.now() - lastSignInTime < 60000);
-
-    // Ручной вход по паролю: полностью гасим старый кик и восстанавливаем сессию.
-    if (manualPasswordLogin || recentlySignedIn) {
-        clearQuickLoginDisabledLocally(uid, device.id);
-        markBrowserSessionAlive(uid, device.id);
-
-        await ref.set({
-            deviceId: device.id,
-            name: device.name,
-            type: device.type,
-            model: device.model,
-            os: device.os,
-            browser: device.browser,
-            language: device.language,
-            region: device.region,
-            timeZone: device.timeZone,
-            label: device.label,
-            userAgent: navigator.userAgent || '',
-
-            quickLoginEnabled: hasQuickLogin(uid),
-            quickLoginDisabled: !hasQuickLogin(uid),
-            forceLogout: false,
-            isActiveSession: true,
-
-            lastLoginAt: firebase.firestore.FieldValue.serverTimestamp(),
-            lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-
-        await notifyLoginSecurity(uid, device, manualPasswordLogin ? 'Вход по паролю' : 'Вход после авторизации');
-        return true;
-    }
-
-    if (isBrowserSessionAlive(uid, device.id)) return true;
-
-    const snap = await ref.get();
-    const data = snap.exists ? (snap.data() || {}) : null;
-    const creds = getAccountCredentials(uid);
-    const hasLocalQuickCreds = !!(creds && creds.email && creds.password && creds.deviceId === device.id);
-    const disabledLocally = isQuickLoginDisabledLocally(uid, device.id);
-
-    const mustSignOut =
-        !data ||
-        data.forceLogout === true ||
-        data.quickLoginEnabled !== true ||
-        data.quickLoginDisabled === true ||
-        disabledLocally ||
-        !hasLocalQuickCreds;
-
-    if (mustSignOut) {
-        removeAccountCredentials(uid);
-        markQuickLoginDisabledLocally(uid, device.id);
-
-        try {
-            await ref.set({
-                quickLoginEnabled: false,
-                quickLoginDisabled: true,
-                forceLogout: false,
-                isActiveSession: false,
-                signedOutAt: firebase.firestore.FieldValue.serverTimestamp(),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-        } catch (e) {
-            console.error(e);
-        }
-
-        await auth.signOut();
-        location.href = 'index.html';
-        return false;
-    }
-
-    markBrowserSessionAlive(uid, device.id);
-
-    await ref.set({
-        isActiveSession: true,
-        forceLogout: false,
-        lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-
-    return true;
-}
-
-function startDeviceControlListener() {
-    if (!currentUser) return;
-
-    if (deviceControlListener) {
-        deviceControlListener();
-        deviceControlListener = null;
-    }
-
-    const device = getCurrentDeviceInfo();
-
-    deviceControlListener = getDeviceRefFor(currentUser.uid, device.id)
-        .onSnapshot(async snap => {
-            if (!snap.exists) return;
-
-            const data = snap.data() || {};
-
-            if (data.forceLogout === true) {
-                try {
-                    removeAccountCredentials(currentUser.uid);
-                    markQuickLoginDisabledLocally(currentUser.uid, device.id);
-
-                    if (deviceControlListener) {
-                        deviceControlListener();
-                        deviceControlListener = null;
-                    }
-
-                    try {
-                        await snap.ref.delete();
-                    } catch (deleteError) {
-                        console.error('device delete error:', deleteError);
-                        await snap.ref.set({
-                            quickLoginEnabled: false,
-                            quickLoginDisabled: true,
-                            forceLogout: false,
-                            isActiveSession: false,
-                            signedOutAt: firebase.firestore.FieldValue.serverTimestamp(),
-                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                        }, { merge: true });
-                    }
-
-                    toast('Сессия завершена на другом устройстве');
-                    await auth.signOut();
-                    location.href = 'index.html';
-                } catch (e) {
-                    console.error('force logout error:', e);
-                    try { await auth.signOut(); } catch (signOutError) { console.error(signOutError); }
-                    location.href = 'index.html';
-                }
-                return;
-            }
-
-            // Ползунок не кикает текущую открытую вкладку. Он только меняет будущий автологин.
-            if (data.quickLoginEnabled === false || data.quickLoginDisabled === true) {
-                removeAccountCredentials(currentUser.uid);
-                markQuickLoginDisabledLocally(currentUser.uid, device.id);
-                return;
-            }
-
-            if (data.quickLoginEnabled === true && data.quickLoginDisabled !== true) {
-                clearQuickLoginDisabledLocally(currentUser.uid, device.id);
-            }
-        }, error => console.error('device listener error:', error));
-}
-
-function updateDeviceToggleVisual(checkboxEl) {
-    if (!checkboxEl) return;
-    const track = checkboxEl.parentElement?.querySelector('.quick-toggle-track');
-    const knob = checkboxEl.parentElement?.querySelector('.quick-toggle-knob');
-    if (track) track.style.background = checkboxEl.checked ? 'var(--accent)' : 'var(--bg-tertiary)';
-    if (knob) knob.style.left = checkboxEl.checked ? '25px' : '3px';
-}
-
-function showDeviceDetails(deviceId) {
-    const currentDevice = getCurrentDeviceInfo();
-    const device = devicesCache.find(d => d.id === deviceId || d.deviceId === deviceId) || {
-        id: currentDevice.id,
-        ...currentDevice,
-        quickLoginEnabled: hasQuickLogin(currentUser.uid),
-        quickLoginDisabled: !hasQuickLogin(currentUser.uid),
-        forceLogout: false,
-        isActiveSession: true
-    };
-
-    const isCurrent = device.id === currentDevice.id || device.deviceId === currentDevice.id;
-    const quickEnabled = isDeviceQuickLoginActive(device);
-    const lastSeen = device.lastSeenAt?.toDate?.() ? timeAgo(device.lastSeenAt.toDate()) : 'недавно';
-    const createdAt = device.createdAt?.toDate?.() ? device.createdAt.toDate().toLocaleString('ru') : 'неизвестно';
-    const statusText = getDeviceStatusText(device, isCurrent);
-    const targetDeviceId = device.id || device.deviceId;
-
-    const content = document.getElementById('deviceDetailsContent');
-    content.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:16px;">
-            <div style="width:62px;height:62px;border-radius:20px;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:28px;margin-bottom:10px;">
-                <i class="fas ${getDeviceIcon(device.type || 'desktop')}"></i>
-            </div>
-            <div style="font-size:17px;font-weight:600;">${esc(device.label || device.name || 'Устройство')}</div>
-            <div style="font-size:13px;color:${quickEnabled ? 'var(--online)' : 'var(--text-secondary)'};margin-top:4px;">${esc(statusText)}</div>
-        </div>
-
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:0.5px solid var(--separator);margin-bottom:6px;">
-            <div>
-                <div style="font-size:15px;font-weight:600;">Быстрый вход</div>
-                <div style="font-size:12px;color:var(--text-secondary);line-height:1.35;margin-top:3px;">
-                    Ползунок управляет автологином при следующем открытии сайта. Пароль при переключении не запрашивается.
-                </div>
-            </div>
-            <label style="position:relative;display:inline-block;width:52px;height:30px;flex-shrink:0;">
-                <input type="checkbox" ${quickEnabled ? 'checked' : ''} onchange='toggleDeviceQuickLogin(${jsString(targetDeviceId)}, this.checked, this)' style="opacity:0;width:0;height:0;">
-                <span class="quick-toggle-track" style="position:absolute;cursor:pointer;inset:0;background:${quickEnabled ? 'var(--accent)' : 'var(--bg-tertiary)'};border-radius:999px;transition:.2s;border:0.5px solid var(--separator);"></span>
-                <span class="quick-toggle-knob" style="position:absolute;height:24px;width:24px;left:${quickEnabled ? '25px' : '3px'};top:3px;background:white;border-radius:50%;transition:.2s;box-shadow:0 2px 8px rgba(0,0,0,.35);"></span>
-            </label>
-        </div>
-
-        ${renderDeviceDetailLine('Тип', getDeviceTypeName(device.type))}
-        ${renderDeviceDetailLine('Модель', device.model || device.name || 'Неизвестно')}
-        ${renderDeviceDetailLine('ОС', device.os || 'Неизвестно')}
-        ${renderDeviceDetailLine('Браузер', device.browser || 'Неизвестно')}
-        ${renderDeviceDetailLine('Последняя активность', lastSeen)}
-        ${renderDeviceDetailLine('Страна / регион', device.region || 'неизвестно')}
-        ${renderDeviceDetailLine('Язык', device.language || 'неизвестно')}
-        ${renderDeviceDetailLine('Часовой пояс', device.timeZone || 'неизвестно')}
-        ${renderDeviceDetailLine('Добавлено', createdAt)}
-
-        <button class="btn btn-danger" onclick='kickDevice(${jsString(targetDeviceId)})'>Завершить сеанс</button>
-        <button class="btn btn-secondary" onclick="closeDeviceDetailsModal()">Закрыть</button>
-    `;
-
-    document.getElementById('deviceDetailsModal').classList.add('show');
-}
-
-async function toggleDeviceQuickLogin(deviceId, enabled, checkboxEl) {
-    if (!currentUser || !deviceId) return;
-
-    updateDeviceToggleVisual(checkboxEl);
-
-    const currentDevice = getCurrentDeviceInfo();
-    const isCurrent = deviceId === currentDevice.id;
-    const ref = getDeviceRefFor(currentUser.uid, deviceId);
-
-    try {
-        if (enabled) {
-            if (isCurrent) clearQuickLoginDisabledLocally(currentUser.uid, currentDevice.id);
-
-            await ref.set({
-                quickLoginEnabled: true,
-                quickLoginDisabled: false,
-                forceLogout: false,
-                isActiveSession: true,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-
-            toast(isCurrent && !hasQuickLogin(currentUser.uid)
-                ? 'Быстрый вход включён в настройках. Он заработает после следующего входа по паролю.'
-                : 'Быстрый вход включён');
-        } else {
-            if (isCurrent) {
-                removeAccountCredentials(currentUser.uid);
-                markQuickLoginDisabledLocally(currentUser.uid, currentDevice.id);
-            }
-
-            await ref.set({
-                quickLoginEnabled: false,
-                quickLoginDisabled: true,
-                forceLogout: false,
-                isActiveSession: true,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-
-            toast('Быстрый вход выключен');
-        }
-
-        // Обновляем кэш, чтобы статус не прыгал до следующего открытия модалки.
-        const cached = devicesCache.find(d => d.id === deviceId || d.deviceId === deviceId);
-        if (cached) {
-            cached.quickLoginEnabled = enabled;
-            cached.quickLoginDisabled = !enabled;
-            cached.forceLogout = false;
-            cached.isActiveSession = true;
-        }
-    } catch (e) {
-        console.error(e);
-        toast('Не удалось изменить быстрый вход');
-        if (checkboxEl) {
-            checkboxEl.checked = !enabled;
-            updateDeviceToggleVisual(checkboxEl);
-        }
-    }
-}
-
-async function kickDevice(deviceId) {
-    if (!currentUser || !deviceId) return;
-
-    if (!confirm('Завершить сеанс на этом устройстве? Устройство сразу выйдет из аккаунта, быстрый вход выключится, а для возврата нужно будет снова войти по паролю.')) return;
-
-    try {
-        await getDeviceRefFor(currentUser.uid, deviceId).set({
-            quickLoginEnabled: false,
-            quickLoginDisabled: true,
-            forceLogout: true,
-            isActiveSession: false,
-            kickedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-
-        toast('Сеанс завершён');
-        closeDeviceDetailsModal();
-        showDevicesModal();
-    } catch (e) {
-        console.error(e);
-        toast('Не удалось завершить сеанс');
-    }
-}
-
-async function addNewAccount() {
-    const email = document.getElementById('addAccountEmail').value.trim();
-    const password = document.getElementById('addAccountPassword').value;
-
-    if (!email || !password) {
-        toast('Заполните все поля');
-        return;
-    }
-
-    if (linkedAccounts.length >= 2) {
-        toast('Максимум 2 аккаунта');
-        return;
-    }
-
-    try {
-        markManualPasswordLogin(email);
-        const result = await auth.signInWithEmailAndPassword(email, password);
-        const newUser = result.user;
-
-        const exists = linkedAccounts.find(a => a.uid === newUser.uid);
-        if (!exists) {
-            linkedAccounts.push({
-                uid: newUser.uid,
-                email: newUser.email,
-                displayName: newUser.displayName || 'Пользователь',
-                avatarBase64: null
-            });
-            saveLinkedAccounts();
-        }
-
-        saveAccountCredentials(newUser.uid, email, password);
-
-        closeAddAccountModal();
-        toast('Аккаунт добавлен');
-        renderProfile();
-        showAccountSwitcher();
-    } catch (error) {
-        console.error(error);
-        toast('Неверный пароль или ошибка входа');
-        notifyFailedLoginByEmail(email, error).catch(console.error);
-    }
-}
-
-async function switchToAccount(index) {
-    const account = linkedAccounts[index];
-    if (!account || account.uid === currentUser.uid) {
-        closeAccountSwitcher();
-        return;
-    }
-
-    isSwitchingAccount = true;
-
-    try {
-        let creds = getAccountCredentials(account.uid);
-
-        if (!creds || !creds.password) {
-            const password = prompt(`Введите пароль для аккаунта ${account.email}:`);
-            if (!password) {
-                isSwitchingAccount = false;
-                return;
-            }
-            creds = { email: account.email, password };
-        }
-
-        if (chatsGlobalListener) {
-            chatsGlobalListener();
-            chatsGlobalListener = null;
-        }
-        if (chatMessagesListener) {
-            chatMessagesListener();
-            chatMessagesListener = null;
-        }
-
-        await auth.signOut();
-        markManualPasswordLogin(creds.email);
-        await auth.signInWithEmailAndPassword(creds.email, creds.password);
-        saveAccountCredentials(account.uid, creds.email, creds.password);
-
-        closeAccountSwitcher();
-        toast(`Переключено на ${account.displayName}`);
-    } catch (error) {
-        console.error('Ошибка переключения:', error);
-        isSwitchingAccount = false;
-        toast('Неверный пароль или ошибка входа');
-        notifyFailedLoginByEmail(account.email, error).catch(console.error);
-
-        const password = prompt(`Не удалось войти. Введите пароль для ${account.email}:`);
-        if (password) {
-            try {
-                await auth.signOut();
-                markManualPasswordLogin(account.email);
-                await auth.signInWithEmailAndPassword(account.email, password);
-                saveAccountCredentials(account.uid, account.email, password);
-                closeAccountSwitcher();
-                toast(`Переключено на ${account.displayName}`);
-            } catch (e) {
-                toast('Неверный пароль');
-                notifyFailedLoginByEmail(account.email, e).catch(console.error);
-            }
-        }
-    }
-}
-</script>
-
-<script>
-/* ===== Contegg devices/security v6 final override =====
-   Финальные правила:
-   - Ползунка быстрого входа нет.
-   - Вход по почте и паролю -> системное сообщение.
-   - Автоматический быстрый вход -> без сообщения.
-   - Неверный пароль при существующей почте -> системное сообщение.
-   - Быстрый вход включён на вошедшем устройстве до явного выхода или кика.
-   - Завершить сеанс -> моментальный кик, удаление быстрого входа, устройство пропадает из активных.
-*/
-
-function getDeviceRefFor(uid, deviceId) {
-    return db.collection('users').doc(uid).collection('devices').doc(deviceId);
-}
-
-function getManualPasswordLoginKey() {
-    return 'contegg_manual_password_login_pending';
-}
-
-function normalizeEmail(email) {
-    return String(email || '').trim().toLowerCase();
-}
-
-function markManualPasswordLogin(email) {
-    const normalized = normalizeEmail(email);
-    if (!normalized) return;
-    sessionStorage.setItem(getManualPasswordLoginKey(), normalized);
-}
-
-function consumeManualPasswordLoginForEmail(email) {
-    const expected = sessionStorage.getItem(getManualPasswordLoginKey());
-    const actual = normalizeEmail(email);
-
-    if (expected && actual && expected === actual) {
-        sessionStorage.removeItem(getManualPasswordLoginKey());
-        return true;
-    }
-
-    return false;
-}
-
-function consumeManualPasswordLogin(user) {
-    return consumeManualPasswordLoginForEmail(user?.email || '');
-}
-
-function getDeviceDateTimeText() {
-    try {
-        return new Date().toLocaleString('ru-RU', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        });
-    } catch (e) {
-        return new Date().toISOString();
-    }
-}
-
-function buildDeviceSecurityText(title, device, extra = '') {
-    return `${title}\n\n` +
-        `Устройство: ${device.label || device.name || 'Устройство'}\n` +
-        `Тип: ${getDeviceTypeName(device.type)}\n` +
-        `ОС: ${device.os || 'Неизвестно'}\n` +
-        `Браузер: ${device.browser || 'Неизвестно'}\n` +
-        `Регион: ${device.region || 'неизвестно'}\n` +
-        `Часовой пояс: ${device.timeZone || 'неизвестно'}\n` +
-        `Дата и время: ${getDeviceDateTimeText()}` +
-        (extra ? `\n\n${extra}` : '');
-}
-
-async function notifyLoginSecurity(userId, device) {
-    if (!userId || !device) return;
-
-    await sendSystemNotification(userId, 'security_login', {
-        message: buildDeviceSecurityText('✅ Выполнен вход в аккаунт', device, 'Способ: вход по почте и паролю'),
-        deviceId: device.id,
-        action: {
-            type: 'terminate_session',
-            deviceId: device.id,
-            label: 'Завершить сеанс'
-        }
-    });
-}
-
-async function findUserForLoginEmail(email) {
-    const normalized = normalizeEmail(email);
-    if (!normalized) return null;
-
-    const queries = [
-        db.collection('users').where('emailLower', '==', normalized).limit(1),
-        db.collection('users').where('email', '==', normalized).limit(1),
-        db.collection('users').where('email', '==', email).limit(1)
-    ];
-
-    for (const query of queries) {
-        try {
-            const snap = await query.get();
-            if (!snap.empty) {
-                return { uid: snap.docs[0].id, ...snap.docs[0].data() };
-            }
-        } catch (e) {
-            console.error('find user by email query error:', e);
-        }
-    }
-
-    return null;
-}
-
-function isWrongPasswordLikeError(error) {
-    const code = String(error?.code || '').toLowerCase();
-    const message = String(error?.message || '').toLowerCase();
-
-    return code.includes('wrong-password') ||
-        code.includes('invalid-credential') ||
-        code.includes('invalid-login-credentials') ||
-        message.includes('wrong-password') ||
-        message.includes('invalid credential') ||
-        message.includes('invalid login');
-}
-
-async function notifyFailedLoginByEmail(email, error) {
-    try {
-        if (!email) return;
-        if (error && !isWrongPasswordLikeError(error)) return;
-
-        const normalizedEmail = normalizeEmail(email);
-        const user = await findUserForLoginEmail(normalizedEmail);
-        if (!user || !user.uid) return;
-
-        const device = getCurrentDeviceInfo();
-
-        await sendSystemNotification(user.uid, 'security_failed_login', {
-            message: buildDeviceSecurityText(
-                '⚠️ Неудачная попытка входа в аккаунт',
-                device,
-                `Email: ${normalizedEmail}\nПричина: введён неверный пароль.\n\nЕсли это были не вы — рекомендуем сменить пароль.`
-            ),
-            action: {
-                type: 'change_password',
-                label: 'Сменить пароль'
-            }
-        });
-    } catch (e) {
-        console.error('failed login notification error:', e);
-    }
-}
-
-async function sendSystemNotification(userId, type, data = {}) {
-    try {
-        const systemChatId = await getOrCreateSystemChat(userId);
-
-        let notificationText = '';
-        switch (type) {
-            case 'security_login':
-            case 'security_failed_login':
-                notificationText = data.message || 'Событие безопасности';
-                break;
-            case 'username_changed':
-                notificationText = `🔔 Ваш никнейм был изменен на @${data.newUsername}`;
-                break;
-            case 'password_changed':
-                notificationText = '🔐 Ваш пароль был успешно изменен';
-                break;
-            case 'profile_updated':
-                notificationText = '⚙️ Настройки профиля обновлены';
-                break;
-            case 'account_settings':
-                notificationText = `⚙️ ${data.changes || 'Настройки аккаунта обновлены'}`;
-                break;
-            default:
-                notificationText = `📢 ${data.message || 'Системное уведомление'}`;
-        }
-
-        const msg = {
-            text: notificationText,
-            senderId: 'system',
-            senderName: 'Contegg',
-            timestamp: new Date(),
-            isSystemMessage: true,
-            notificationType: type
-        };
-
-        if (data.action) msg.action = data.action;
-        if (data.deviceId) msg.deviceId = data.deviceId;
-
-        await db.collection('chats').doc(systemChatId).collection('messages').add(msg);
-
-        await db.collection('chats').doc(systemChatId).update({
-            lastMessage: notificationText.split('\n')[0] || notificationText,
-            lastSender: 'system',
-            lastMessageTime: new Date(),
-            unreadFor: firebase.firestore.FieldValue.arrayUnion(userId)
-        });
-    } catch (e) {
-        console.error('Ошибка отправки уведомления:', e);
-    }
-}
-
-function renderSystemActionButton(msg) {
-    if (!msg || !msg.action) return '';
-
-    const label = esc(msg.action.label || 'Открыть');
-    const payload = esc(JSON.stringify(msg.action));
-    const isDanger = msg.action.type === 'terminate_session';
-
-    return `
-        <button
-            class="btn ${isDanger ? 'btn-danger' : 'btn-secondary'}"
-            style="margin-top:10px;padding:10px 12px;font-size:14px;border-radius:12px;"
-            onclick='event.stopPropagation(); handleSystemNotificationAction(${payload})'
-        >${label}</button>
-    `;
-}
-
-async function handleSystemNotificationAction(action) {
-    if (!action || !action.type) return;
-
-    if (action.type === 'terminate_session') {
-        if (!action.deviceId) {
-            toast('Устройство не найдено');
-            return;
-        }
-
-        await kickDevice(action.deviceId);
-        return;
-    }
-
-    if (action.type === 'change_password') {
-        if (typeof openChangePasswordModal === 'function') {
-            openChangePasswordModal();
-        } else {
-            toast('Откройте профиль → Настройки → Сменить пароль');
-        }
-    }
-}
-
-function hasQuickLogin(uid) {
-    const device = getCurrentDeviceInfo();
-    const creds = getAccountCredentials(uid);
-    return !!(creds && creds.email && creds.password && creds.deviceId === device.id);
-}
-
-function isDeviceQuickLoginActive(device) {
-    return device?.quickLoginEnabled === true && device?.quickLoginDisabled !== true && device?.forceLogout !== true;
-}
-
-function isDeviceActiveSession(device) {
-    return device?.forceLogout !== true && device?.isActiveSession === true;
-}
-
-function getDeviceStatusText(device, isCurrent = false) {
-    if (device?.forceLogout === true || device?.isActiveSession === false) return 'Сессия завершена';
-    if (isCurrent) return 'Это устройство';
-    return 'Активная сессия';
-}
-
-function saveAccountCredentials(uid, email, password) {
-    const creds = JSON.parse(localStorage.getItem('contegg_account_creds') || '{}');
-    const device = getCurrentDeviceInfo();
-    const wasManualPasswordLogin = consumeManualPasswordLoginForEmail(email);
-
-    creds[uid] = {
-        email,
-        password,
-        deviceId: device.id,
-        deviceName: device.name,
-        savedAt: new Date().toISOString()
-    };
-
-    localStorage.setItem('contegg_account_creds', JSON.stringify(creds));
-    clearQuickLoginDisabledLocally(uid, device.id);
-    markBrowserSessionAlive(uid, device.id);
-
-    getDeviceRefFor(uid, device.id).set({
-        deviceId: device.id,
-        name: device.name,
-        type: device.type,
-        model: device.model,
-        os: device.os,
-        browser: device.browser,
-        language: device.language,
-        region: device.region,
-        timeZone: device.timeZone,
-        label: device.label,
-        userAgent: navigator.userAgent || '',
-
-        quickLoginEnabled: true,
-        quickLoginDisabled: false,
-        forceLogout: false,
-        isActiveSession: true,
-
-        lastLoginAt: firebase.firestore.FieldValue.serverTimestamp(),
-        lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true })
-        .then(() => {
-            if (wasManualPasswordLogin) return notifyLoginSecurity(uid, device);
-        })
-        .catch(console.error);
-}
-
-async function registerCurrentDevice() {
-    if (!currentUser) return;
-
-    const device = getCurrentDeviceInfo();
-    const ref = getDeviceRefFor(currentUser.uid, device.id);
-    const snap = await ref.get();
-    const oldData = snap.exists ? (snap.data() || {}) : {};
-    const quickEnabled = hasQuickLogin(currentUser.uid) && oldData.forceLogout !== true;
-
-    await ref.set({
-        deviceId: device.id,
-        name: device.name,
-        type: device.type,
-        model: device.model,
-        os: device.os,
-        browser: device.browser,
-        language: device.language,
-        region: device.region,
-        timeZone: device.timeZone,
-        label: device.label,
-        userAgent: navigator.userAgent || '',
-
-        quickLoginEnabled: quickEnabled,
-        quickLoginDisabled: !quickEnabled,
-        forceLogout: false,
-        isActiveSession: true,
-
-        createdAt: oldData.createdAt || firebase.firestore.FieldValue.serverTimestamp(),
-        lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-}
-
-async function enforceQuickLoginOnFreshOpen(user) {
-    const device = getCurrentDeviceInfo();
-    const uid = user.uid;
-    const ref = getDeviceRefFor(uid, device.id);
-    const manualPasswordLogin = consumeManualPasswordLogin(user);
-
-    if (manualPasswordLogin) {
-        clearQuickLoginDisabledLocally(uid, device.id);
-        markBrowserSessionAlive(uid, device.id);
-
-        await ref.set({
-            deviceId: device.id,
-            name: device.name,
-            type: device.type,
-            model: device.model,
-            os: device.os,
-            browser: device.browser,
-            language: device.language,
-            region: device.region,
-            timeZone: device.timeZone,
-            label: device.label,
-            userAgent: navigator.userAgent || '',
-
-            quickLoginEnabled: hasQuickLogin(uid),
-            quickLoginDisabled: !hasQuickLogin(uid),
-            forceLogout: false,
-            isActiveSession: true,
-
-            lastLoginAt: firebase.firestore.FieldValue.serverTimestamp(),
-            lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-
-        await notifyLoginSecurity(uid, device);
-        return true;
-    }
-
-    if (isBrowserSessionAlive(uid, device.id)) return true;
-
-    const snap = await ref.get();
-    const data = snap.exists ? (snap.data() || {}) : null;
-    const creds = getAccountCredentials(uid);
-    const hasLocalQuickCreds = !!(creds && creds.email && creds.password && creds.deviceId === device.id);
-
-    const mustSignOut =
-        !data ||
-        data.forceLogout === true ||
-        data.quickLoginEnabled !== true ||
-        data.quickLoginDisabled === true ||
-        !hasLocalQuickCreds;
-
-    if (mustSignOut) {
-        removeAccountCredentials(uid);
-        markQuickLoginDisabledLocally(uid, device.id);
-
-        try {
-            await ref.set({
-                quickLoginEnabled: false,
-                quickLoginDisabled: true,
-                forceLogout: false,
-                isActiveSession: false,
-                signedOutAt: firebase.firestore.FieldValue.serverTimestamp(),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-        } catch (e) {
-            console.error(e);
-        }
-
-        await auth.signOut();
-        location.href = 'index.html';
-        return false;
-    }
-
-    // Это обычный быстрый вход / повторное открытие сайта. Сообщение НЕ отправляем.
-    markBrowserSessionAlive(uid, device.id);
-    clearQuickLoginDisabledLocally(uid, device.id);
-
-    await ref.set({
-        quickLoginEnabled: true,
-        quickLoginDisabled: false,
-        forceLogout: false,
-        isActiveSession: true,
-        lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-
-    return true;
-}
-
-function startDeviceControlListener() {
-    if (!currentUser) return;
-
-    if (deviceControlListener) {
-        deviceControlListener();
-        deviceControlListener = null;
-    }
-
-    const device = getCurrentDeviceInfo();
-
-    deviceControlListener = getDeviceRefFor(currentUser.uid, device.id)
-        .onSnapshot(async snap => {
-            if (!snap.exists) return;
-
-            const data = snap.data() || {};
-
-            if (data.forceLogout === true) {
-                try {
-                    removeAccountCredentials(currentUser.uid);
-                    markQuickLoginDisabledLocally(currentUser.uid, device.id);
-
-                    if (deviceControlListener) {
-                        deviceControlListener();
-                        deviceControlListener = null;
-                    }
-
-                    try {
-                        await snap.ref.delete();
-                    } catch (deleteError) {
-                        console.error('device delete error:', deleteError);
-                        await snap.ref.set({
-                            quickLoginEnabled: false,
-                            quickLoginDisabled: true,
-                            forceLogout: false,
-                            isActiveSession: false,
-                            signedOutAt: firebase.firestore.FieldValue.serverTimestamp(),
-                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                        }, { merge: true });
-                    }
-
-                    toast('Сессия завершена на другом устройстве');
-                    await auth.signOut();
-                    location.href = 'index.html';
-                } catch (e) {
-                    console.error('force logout error:', e);
-                    try { await auth.signOut(); } catch (signOutError) { console.error(signOutError); }
-                    location.href = 'index.html';
-                }
-            }
-        }, error => console.error('device listener error:', error));
-}
-
-async function showDevicesModal() {
-    document.getElementById('settingsModal').classList.remove('show');
-
-    const modal = document.getElementById('devicesModal');
-    const content = document.getElementById('devicesContent');
-
-    modal.classList.add('show');
-    content.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка...</span></div>';
-
-    try {
-        await registerCurrentDevice();
-
-        const currentDevice = getCurrentDeviceInfo();
-        const snap = await db.collection('users').doc(currentUser.uid)
-            .collection('devices')
-            .orderBy('lastSeenAt', 'desc')
-            .get();
-
-        const devices = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        devicesCache = devices;
-
-        const current = devices.find(d => d.id === currentDevice.id || d.deviceId === currentDevice.id) || {
-            id: currentDevice.id,
-            ...currentDevice,
-            quickLoginEnabled: hasQuickLogin(currentUser.uid),
-            quickLoginDisabled: !hasQuickLogin(currentUser.uid),
-            forceLogout: false,
-            isActiveSession: true
-        };
-
-        const others = devices.filter(d => {
-            const isThisDevice = d.id === currentDevice.id || d.deviceId === currentDevice.id;
-            return !isThisDevice && isDeviceActiveSession(d);
-        });
-
-        content.innerHTML = `
-            <div style="font-size:13px;color:var(--text-secondary);line-height:1.4;margin-bottom:12px;">
-                Здесь показаны активные сеансы аккаунта. Быстрый вход включён автоматически на устройствах, где выполнен вход, и отключается только при выходе или завершении сеанса.
-            </div>
-
-            <div style="font-size:13px;color:var(--text-tertiary);font-weight:600;margin:12px 0 8px;">Ваша сессия</div>
-            ${renderDeviceRow(current, true)}
-
-            <div style="font-size:13px;color:var(--text-tertiary);font-weight:600;margin:16px 0 8px;">Другие активные сеансы</div>
-            ${others.length ? others.map(device => renderDeviceRow(device, false)).join('') : '<div style="padding:14px;text-align:center;color:var(--text-secondary);">Других активных сеансов нет</div>'}
-
-            <button class="btn btn-secondary" onclick="closeDevicesModal()">Закрыть</button>
-        `;
-    } catch (e) {
-        console.error(e);
-        content.innerHTML = `
-            <div style="padding:16px;text-align:center;color:var(--text-secondary);line-height:1.4;">
-                Не удалось загрузить устройства. Проверьте правила доступа Firestore для коллекции devices.
-            </div>
-            <button class="btn btn-secondary" onclick="closeDevicesModal()">Закрыть</button>
-        `;
-    }
-}
-
-function renderDeviceRow(device, isCurrent) {
-    const type = device.type || 'desktop';
-    const label = device.label || `${device.name || 'Устройство'} · ${device.browser || 'Браузер'}`;
-    const statusText = getDeviceStatusText(device, isCurrent);
-    const quickText = isDeviceQuickLoginActive(device) ? 'Быстрый вход включён' : 'Быстрый вход выключен';
-    const lastSeen = device.lastSeenAt?.toDate?.() ? timeAgo(device.lastSeenAt.toDate()) : 'недавно';
-    const deviceId = device.id || device.deviceId;
-
-    return `
-        <div onclick='showDeviceDetails(${jsString(deviceId)})' style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;margin-bottom:8px;background:${isCurrent ? 'rgba(10,132,255,0.14)' : 'var(--bg-secondary)'};cursor:pointer;">
-            <div style="width:42px;height:42px;border-radius:14px;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:18px;">
-                <i class="fas ${getDeviceIcon(type)}"></i>
-            </div>
-            <div style="flex:1;min-width:0;">
-                <div style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(label)}</div>
-                <div style="font-size:12px;color:var(--text-secondary);margin-top:3px;">${esc(device.os || 'Неизвестная ОС')} · ${esc(device.browser || 'Браузер')} · ${esc(lastSeen)}</div>
-                <div style="font-size:12px;color:var(--online);margin-top:4px;">${esc(statusText)} · ${esc(quickText)}</div>
-            </div>
-            <i class="fas fa-chevron-right" style="color:var(--text-tertiary);font-size:12px;"></i>
-        </div>
-    `;
-}
-
-function showDeviceDetails(deviceId) {
-    const currentDevice = getCurrentDeviceInfo();
-    const device = devicesCache.find(d => d.id === deviceId || d.deviceId === deviceId) || {
-        id: currentDevice.id,
-        ...currentDevice,
-        quickLoginEnabled: hasQuickLogin(currentUser.uid),
-        quickLoginDisabled: !hasQuickLogin(currentUser.uid),
-        forceLogout: false,
-        isActiveSession: true
-    };
-
-    const isCurrent = device.id === currentDevice.id || device.deviceId === currentDevice.id;
-    const quickEnabled = isDeviceQuickLoginActive(device);
-    const lastSeen = device.lastSeenAt?.toDate?.() ? timeAgo(device.lastSeenAt.toDate()) : 'недавно';
-    const createdAt = device.createdAt?.toDate?.() ? device.createdAt.toDate().toLocaleString('ru') : 'неизвестно';
-    const targetDeviceId = device.id || device.deviceId;
-
-    const content = document.getElementById('deviceDetailsContent');
-    content.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:16px;">
-            <div style="width:62px;height:62px;border-radius:20px;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:28px;margin-bottom:10px;">
-                <i class="fas ${getDeviceIcon(device.type || 'desktop')}"></i>
-            </div>
-            <div style="font-size:17px;font-weight:600;">${esc(device.label || device.name || 'Устройство')}</div>
-            <div style="font-size:13px;color:var(--online);margin-top:4px;">${esc(getDeviceStatusText(device, isCurrent))}</div>
-            <div style="font-size:12px;color:${quickEnabled ? 'var(--online)' : 'var(--text-secondary)'};margin-top:4px;">${quickEnabled ? 'Быстрый вход включён' : 'Быстрый вход выключен'}</div>
-        </div>
-
-        ${renderDeviceDetailLine('Тип', getDeviceTypeName(device.type))}
-        ${renderDeviceDetailLine('Модель', device.model || device.name || 'Неизвестно')}
-        ${renderDeviceDetailLine('ОС', device.os || 'Неизвестно')}
-        ${renderDeviceDetailLine('Браузер', device.browser || 'Неизвестно')}
-        ${renderDeviceDetailLine('Последняя активность', lastSeen)}
-        ${renderDeviceDetailLine('Страна / регион', device.region || 'неизвестно')}
-        ${renderDeviceDetailLine('Язык', device.language || 'неизвестно')}
-        ${renderDeviceDetailLine('Часовой пояс', device.timeZone || 'неизвестно')}
-        ${renderDeviceDetailLine('Добавлено', createdAt)}
-
-        <button class="btn btn-danger" onclick='kickDevice(${jsString(targetDeviceId)})'>Завершить сеанс</button>
-        <button class="btn btn-secondary" onclick="closeDeviceDetailsModal()">Закрыть</button>
-    `;
-
-    document.getElementById('deviceDetailsModal').classList.add('show');
-}
-
-async function kickDevice(deviceId) {
-    if (!currentUser || !deviceId) return;
-
-    if (!confirm('Завершить сеанс на этом устройстве? Устройство сразу выйдет из аккаунта, быстрый вход отключится, а для возврата нужно будет снова войти по паролю.')) return;
-
-    try {
-        await getDeviceRefFor(currentUser.uid, deviceId).set({
-            quickLoginEnabled: false,
-            quickLoginDisabled: true,
-            forceLogout: true,
-            isActiveSession: false,
-            kickedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-
-        toast('Сеанс завершён');
-        closeDeviceDetailsModal();
-        showDevicesModal();
-    } catch (e) {
-        console.error(e);
-        toast('Не удалось завершить сеанс');
-    }
-}
-
-async function addNewAccount() {
-    const email = document.getElementById('addAccountEmail').value.trim();
-    const password = document.getElementById('addAccountPassword').value;
-
-    if (!email || !password) {
-        toast('Заполните все поля');
-        return;
-    }
-
-    if (linkedAccounts.length >= 2) {
-        toast('Максимум 2 аккаунта');
-        return;
-    }
-
-    try {
-        markManualPasswordLogin(email);
-        const result = await auth.signInWithEmailAndPassword(email, password);
-        const newUser = result.user;
-
-        const exists = linkedAccounts.find(a => a.uid === newUser.uid);
-        if (!exists) {
-            linkedAccounts.push({
-                uid: newUser.uid,
-                email: newUser.email,
-                displayName: newUser.displayName || 'Пользователь',
-                avatarBase64: null
-            });
-            saveLinkedAccounts();
-        }
-
-        saveAccountCredentials(newUser.uid, email, password);
-
-        closeAddAccountModal();
-        toast('Аккаунт добавлен');
-        renderProfile();
-        showAccountSwitcher();
-    } catch (error) {
-        console.error(error);
-        toast('Неверный пароль или ошибка входа');
-        notifyFailedLoginByEmail(email, error).catch(console.error);
-    }
-}
-
-async function switchToAccount(index) {
-    const account = linkedAccounts[index];
-    if (!account || account.uid === currentUser.uid) {
-        closeAccountSwitcher();
-        return;
-    }
-
-    isSwitchingAccount = true;
-
-    try {
-        let creds = getAccountCredentials(account.uid);
-        let passwordWasTyped = false;
-
-        if (!creds || !creds.password) {
-            const password = prompt(`Введите пароль для аккаунта ${account.email}:`);
-            if (!password) {
-                isSwitchingAccount = false;
-                return;
-            }
-            creds = { email: account.email, password };
-            passwordWasTyped = true;
-        }
-
-        if (chatsGlobalListener) {
-            chatsGlobalListener();
-            chatsGlobalListener = null;
-        }
-        if (chatMessagesListener) {
-            chatMessagesListener();
-            chatMessagesListener = null;
-        }
-
-        await auth.signOut();
-        if (passwordWasTyped) markManualPasswordLogin(creds.email);
-        await auth.signInWithEmailAndPassword(creds.email, creds.password);
-        if (passwordWasTyped) saveAccountCredentials(account.uid, creds.email, creds.password);
-
-        closeAccountSwitcher();
-        toast(`Переключено на ${account.displayName}`);
-    } catch (error) {
-        console.error('Ошибка переключения:', error);
-        isSwitchingAccount = false;
-        toast('Неверный пароль или ошибка входа');
-        notifyFailedLoginByEmail(account.email, error).catch(console.error);
-
-        const password = prompt(`Не удалось войти. Введите пароль для ${account.email}:`);
-        if (password) {
-            try {
-                await auth.signOut();
-                markManualPasswordLogin(account.email);
-                await auth.signInWithEmailAndPassword(account.email, password);
-                saveAccountCredentials(account.uid, account.email, password);
-                closeAccountSwitcher();
-                toast(`Переключено на ${account.displayName}`);
-            } catch (e) {
-                toast('Неверный пароль');
-                notifyFailedLoginByEmail(account.email, e).catch(console.error);
-            }
-        }
-    }
-}
-
-async function logout() {
-    if (!confirm('Выйти из аккаунта?')) return;
-
-    try {
-        const uid = currentUser?.uid;
-        const device = getCurrentDeviceInfo();
-
-        await setMyPresence(false);
-
-        if (chatsGlobalListener) {
-            chatsGlobalListener();
-            chatsGlobalListener = null;
-        }
-        if (chatMessagesListener) {
-            chatMessagesListener();
-            chatMessagesListener = null;
-        }
-        if (chatUserPresenceListener) {
-            chatUserPresenceListener();
-            chatUserPresenceListener = null;
-        }
-        if (deviceControlListener) {
-            deviceControlListener();
-            deviceControlListener = null;
-        }
-
-        if (uid) {
-            removeAccountCredentials(uid);
-            markQuickLoginDisabledLocally(uid, device.id);
-
-            try {
-                await getDeviceRefFor(uid, device.id).set({
-                    quickLoginEnabled: false,
-                    quickLoginDisabled: true,
-                    forceLogout: false,
-                    isActiveSession: false,
-                    signedOutAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-            } catch (e) {
-                console.error(e);
-            }
-        }
-
-        linkedAccounts = linkedAccounts.filter(a => a.uid !== uid);
-        saveLinkedAccounts();
-
-        if (linkedAccounts.length > 0) {
-            const nextAccount = linkedAccounts[0];
-            const creds = getAccountCredentials(nextAccount.uid);
-
-            if (creds && creds.password) {
-                await auth.signOut();
-                await auth.signInWithEmailAndPassword(creds.email, creds.password);
-            } else {
-                await auth.signOut();
-                location.reload();
-            }
-        } else {
-            await auth.signOut();
-            location.reload();
-        }
-    } catch (e) {
-        console.error(e);
-        toast('Ошибка выхода');
-    }
-}
-</script>
-
 </body>
 </html>
