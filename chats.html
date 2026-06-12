@@ -2,7 +2,7 @@
     <meta charset="UTF-8">
 
     <!-- ✅ ВАЖНО: фикс зума -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 
     <title>Contegg · Messenger</title>
     
@@ -8965,18 +8965,21 @@ function updateMobileKeyboardViewport() {
     updateMobileKeyboardViewport.raf = requestAnimationFrame(() => {
         const root = document.documentElement;
         const overlay = document.getElementById('chatOverlay');
+        const input = document.getElementById('chatInput');
         const chatIsOpen = overlay?.classList.contains('show');
 
-        root.style.setProperty('--contegg-chat-vh', '100dvh');
-        root.style.setProperty('--contegg-chat-top', '0px');
-
         if (!chatIsOpen || !window.visualViewport) {
+            root.style.setProperty('--contegg-chat-vh', '100dvh');
+            root.style.setProperty('--contegg-chat-top', '0px');
             document.body.classList.remove('keyboard-open');
             return;
         }
 
         const vv = window.visualViewport;
-        const keyboardOpen = window.innerHeight - vv.height > 80;
+        const keyboardOpen = document.activeElement === input || window.innerHeight - vv.height > 80;
+
+        root.style.setProperty('--contegg-chat-vh', keyboardOpen ? `${Math.round(vv.height)}px` : '100dvh');
+        root.style.setProperty('--contegg-chat-top', keyboardOpen ? `${Math.round(vv.offsetTop || 0)}px` : '0px');
 
         document.body.classList.toggle('keyboard-open', keyboardOpen);
 
@@ -9002,12 +9005,14 @@ window.addEventListener('orientationchange', () => {
 });
 
 document.getElementById('chatInput')?.addEventListener('focus', () => {
+    document.body.classList.add('keyboard-open');
     setTimeout(updateMobileKeyboardViewport, 50);
     setTimeout(updateMobileKeyboardViewport, 180);
     setTimeout(updateMobileKeyboardViewport, 350);
 });
 
 document.getElementById('chatInput')?.addEventListener('blur', () => {
+    document.body.classList.remove('keyboard-open');
     setTimeout(updateMobileKeyboardViewport, 80);
     setTimeout(updateMobileKeyboardViewport, 220);
 });
@@ -9373,13 +9378,18 @@ body.chat-open .app-container {
 
 .chat-overlay.show {
     transform: translateX(0) !important;
-    top: 0 !important;
-    height: 100dvh !important;
-    max-height: 100dvh !important;
+    top: var(--contegg-chat-top) !important;
+    height: var(--contegg-chat-vh) !important;
+    max-height: var(--contegg-chat-vh) !important;
 }
 
 .chat-navbar {
     flex: 0 0 auto !important;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 5 !important;
+    min-height: var(--navbar-height) !important;
+    transform: translateZ(0) !important;
 }
 
 .chat-messages {
@@ -9422,10 +9432,12 @@ body.keyboard-open {
 
 body.keyboard-open .chat-input-bar {
     padding-bottom: 0 !important;
+    margin-bottom: 0 !important;
+    border-bottom: 0 !important;
 }
 
 body.keyboard-open .chat-messages {
-    padding-bottom: 6px !important;
+    padding-bottom: 0 !important;
 }
 
 /* Fullscreen-кнопка на ПК НЕ скрывается */
