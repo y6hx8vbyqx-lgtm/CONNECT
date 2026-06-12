@@ -9111,14 +9111,13 @@ document.getElementById('chatInput')?.addEventListener('focus', () => {
 document.getElementById('chatInput')?.addEventListener('blur', () => {
     if (!isMobileLike) return;
 
-    document.body.classList.remove('keyboard-open');
     document.body.classList.remove('keyboard-settling-in');
     document.body.classList.add('keyboard-settling-out');
     document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
 
     setTimeout(() => {
+        document.body.classList.remove('keyboard-open');
         document.body.classList.remove('keyboard-settling-out');
-        scheduleMobileKeyboardViewportUpdate(40);
     }, 220);
 });
 
@@ -9582,7 +9581,17 @@ body.keyboard-open {
     --contegg-input-bottom: 0px;
 }
 
+body.keyboard-settling-out {
+    --contegg-input-bottom: 0px;
+}
+
 body.keyboard-open .chat-input-bar {
+    padding-bottom: 0 !important;
+    margin-bottom: 0 !important;
+    border-bottom: 0 !important;
+}
+
+body.keyboard-settling-out .chat-input-bar {
     padding-bottom: 0 !important;
     margin-bottom: 0 !important;
     border-bottom: 0 !important;
