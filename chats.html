@@ -4083,8 +4083,9 @@ function startDeviceControlListener() {
 
             const data = snap.data() || {};
 
-            if (data.quickLoginDisabled === true || data.forceLogout === true) {
+            if (data.forceLogout === true) {
                 removeAccountCredentials(currentUser.uid);
+
                 linkedAccounts = linkedAccounts.filter(a => a.uid !== currentUser.uid);
                 saveLinkedAccounts();
 
@@ -4103,6 +4104,22 @@ function startDeviceControlListener() {
 
                 await auth.signOut();
                 location.href = 'index.html';
+                return;
+            }
+
+            if (data.quickLoginDisabled === true) {
+                removeAccountCredentials(currentUser.uid);
+
+                try {
+                    await snap.ref.set({
+                        quickLoginEnabled: false,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                } catch (e) {
+                    console.error(e);
+                }
+
+                return;
             }
         }, error => {
             console.error('device listener error:', error);
@@ -4157,9 +4174,9 @@ async function showDevicesModal() {
             quickLoginEnabled: hasQuickLogin(currentUser.uid)
         };
         const others = devices.filter(d => {
-            const isThisDevice = d.id === currentDevice.id || d.deviceId === currentDevice.id;
-            return !isThisDevice && isDeviceQuickLoginActive(d);
-        });
+    const isThisDevice = d.id === currentDevice.id || d.deviceId === currentDevice.id;
+    return !isThisDevice;
+});
 
         content.innerHTML = `
             <div style="font-size:13px;color:var(--text-secondary);line-height:1.4;margin-bottom:12px;">
