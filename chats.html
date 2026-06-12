@@ -8994,9 +8994,15 @@ function updateMobileKeyboardViewport() {
         const messages = document.getElementById('chatMessages');
 
         if (messages && keyboardOpen) {
-            requestAnimationFrame(() => {
+            const scrollToBottom = () => {
                 messages.scrollTop = messages.scrollHeight;
-            });
+            };
+
+            if (document.body.classList.contains('keyboard-settling-in')) {
+                setTimeout(scrollToBottom, 180);
+            } else {
+                requestAnimationFrame(scrollToBottom);
+            }
         }
     });
 }
@@ -9013,23 +9019,25 @@ window.addEventListener('orientationchange', () => {
 
 document.getElementById('chatInput')?.addEventListener('focus', () => {
     document.body.classList.add('keyboard-open');
-    document.body.classList.add('keyboard-settling');
+    document.body.classList.remove('keyboard-settling-out');
+    document.body.classList.add('keyboard-settling-in');
 
     updateMobileKeyboardViewport();
     setTimeout(updateMobileKeyboardViewport, 180);
     setTimeout(() => {
-        document.body.classList.remove('keyboard-settling');
+        document.body.classList.remove('keyboard-settling-in');
         updateMobileKeyboardViewport.lastRun = 0;
         updateMobileKeyboardViewport();
-    }, 360);
+    }, 260);
 });
 
 document.getElementById('chatInput')?.addEventListener('blur', () => {
     document.body.classList.remove('keyboard-open');
-    document.body.classList.add('keyboard-settling');
+    document.body.classList.remove('keyboard-settling-in');
+    document.body.classList.add('keyboard-settling-out');
 
     setTimeout(() => {
-        document.body.classList.remove('keyboard-settling');
+        document.body.classList.remove('keyboard-settling-out');
         updateMobileKeyboardViewport.lastRun = 0;
         updateMobileKeyboardViewport();
     }, 220);
@@ -9440,7 +9448,6 @@ body.chat-open .app-container {
     padding-bottom: calc(8px + var(--contegg-input-bottom)) !important;
 
     margin: 0 !important;
-    transform: none !important;
 }
 
 /* Когда клавиатура открыта — убираем нижний подбородок */
@@ -9458,13 +9465,47 @@ body.keyboard-open .chat-messages {
     padding-bottom: 0 !important;
 }
 
-body.keyboard-settling .chat-overlay,
-body.keyboard-settling .chat-navbar,
-body.keyboard-settling .chat-messages,
-body.keyboard-settling .chat-input-bar {
+body.keyboard-settling-in .chat-navbar,
+body.keyboard-settling-out .chat-navbar {
     transition: none !important;
     animation: none !important;
-    scroll-behavior: auto !important;
+}
+
+body.keyboard-settling-in .chat-messages {
+    animation: keyboardMessagesIn 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both !important;
+}
+
+body.keyboard-settling-in .chat-input-bar {
+    animation: keyboardInputIn 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both !important;
+}
+
+body.keyboard-settling-out .chat-messages,
+body.keyboard-settling-out .chat-input-bar {
+    transition: transform 0.18s ease, opacity 0.18s ease !important;
+}
+
+@keyframes keyboardMessagesIn {
+    from {
+        transform: translateY(10px);
+        opacity: 0.96;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes keyboardInputIn {
+    from {
+        transform: translateY(12px);
+        opacity: 0.98;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
 }
 
 /* Fullscreen-кнопка на ПК НЕ скрывается */
