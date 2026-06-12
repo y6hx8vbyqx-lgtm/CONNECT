@@ -5220,21 +5220,50 @@ function addDateDividerIfNeeded(container, d) {
                     return;
                 }
 
-                container.innerHTML = '';
-                container.dataset.lastDateKey = '';
+                if (firstLoad) {
+                    container.innerHTML = '';
+                    container.dataset.lastDateKey = '';
 
-                snap.docs.forEach(doc => {
-                    const msg = doc.data();
+                    snap.docs.forEach(doc => {
+                        const msg = doc.data();
 
-                    if (msg.deletedFor?.includes(currentUser.uid)) {
-                        return;
-                    }
+                        if (msg.deletedFor?.includes(currentUser.uid)) {
+                            return;
+                        }
 
-                    const d = msg.timestamp?.toDate?.() || new Date();
+                        const d = msg.timestamp?.toDate?.() || new Date();
 
-                    addDateDividerIfNeeded(container, d);
-                    renderMessage(doc.id, msg);
-                });
+                        addDateDividerIfNeeded(container, d);
+                        renderMessage(doc.id, msg);
+                    });
+                } else {
+                    snap.docChanges().forEach(change => {
+                        const msg = change.doc.data();
+                        const msgEl = container.querySelector(`[data-msg-id="${change.doc.id}"]`);
+
+                        if (change.type === 'removed' || msg.deletedFor?.includes(currentUser.uid)) {
+                            if (msgEl) msgEl.remove();
+                            return;
+                        }
+
+                        if (change.type === 'added') {
+                            const d = msg.timestamp?.toDate?.() || new Date();
+
+                            addDateDividerIfNeeded(container, d);
+                            renderMessage(change.doc.id, msg);
+                            return;
+                        }
+
+                        if (change.type === 'modified') {
+                            if (msgEl && msg.reactions !== undefined) {
+                                updateMessageReactions(change.doc.id, msg.reactions);
+                            }
+
+                            const commentsCount = msgEl?.querySelector(`#commentsCount_${change.doc.id}`);
+                            if (commentsCount) commentsCount.textContent = msg.commentsCount || 0;
+                        }
+                    });
+                }
 
                 container.scrollTop = container.scrollHeight;
 
