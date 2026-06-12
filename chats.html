@@ -4854,6 +4854,7 @@ function showChatOverlay() {
         window.visualViewport?.height || 0
     );
     document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
+    document.documentElement.style.setProperty('--contegg-navbar-top', '0px');
 
     overlay.classList.add('show');
 
@@ -4888,6 +4889,7 @@ function hideChatOverlay() {
     document.documentElement.style.setProperty('--contegg-chat-vh', '100dvh');
     document.documentElement.style.setProperty('--contegg-chat-top', '0px');
     document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
+    document.documentElement.style.setProperty('--contegg-navbar-top', '0px');
 }
 
   function getChannelRights(chat) {
@@ -9015,6 +9017,7 @@ function updateMobileKeyboardViewport() {
             root.style.setProperty('--contegg-chat-vh', '100dvh');
             root.style.setProperty('--contegg-chat-top', '0px');
             root.style.setProperty('--contegg-keyboard-height', '0px');
+            root.style.setProperty('--contegg-navbar-top', '0px');
             document.body.classList.remove('keyboard-open');
             return;
         }
@@ -9035,6 +9038,7 @@ function updateMobileKeyboardViewport() {
         root.style.setProperty('--contegg-chat-vh', '100dvh');
         root.style.setProperty('--contegg-chat-top', '0px');
         root.style.setProperty('--contegg-keyboard-height', `${keyboardHeight}px`);
+        root.style.setProperty('--contegg-navbar-top', keyboardOpen ? `${Math.round(vv.offsetTop || 0)}px` : '0px');
 
         document.body.classList.toggle('keyboard-open', keyboardOpen);
 
@@ -9086,6 +9090,7 @@ document.getElementById('chatInput')?.addEventListener('focus', () => {
     document.documentElement.style.setProperty('--contegg-chat-vh', '100dvh');
     document.documentElement.style.setProperty('--contegg-chat-top', '0px');
     document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
+    document.documentElement.style.setProperty('--contegg-navbar-top', '0px');
 
     setTimeout(updateMobileKeyboardViewport, 80);
     setTimeout(updateMobileKeyboardViewport, 220);
@@ -9100,6 +9105,7 @@ document.getElementById('chatInput')?.addEventListener('blur', () => {
     document.body.classList.remove('keyboard-settling-in');
     document.body.classList.add('keyboard-settling-out');
     document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
+    document.documentElement.style.setProperty('--contegg-navbar-top', '0px');
 
     setTimeout(() => {
         document.body.classList.remove('keyboard-settling-out');
@@ -9429,6 +9435,7 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
     --contegg-chat-top: 0px;
     --contegg-keyboard-height: 0px;
     --contegg-input-bar-height: 58px;
+    --contegg-navbar-top: 0px;
 
     /* Когда клавиатура закрыта — нормальный нижний отступ */
     --contegg-input-bottom: max(14px, env(safe-area-inset-bottom, 0px));
@@ -9476,7 +9483,7 @@ body.chat-open .app-container {
 
 .chat-navbar {
     position: fixed !important;
-    top: 0 !important;
+    top: var(--contegg-navbar-top) !important;
     left: 0 !important;
     right: 0 !important;
     z-index: 100001 !important;
