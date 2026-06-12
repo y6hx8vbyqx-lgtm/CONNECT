@@ -1,4 +1,4 @@
-<head>
+ё<head>
     <meta charset="UTF-8">
 
     <!-- ✅ ВАЖНО: фикс зума -->
@@ -4846,6 +4846,8 @@ function showChatOverlay() {
     const overlay = document.getElementById('chatOverlay');
     if (!overlay) return;
 
+    ensureChatNavbarLayer();
+
     document.body.classList.add('chat-open');
     window.__conteggBaseViewportHeight = Math.max(
         window.innerHeight || 0,
@@ -4859,6 +4861,15 @@ function showChatOverlay() {
         updateMobileKeyboardViewport();
         setTimeout(updateMobileKeyboardViewport, 80);
         setTimeout(updateMobileKeyboardViewport, 250);
+    }
+}
+
+function ensureChatNavbarLayer() {
+    const navbar = document.getElementById('chatNavbar');
+    if (!navbar) return;
+
+    if (navbar.parentElement !== document.body) {
+        document.body.appendChild(navbar);
     }
 }
     
@@ -8932,16 +8943,32 @@ window.addEventListener('DOMContentLoaded', () => {
 
 const sendBtnElement = document.getElementById('sendBtn');
 const isMobileLike = window.matchMedia('(pointer: coarse)').matches;
+let sendBtnTapLock = false;
 
 if (sendBtnElement) {
     if (isMobileLike) {
-        sendBtnElement.addEventListener('touchstart', function(e) {
+        sendBtnElement.addEventListener('touchend', async function(e) {
             e.preventDefault();
+            e.stopPropagation();
+
+            if (sendBtnTapLock) return;
+
+            sendBtnTapLock = true;
+
+            await sendMessage();
+
+            requestAnimationFrame(focusChatInput);
+            setTimeout(focusChatInput, 80);
+            setTimeout(() => { sendBtnTapLock = false; }, 250);
         }, { passive: false });
     }
 
     sendBtnElement.addEventListener('click', async function(e) {
         e.preventDefault();
+
+        if (sendBtnTapLock) return;
+
+        sendBtnTapLock = true;
 
         await sendMessage();
 
@@ -8949,6 +8976,8 @@ if (sendBtnElement) {
             requestAnimationFrame(focusChatInput);
             setTimeout(focusChatInput, 80);
         }
+
+        setTimeout(() => { sendBtnTapLock = false; }, 250);
     });
 }
 
