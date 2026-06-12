@@ -3978,6 +3978,28 @@ function getBrowserSessionKey(uid, deviceId) {
     return `contegg_browser_session_alive_${uid}_${deviceId}`;
 }
 
+
+function getManualPasswordLoginKey() {
+    return 'contegg_manual_password_login_pending';
+}
+
+function markManualPasswordLogin(email) {
+    if (!email) return;
+    sessionStorage.setItem(getManualPasswordLoginKey(), String(email).trim().toLowerCase());
+}
+
+function consumeManualPasswordLogin(user) {
+    const expected = sessionStorage.getItem(getManualPasswordLoginKey());
+    const actual = String(user?.email || '').trim().toLowerCase();
+
+    if (expected && expected === actual) {
+        sessionStorage.removeItem(getManualPasswordLoginKey());
+        return true;
+    }
+
+    return false;
+}
+
 function markQuickLoginDisabledLocally(uid, deviceId) {
     localStorage.setItem(getQuickLoginLocalKey(uid, deviceId), '1');
 }
@@ -4002,18 +4024,48 @@ function isBrowserSessionAlive(uid, deviceId) {
 async function enforceQuickLoginOnFreshOpen(user) {
     const device = getCurrentDeviceInfo();
     const uid = user.uid;
+    const ref = db.collection('users').doc(uid).collection('devices').doc(device.id);
 
-    // Внутри одной открытой вкладки не выкидываем: ползунок должен влиять на следующий заход.
-    if (isBrowserSessionAlive(uid, device.id)) return true;
+    // Если прямо сейчас пользователь ввёл пароль вручную, старый кик надо погасить сразу.
+    // Иначе onAuthStateChanged увидит старые forceLogout/isActiveSession:false и снова выкинет.
+    const manualPasswordLogin = consumeManualPasswordLogin(user);
+    const lastSignInTime = user.metadata?.lastSignInTime ? new Date(user.metadata.lastSignInTime).getTime() : 0;
+    const recentlySignedIn = lastSignInTime && (Date.now() - lastSignInTime < 45000);
+    const looksLikeManualPasswordLogin = manualPasswordLogin || (recentlySignedIn && !hasQuickLogin(uid));
 
-    const ackKey = getQuickLoginFreshOpenAckKey(uid, device.id);
-    if (localStorage.getItem(ackKey) === '1') {
-        // Это следующий заход после принудительного выхода. Считаем, что пользователь вводит пароль вручную.
-        localStorage.removeItem(ackKey);
+    if (looksLikeManualPasswordLogin) {
+        clearQuickLoginDisabledLocally(uid, device.id);
+        markBrowserSessionAlive(uid, device.id);
+
+        await ref.set({
+            deviceId: device.id,
+            name: device.name,
+            type: device.type,
+            model: device.model,
+            os: device.os,
+            browser: device.browser,
+            language: device.language,
+            region: device.region,
+            timeZone: device.timeZone,
+            label: device.label,
+            userAgent: navigator.userAgent || '',
+
+            quickLoginEnabled: true,
+            quickLoginDisabled: false,
+            forceLogout: false,
+            isActiveSession: true,
+
+            lastLoginAt: firebase.firestore.FieldValue.serverTimestamp(),
+            lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
         return true;
     }
 
-    const ref = db.collection('users').doc(uid).collection('devices').doc(device.id);
+    // Внутри одной уже открытой вкладки не выкидываем: ползунок должен влиять на следующий заход.
+    if (isBrowserSessionAlive(uid, device.id)) return true;
+
     const snap = await ref.get();
     const data = snap.exists ? (snap.data() || {}) : null;
 
@@ -4029,7 +4081,6 @@ async function enforceQuickLoginOnFreshOpen(user) {
     if (disabledInBase || disabledLocally) {
         removeAccountCredentials(uid);
         markQuickLoginDisabledLocally(uid, device.id);
-        localStorage.setItem(ackKey, '1');
 
         try {
             await ref.set({
@@ -4160,8 +4211,8 @@ async function registerCurrentDevice() {
     const snap = await ref.get();
     const oldData = snap.exists ? (snap.data() || {}) : {};
 
-    // Статус быстрого входа берём из базы и локального хранилища.
-    // Ползунок в базе главный, но без локального пароля быстрый вход тоже невозможен.
+    // После успешного входа текущая вкладка — активная сессия.
+    // Не переносим старый forceLogout/isActiveSession:false, иначе устройство может кикать повторно.
     const disabledByToggle = oldData.quickLoginEnabled === false || oldData.quickLoginDisabled === true;
     const disabledLocally = isQuickLoginDisabledLocally(currentUser.uid, device.id);
     const quickEnabled = hasQuickLogin(currentUser.uid) && !disabledByToggle && !disabledLocally;
@@ -4181,8 +4232,8 @@ async function registerCurrentDevice() {
 
         quickLoginEnabled: quickEnabled,
         quickLoginDisabled: !quickEnabled,
-        forceLogout: oldData.forceLogout === true,
-        isActiveSession: oldData.forceLogout !== true,
+        forceLogout: false,
+        isActiveSession: true,
 
         createdAt: oldData.createdAt || firebase.firestore.FieldValue.serverTimestamp(),
         lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -4209,8 +4260,9 @@ function startDeviceControlListener() {
 
             const data = snap.data() || {};
 
-            // Завершить сеанс = моментально выкинуть устройство и выключить быстрый вход.
-            if (data.forceLogout === true || data.isActiveSession === false) {
+            // Моментальный кик должен идти только по forceLogout.
+            // isActiveSession:false — это состояние списка, а не вечная команда выкидывать.
+            if (data.forceLogout === true) {
                 try {
                     removeAccountCredentials(currentUser.uid);
                     markQuickLoginDisabledLocally(currentUser.uid, device.id);
@@ -4478,6 +4530,7 @@ async function toggleDeviceQuickLogin(deviceId, enabled, checkboxEl) {
                 return;
             }
 
+            markManualPasswordLogin(currentUser.email);
             await auth.signInWithEmailAndPassword(currentUser.email, password);
             saveAccountCredentials(currentUser.uid, currentUser.email, password);
             toast('Быстрый вход включен');
@@ -7498,6 +7551,7 @@ async function addNewAccount() {
     }
     
     try {
+        markManualPasswordLogin(email);
         const result = await auth.signInWithEmailAndPassword(email, password);
         const newUser = result.user;
         
@@ -7556,6 +7610,7 @@ async function switchToAccount(index) {
         }
         
         await auth.signOut();
+        if (!getAccountCredentials(account.uid)?.password || getAccountCredentials(account.uid)?.password !== creds.password) markManualPasswordLogin(creds.email);
         await auth.signInWithEmailAndPassword(creds.email, creds.password);
         
         closeAccountSwitcher();
@@ -7571,6 +7626,7 @@ async function switchToAccount(index) {
             saveAccountCredentials(account.uid, account.email, password);
             try {
                 await auth.signOut();
+                markManualPasswordLogin(account.email);
                 await auth.signInWithEmailAndPassword(account.email, password);
                 closeAccountSwitcher();
                 toast(`Переключено на ${account.displayName}`);
