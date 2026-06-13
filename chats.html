@@ -541,21 +541,42 @@
         }
         .chat-messages::-webkit-scrollbar { display: none; }
 
-        .msg {
-            max-width: 75%;
-            padding: 8px 12px;
-            border-radius: 16px;
-            font-size: 15px;
-            line-height: 1.4;
-            word-break: break-word;
-            position: relative;
-            animation: msgIn 0.2s ease;
-            cursor: pointer;
-        }
-        @keyframes msgIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+      .msg {
+    max-width: 75%;
+    padding: 8px 12px;
+    border-radius: 16px;
+    font-size: 15px;
+    line-height: 1.4;
+    word-break: break-word;
+    position: relative;
+    cursor: pointer;
+
+    transform-origin: right bottom;
+    will-change: transform, opacity, filter;
+
+    animation: msgIn 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes msgIn {
+    0% {
+        opacity: 0;
+        transform: translateY(18px) scale(0.82);
+        filter: blur(2px);
+    }
+
+    55% {
+        opacity: 1;
+        transform: translateY(-3px) scale(1.03);
+        filter: blur(0);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        filter: blur(0);
+    }
+}
+
         .msg-out { align-self: flex-end; background: var(--accent); color: white; border-bottom-right-radius: 4px; }
         .msg-in { align-self: flex-start; background: var(--bg-secondary); border-bottom-left-radius: 4px; }
         .msg-reply {
@@ -4608,7 +4629,10 @@ setTimeout(() => {
     }
 
     const messages = document.getElementById('chatMessages');
-    if (messages) messages.scrollTop = messages.scrollHeight;
+    if (messages) messages.scrollTo({
+    top: messages.scrollHeight,
+    behavior: 'smooth'
+});
 }, 250);
 }
 
@@ -5606,7 +5630,10 @@ if (!chatData?.isSystem) {
         }
 
         const messages = document.getElementById('chatMessages');
-        if (messages) messages.scrollTop = messages.scrollHeight;
+        if (messages) messages.scrollTo({
+    top: messages.scrollHeight,
+    behavior: 'smooth'
+});
     }, 250);
 }
 }
@@ -5738,7 +5765,10 @@ function addDateDividerIfNeeded(container, d) {
                     });
                 }
 
-                container.scrollTop = container.scrollHeight;
+                messages.scrollTo({
+    top: messages.scrollHeight,
+    behavior: 'smooth'
+});
 
                 if (firstLoad) {
                     firstLoad = false;
@@ -5923,7 +5953,10 @@ function seekAudio(event, msgId, duration) {
     card.style.height = h + 'px';
 
     const messages = document.getElementById('chatMessages');
-    if (messages) messages.scrollTop = messages.scrollHeight;
+    if (messages) messages.scrollTo({
+    top: messages.scrollHeight,
+    behavior: 'smooth'
+});
 }
     
 function renderMessage(id, msg) {
@@ -6357,7 +6390,11 @@ function updateRenderedMessage(id, msg) {
     }
 
     if (oldScrollBottom < 80) {
-        container.scrollTop = container.scrollHeight;
+        messages.scrollTo({
+    top: messages.scrollHeight,
+    behavior: 'smooth'
+});
+
     }
 }
     
@@ -9515,7 +9552,10 @@ function updateMobileKeyboardViewport() {
 
         if (messages && keyboardOpen) {
             const scrollToBottom = () => {
-                messages.scrollTop = messages.scrollHeight;
+                messages.scrollTo({
+    top: messages.scrollHeight,
+    behavior: 'smooth'
+});
             };
 
             if (document.body.classList.contains('keyboard-settling-in')) {
