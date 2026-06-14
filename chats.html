@@ -4182,7 +4182,7 @@ async function showDevicesModal() {
         const current = devices.find(d => d.id === currentDevice.id || d.deviceId === currentDevice.id) || {
             id: currentDevice.id,
             ...currentDevice,
-            quickLoginEnabled: hasQuickLogin(currentUser.uid)
+            quickLoginEnabled: true
         };
         const others = devices.filter(d => {
             const isThisDevice = d.id === currentDevice.id || d.deviceId === currentDevice.id;
@@ -4191,7 +4191,7 @@ async function showDevicesModal() {
 
         content.innerHTML = `
             <div style="font-size:13px;color:var(--text-secondary);line-height:1.4;margin-bottom:12px;">
-            Здесь показаны устройства, где для этого аккаунта включен быстрый вход. Кнопка "Выгнать" отключает быстрый вход и завершает сессию на выбранном устройстве.
+                Активные устройства с быстрым входом. Кнопка "Завершить" сразу выкинет устройство из аккаунта.
             </div>
 
             <div style="font-size:13px;color:var(--text-tertiary);font-weight:600;margin:12px 0 8px;">Ваша сессия</div>
@@ -4221,7 +4221,7 @@ function renderDeviceRow(device, isCurrent) {
     const deviceId = device.id || device.deviceId;
 
     return `
-        <div onclick='showDeviceDetails(${jsString(deviceId)})' style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;margin-bottom:8px;background:${isCurrent ? 'rgba(0,122,255,0.1)' : 'rgba(255,255,255,0.04)'};cursor:pointer;">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;margin-bottom:8px;background:${isCurrent ? 'rgba(0,122,255,0.1)' : 'rgba(255,255,255,0.04)'};">
             <div style="width:42px;height:42px;border-radius:12px;background:rgba(0,122,255,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">
                 <i class="fas ${getDeviceIcon(type)}"></i>
             </div>
@@ -4233,7 +4233,7 @@ function renderDeviceRow(device, isCurrent) {
                     ${quickEnabled ? 'Быстрый вход включен' : 'Быстрый вход отключен'} · ${lastSeen}
                 </div>
             </div>
-            ${isCurrent ? '<i class="fas fa-check-circle" style="color:var(--accent);font-size:19px;"></i>' : `<button class="btn btn-danger btn-small" onclick='event.stopPropagation(); kickDevice(${jsString(deviceId)})'>Выгнать</button>`}
+            ${isCurrent ? '<i class="fas fa-check-circle" style="color:var(--accent);font-size:19px;"></i>' : `<button class="btn btn-danger btn-small" onclick='event.stopPropagation(); kickDevice(${jsString(deviceId)})'>Завершить</button>`}
         </div>
     `;
 }
@@ -4324,7 +4324,7 @@ async function terminateDeviceSession(deviceId, options = {}) {
         sendSystemNotification(currentUser.uid, 'device_kicked', {
             deviceName: kickedDevice?.label || kickedDevice?.name || 'устройство'
         }).catch(console.error);
-        toast('Устройство выгнано');
+        toast('Сессия завершена');
         closeDeviceDetailsModal();
         showDevicesModal();
     } catch (e) {
@@ -5155,9 +5155,17 @@ const avHTML = userAvatarSrc ? `<img src="${userAvatarSrc}">` : (u.displayName?.
             let timer;
             const chatId = cell.dataset.chatId;
             const chatType = cell.dataset.chatType;
-            cell.addEventListener('touchstart', () => {
+            cell.addEventListener('touchstart', (e) => {
+                const rect = cell.getBoundingClientRect();
+                const touch = e.touches?.[0];
+
                 timer = setTimeout(() => {
-                    showChatContext({ clientX: 100, clientY: 200, preventDefault: () => {} }, chatId, chatType);
+                    showChatContext({
+                        clientX: touch?.clientX || rect.right - 18,
+                        clientY: touch?.clientY || rect.top + rect.height / 2,
+                        anchorRect: rect,
+                        preventDefault: () => {}
+                    }, chatId, chatType);
                 }, 500);
             });
             cell.addEventListener('touchend', () => clearTimeout(timer));
@@ -5209,10 +5217,23 @@ setTimeout(() => window.__justOpenedPanel = false, 250);
     const isPinned = pinnedChats.includes(chatId);
     document.getElementById('ctxPinText').textContent = isPinned ? 'Открепить' : 'Закрепить';
     
-    let x = e.clientX || 100, y = e.clientY || 200;
-    menu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
-    menu.style.top = Math.min(y, window.innerHeight - 120) + 'px';
     menu.style.display = 'block';
+
+    const rect = e.anchorRect || e.currentTarget?.getBoundingClientRect?.();
+    const menuWidth = menu.offsetWidth || 200;
+    const menuHeight = menu.offsetHeight || 132;
+    const margin = 10;
+    const fallbackX = e.clientX || window.innerWidth / 2;
+    const fallbackY = e.clientY || window.innerHeight / 2;
+
+    let x = rect ? rect.right - menuWidth - 8 : fallbackX - menuWidth / 2;
+    let y = rect ? rect.top + (rect.height - menuHeight) / 2 : fallbackY - menuHeight / 2;
+
+    x = Math.max(margin, Math.min(x, window.innerWidth - menuWidth - margin));
+    y = Math.max(margin, Math.min(y, window.innerHeight - menuHeight - margin));
+
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
     
     const closeHandler = (e) => {
         if (!menu.contains(e.target)) {
@@ -5715,6 +5736,8 @@ function scrollMessagesToBottom(options = {}) {
     if (!container) return;
 
     const behavior = options.smooth ? 'smooth' : 'auto';
+    const previousBehavior = container.style.scrollBehavior;
+    container.style.scrollBehavior = behavior;
 
     if (typeof container.scrollTo === 'function') {
         container.scrollTo({
@@ -5723,6 +5746,12 @@ function scrollMessagesToBottom(options = {}) {
         });
     } else {
         container.scrollTop = container.scrollHeight;
+    }
+
+    if (!options.smooth) {
+        requestAnimationFrame(() => {
+            container.style.scrollBehavior = previousBehavior;
+        });
     }
 }
 
@@ -5785,7 +5814,7 @@ function scrollMessagesToBottom(options = {}) {
 
                             addDateDividerIfNeeded(container, d);
                             const shouldStickToBottom = isNearChatBottom(container);
-                            renderMessage(change.doc.id, msg, { animate: true });
+                            renderMessage(change.doc.id, msg, { animate: msg.senderId === currentUser.uid });
                             if (shouldStickToBottom || msg.senderId === currentUser.uid) {
                                 requestAnimationFrame(() => scrollMessagesToBottom({ smooth: true }));
                             }
@@ -10192,9 +10221,14 @@ body.keyboard-no-transition .chat-input-bar {
 <style id="CONTEGG-IMESSAGE-MOTION">
 /* ===== iMessage-like motion polish ===== */
 .chats-page,
-.chats-list,
-.chat-messages {
+.chats-list {
     scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+}
+
+.chat-messages {
+    scroll-behavior: auto !important;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
 }
@@ -10231,9 +10265,9 @@ body.keyboard-no-transition .chat-input-bar {
 }
 
 .msg.imessage-new {
-    animation-duration: 0.34s !important;
+    animation-duration: 0.46s !important;
     animation-fill-mode: both !important;
-    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1) !important;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
 }
 
 .msg-out.imessage-new {
@@ -10249,29 +10283,26 @@ body.keyboard-no-transition .chat-input-bar {
 @keyframes imessageSendOut {
     0% {
         opacity: 0;
-        transform: translate3d(18px, 22px, 0) scale(0.72);
-        filter: blur(0.4px);
+        transform: translate3d(8px, 14px, 0) scale(0.92);
     }
-    62% {
+    68% {
         opacity: 1;
-        transform: translate3d(-1px, -1px, 0) scale(1.018);
-        filter: blur(0);
+        transform: translate3d(0, -2px, 0) scale(1.006);
     }
     100% {
         opacity: 1;
         transform: translate3d(0, 0, 0) scale(1);
-        filter: blur(0);
     }
 }
 
 @keyframes imessageSendIn {
     0% {
         opacity: 0;
-        transform: translate3d(-12px, 16px, 0) scale(0.84);
+        transform: translate3d(-8px, 12px, 0) scale(0.94);
     }
     70% {
         opacity: 1;
-        transform: translate3d(1px, -1px, 0) scale(1.01);
+        transform: translate3d(0, -1px, 0) scale(1.004);
     }
     100% {
         opacity: 1;
