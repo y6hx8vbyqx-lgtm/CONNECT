@@ -4138,7 +4138,7 @@ function closeDevicesModal() {
 }
 
 function isDeviceQuickLoginActive(device) {
-    return device?.quickLoginEnabled === true && device?.quickLoginDisabled !== true;
+    return device?.quickLoginDisabled !== true && device?.forceLogout !== true;
 }
 
 async function revokeCurrentDeviceQuickLogin() {
@@ -4198,7 +4198,7 @@ async function showDevicesModal() {
             ${renderDeviceRow(current, true)}
 
             <div style="font-size:13px;color:var(--text-tertiary);font-weight:600;margin:16px 0 8px;">Остальные устройства</div>
-            ${others.length ? others.map(device => renderDeviceRow(device, false)).join('') : '<div style="padding:14px;text-align:center;color:var(--text-secondary);">Других устройств пока нет</div>'}
+            ${others.length ? others.map(device => renderDeviceRow(device, false)).join('') : '<div style="padding:14px;text-align:center;color:var(--text-secondary);">Других активных устройств пока нет</div>'}
 
             <button class="btn btn-secondary" onclick="closeDevicesModal()">Закрыть</button>
         `;
@@ -5731,6 +5731,14 @@ function isNearChatBottom(container, threshold = 120) {
     return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
 }
 
+function updateChatInputBarHeight() {
+    const inputBar = document.getElementById('chatInputBar');
+    if (!inputBar) return;
+
+    const height = Math.max(50, Math.ceil(inputBar.getBoundingClientRect().height || inputBar.offsetHeight || 58));
+    document.documentElement.style.setProperty('--contegg-input-bar-height', `${height}px`);
+}
+
 function scrollMessagesToBottom(options = {}) {
     const container = document.getElementById('chatMessages');
     if (!container) return;
@@ -5753,6 +5761,22 @@ function scrollMessagesToBottom(options = {}) {
             container.style.scrollBehavior = previousBehavior;
         });
     }
+}
+
+function settleChatAfterInputChange(options = {}) {
+    updateChatInputBarHeight();
+
+    const smooth = options.smooth === true;
+
+    requestAnimationFrame(() => {
+        updateChatInputBarHeight();
+        scrollMessagesToBottom({ smooth });
+    });
+
+    setTimeout(() => {
+        updateChatInputBarHeight();
+        scrollMessagesToBottom({ smooth: false });
+    }, 80);
 }
 
  async function loadMessages() {
@@ -5816,7 +5840,7 @@ function scrollMessagesToBottom(options = {}) {
                             const shouldStickToBottom = isNearChatBottom(container);
                             renderMessage(change.doc.id, msg, { animate: msg.senderId === currentUser.uid });
                             if (shouldStickToBottom || msg.senderId === currentUser.uid) {
-                                requestAnimationFrame(() => scrollMessagesToBottom({ smooth: true }));
+                                requestAnimationFrame(() => settleChatAfterInputChange({ smooth: false }));
                             }
                             return;
                         }
@@ -6014,7 +6038,7 @@ function seekAudio(event, msgId, duration) {
     card.style.height = h + 'px';
 
     if (isNearChatBottom(messages, 160)) {
-        requestAnimationFrame(() => scrollMessagesToBottom({ smooth: true }));
+        requestAnimationFrame(() => settleChatAfterInputChange({ smooth: false }));
     }
 }
     
@@ -6710,6 +6734,7 @@ async function sendMessage() {
 
     input.value = '';
     input.style.height = 'auto';
+    settleChatAfterInputChange({ smooth: false });
 
     const msgData = {
         text,
@@ -6748,6 +6773,7 @@ const unreadFor = await getUnreadRecipientsForCurrentChat();
         }
 
         await db.collection('chats').doc(currentChatId).update(updateData);
+        settleChatAfterInputChange({ smooth: false });
     } catch (e) {
         console.error('sendMessage error:', e);
         toast('Ошибка отправки');
@@ -6757,6 +6783,7 @@ const unreadFor = await getUnreadRecipientsForCurrentChat();
         videoBtn.disabled = false;
         audioBtn.disabled = false;
         focusChatInput();
+        settleChatAfterInputChange({ smooth: false });
     }
 }
 
@@ -9454,11 +9481,7 @@ document.getElementById('chatInput').addEventListener('keydown', function(e) {
 document.getElementById('chatInput').addEventListener('input', function() {
     this.style.height = 'auto';
     this.style.height = Math.min(this.scrollHeight, 100) + 'px';
-
-    const inputBar = document.getElementById('chatInputBar');
-    if (inputBar) {
-        document.documentElement.style.setProperty('--contegg-input-bar-height', `${Math.ceil(inputBar.offsetHeight)}px`);
-    }
+    settleChatAfterInputChange({ smooth: false });
 });
 
     
@@ -9617,15 +9640,13 @@ function updateMobileKeyboardViewport() {
         root.style.setProperty('--contegg-keyboard-height', `${keyboardHeight}px`);
         document.body.classList.toggle('keyboard-open', keyboardOpen);
 
-        if (inputBar) {
-            root.style.setProperty('--contegg-input-bar-height', `${Math.ceil(inputBar.offsetHeight)}px`);
-        }
+        updateChatInputBarHeight();
 
         const messages = document.getElementById('chatMessages');
 
         if (messages && keyboardOpen) {
             const scrollToBottom = () => {
-                scrollMessagesToBottom({ smooth: !document.body.classList.contains('keyboard-settling-in') });
+                scrollMessagesToBottom({ smooth: false });
             };
 
             if (document.body.classList.contains('keyboard-settling-in')) {
