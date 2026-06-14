@@ -541,41 +541,21 @@
         }
         .chat-messages::-webkit-scrollbar { display: none; }
 
-      .msg {
-    max-width: 75%;
-    padding: 8px 12px;
-    border-radius: 16px;
-    font-size: 15px;
-    line-height: 1.4;
-    word-break: break-word;
-    position: relative;
-    cursor: pointer;
-
-    transform-origin: right bottom;
-    will-change: transform, opacity, filter;
-
-}
-
-@keyframes msgIn {
-    0% {
-        opacity: 0;
-        transform: translateY(18px) scale(0.82);
-        filter: blur(2px);
-    }
-
-    55% {
-        opacity: 1;
-        transform: translateY(-3px) scale(1.03);
-        filter: blur(0);
-    }
-
-    100% {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-        filter: blur(0);
-    }
-}
-
+        .msg {
+            max-width: 75%;
+            padding: 8px 12px;
+            border-radius: 16px;
+            font-size: 15px;
+            line-height: 1.4;
+            word-break: break-word;
+            position: relative;
+            animation: msgIn 0.2s ease;
+            cursor: pointer;
+        }
+        @keyframes msgIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
         .msg-out { align-self: flex-end; background: var(--accent); color: white; border-bottom-right-radius: 4px; }
         .msg-in { align-self: flex-start; background: var(--bg-secondary); border-bottom-left-radius: 4px; }
         .msg-reply {
@@ -3941,7 +3921,9 @@ function saveAccountCredentials(uid, email, password) {
         savedAt: new Date().toISOString()
     };
     localStorage.setItem('contegg_account_creds', JSON.stringify(creds));
-    registerCurrentDevice().catch(console.error);
+    if (currentUser?.uid === uid) {
+        registerCurrentDevice({ forceEnable: true }).catch(console.error);
+    }
 }
 
 function getAccountCredentials(uid) {
@@ -4051,14 +4033,16 @@ function hasQuickLogin(uid) {
     return !!(creds && creds.password);
 }
 
-async function registerCurrentDevice() {
+async function registerCurrentDevice(options = {}) {
     if (!currentUser) return;
 
     const device = getCurrentDeviceInfo();
     const ref = db.collection('users').doc(currentUser.uid).collection('devices').doc(device.id);
     const snap = await ref.get();
     const hasSavedQuickLogin = hasQuickLogin(currentUser.uid);
-    const disabled = snap.exists && snap.data()?.quickLoginDisabled === true && !hasSavedQuickLogin;
+    const forceEnable = options.forceEnable === true;
+    const disabled = snap.exists && snap.data()?.quickLoginDisabled === true && !hasSavedQuickLogin && !forceEnable;
+    const quickLoginEnabled = !disabled && (forceEnable || hasSavedQuickLogin || auth.currentUser?.uid === currentUser.uid);
 
     if (disabled) {
         removeAccountCredentials(currentUser.uid);
@@ -4076,7 +4060,7 @@ async function registerCurrentDevice() {
         timeZone: device.timeZone,
         label: device.label,
         userAgent: navigator.userAgent || '',
-        quickLoginEnabled: hasSavedQuickLogin && !disabled,
+        quickLoginEnabled,
         quickLoginDisabled: disabled,
         forceLogout: snap.exists ? snap.data()?.forceLogout === true : false,
         createdAt: snap.exists ? (snap.data()?.createdAt || firebase.firestore.FieldValue.serverTimestamp()) : firebase.firestore.FieldValue.serverTimestamp(),
@@ -4155,6 +4139,24 @@ function closeDevicesModal() {
 
 function isDeviceQuickLoginActive(device) {
     return device?.quickLoginEnabled === true && device?.quickLoginDisabled !== true;
+}
+
+async function revokeCurrentDeviceQuickLogin() {
+    if (!currentUser) return;
+
+    const device = getCurrentDeviceInfo();
+
+    await db.collection('users')
+        .doc(currentUser.uid)
+        .collection('devices')
+        .doc(device.id)
+        .set({
+            quickLoginEnabled: false,
+            quickLoginDisabled: true,
+            forceLogout: false,
+            signedOutAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
 }
 
 async function showDevicesModal() {
@@ -4300,9 +4302,9 @@ function renderDeviceDetailLine(label, value) {
     `;
 }
 
-async function kickDevice(deviceId) {
+async function terminateDeviceSession(deviceId, options = {}) {
     if (!currentUser || !deviceId) return;
-    if (!confirm('Отключить быстрый вход на этом устройстве?')) return;
+    if (!options.skipConfirm && !confirm('Завершить сессию на этом устройстве?')) return;
 
     try {
         const kickedDevice = devicesCache.find(d => d.id === deviceId || d.deviceId === deviceId);
@@ -4329,6 +4331,10 @@ async function kickDevice(deviceId) {
         console.error(e);
         toast('Не удалось отключить устройство');
     }
+}
+
+async function kickDevice(deviceId) {
+    return terminateDeviceSession(deviceId);
 }
 
 function togglePasswordVisibility(inputId, btn) {
@@ -4396,6 +4402,12 @@ async function sendSystemNotification(userId, type, data = {}) {
         
         let notificationText = '';
         switch(type) {
+            case 'login_success':
+                notificationText = `🔐 Вход в аккаунт: ${data.deviceName || 'устройство'} · ${new Date().toLocaleString()}`;
+                break;
+            case 'login_failed':
+                notificationText = `⚠️ Неудачная попытка входа: ${data.deviceName || 'устройство'} · ${new Date().toLocaleString()}. Если это были не вы, смените пароль.`;
+                break;
             case 'username_changed':
                 notificationText = `🔔 Ваш никнейм был изменен на @${data.newUsername}`;
                 break;
@@ -4415,14 +4427,22 @@ async function sendSystemNotification(userId, type, data = {}) {
                 notificationText = `📢 ${data.message || 'Системное уведомление'}`;
         }
         
-        await db.collection('chats').doc(systemChatId).collection('messages').add({
+        const message = {
             text: notificationText,
             senderId: 'system',
             senderName: 'Contegg',
             timestamp: new Date(),
             isSystemMessage: true,
             notificationType: type
-        });
+        };
+
+        if (type === 'login_success' && data.deviceId) {
+            message.notificationAction = 'terminate_device';
+            message.actionDeviceId = data.deviceId;
+            message.deviceLabel = data.deviceName || 'устройство';
+        }
+
+        await db.collection('chats').doc(systemChatId).collection('messages').add(message);
         
         await db.collection('chats').doc(systemChatId).set({
             lastMessage: notificationText,
@@ -4627,11 +4647,7 @@ setTimeout(() => {
         updateMobileKeyboardViewport();
     }
 
-    const messages = document.getElementById('chatMessages');
-    if (messages) messages.scrollTo({
-    top: messages.scrollHeight,
-    behavior: 'smooth'
-});
+    scrollMessagesToBottom({ smooth: false });
 }, 250);
 }
 
@@ -5628,11 +5644,7 @@ if (!chatData?.isSystem) {
             updateMobileKeyboardViewport();
         }
 
-        const messages = document.getElementById('chatMessages');
-        if (messages) messages.scrollTo({
-    top: messages.scrollHeight,
-    behavior: 'smooth'
-});
+        scrollMessagesToBottom({ smooth: false });
     }, 250);
 }
 }
@@ -5693,6 +5705,27 @@ function addDateDividerIfNeeded(container, d) {
     container.dataset.lastDateKey = dateKey;
 }
 
+function isNearChatBottom(container, threshold = 120) {
+    if (!container) return true;
+    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+}
+
+function scrollMessagesToBottom(options = {}) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+
+    const behavior = options.smooth ? 'smooth' : 'auto';
+
+    if (typeof container.scrollTo === 'function') {
+        container.scrollTo({
+            top: container.scrollHeight,
+            behavior
+        });
+    } else {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
  async function loadMessages() {
     const container = document.getElementById('chatMessages');
     if (!currentChatId || !container) return;
@@ -5735,7 +5768,7 @@ function addDateDividerIfNeeded(container, d) {
                         const d = msg.timestamp?.toDate?.() || new Date();
 
                         addDateDividerIfNeeded(container, d);
-                        renderMessage(doc.id, msg);
+                        renderMessage(doc.id, msg, { animate: false });
                     });
                 } else {
                     snap.docChanges().forEach(change => {
@@ -5751,7 +5784,11 @@ function addDateDividerIfNeeded(container, d) {
                             const d = msg.timestamp?.toDate?.() || new Date();
 
                             addDateDividerIfNeeded(container, d);
-                            renderMessage(change.doc.id, msg);
+                            const shouldStickToBottom = isNearChatBottom(container);
+                            renderMessage(change.doc.id, msg, { animate: true });
+                            if (shouldStickToBottom || msg.senderId === currentUser.uid) {
+                                requestAnimationFrame(() => scrollMessagesToBottom({ smooth: true }));
+                            }
                             return;
                         }
 
@@ -5764,12 +5801,8 @@ function addDateDividerIfNeeded(container, d) {
                     });
                 }
 
-                messages.scrollTo({
-    top: messages.scrollHeight,
-    behavior: 'smooth'
-});
-
                 if (firstLoad) {
+                    scrollMessagesToBottom({ smooth: false });
                     firstLoad = false;
                     resolve();
                 }
@@ -5951,14 +5984,12 @@ function seekAudio(event, msgId, duration) {
     card.style.width = w + 'px';
     card.style.height = h + 'px';
 
-    const messages = document.getElementById('chatMessages');
-    if (messages) messages.scrollTo({
-    top: messages.scrollHeight,
-    behavior: 'smooth'
-});
+    if (isNearChatBottom(messages, 160)) {
+        requestAnimationFrame(() => scrollMessagesToBottom({ smooth: true }));
+    }
 }
     
-function renderMessage(id, msg) {
+function renderMessage(id, msg, options = {}) {
     const container = document.getElementById('chatMessages');
     if (msg.deletedFor?.includes(currentUser.uid)) return;
     const isOut = currentChatIsChannel ? false : msg.senderId === currentUser.uid;
@@ -5973,7 +6004,7 @@ const hasCaption = !!(msg.text && msg.text.trim());
     if (exists) return;
     
     const div = document.createElement('div');
-  div.className = `msg ${isOut ? 'msg-out' : 'msg-in'} ${hasVisualMedia ? 'msg-visual-media' : ''} ${hasAudio ? 'msg-voice-media' : ''}`;
+  div.className = `msg ${isOut ? 'msg-out' : 'msg-in'} ${options.animate ? 'imessage-new' : ''} ${hasVisualMedia ? 'msg-visual-media' : ''} ${hasAudio ? 'msg-voice-media' : ''}`;
     div.setAttribute('data-msg-id', id);
     div.setAttribute('data-sender-id', msg.senderId || '');
     
@@ -6071,6 +6102,21 @@ if (msg.audioUrl) {
 
 if (msg.text) {
     html += `<div class="${hasVisualMedia ? 'msg-caption' : 'msg-text'}">${esc(msg.text)}</div>`;
+}
+
+if (msg.notificationAction === 'terminate_device' && msg.actionDeviceId) {
+    const thisDeviceId = getConteggDeviceId();
+    const isThisDeviceAction = msg.actionDeviceId === thisDeviceId;
+
+    html += `
+        <button
+            class="btn btn-danger btn-small"
+            style="margin-top:8px;width:auto;align-self:flex-start;"
+            onclick='event.stopPropagation(); terminateDeviceSession(${jsString(msg.actionDeviceId)}, { skipConfirm: ${isThisDeviceAction ? 'true' : 'false'} })'
+        >
+            Завершить сессию
+        </button>
+    `;
 }
     
         // Используем data-атрибуты вместо onclick для лучшей совместимости
@@ -6389,11 +6435,7 @@ function updateRenderedMessage(id, msg) {
     }
 
     if (oldScrollBottom < 80) {
-        messages.scrollTo({
-    top: messages.scrollHeight,
-    behavior: 'smooth'
-});
-
+        scrollMessagesToBottom({ smooth: false });
     }
 }
     
@@ -9254,6 +9296,9 @@ async function logout() {
 
     try {
         await setMyPresence(false);
+        await revokeCurrentDeviceQuickLogin().catch(console.error);
+        removeAccountCredentials(currentUser.uid);
+        sessionStorage.setItem('contegg_manual_logout', 'true');
 
         if (chatsGlobalListener) {
             chatsGlobalListener();
@@ -9551,10 +9596,7 @@ function updateMobileKeyboardViewport() {
 
         if (messages && keyboardOpen) {
             const scrollToBottom = () => {
-                messages.scrollTo({
-    top: messages.scrollHeight,
-    behavior: 'smooth'
-});
+                scrollMessagesToBottom({ smooth: !document.body.classList.contains('keyboard-settling-in') });
             };
 
             if (document.body.classList.contains('keyboard-settling-in')) {
@@ -10143,6 +10185,111 @@ body.keyboard-no-transition .chat-input-bar {
         display: none !important;
         opacity: 0 !important;
         pointer-events: none !important;
+    }
+}
+</style>
+
+<style id="CONTEGG-IMESSAGE-MOTION">
+/* ===== iMessage-like motion polish ===== */
+.chats-page,
+.chats-list,
+.chat-messages {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+}
+
+.chats-list {
+    transform: translateZ(0);
+    will-change: scroll-position;
+}
+
+.chat-cell {
+    transition:
+        transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
+        background 0.18s ease,
+        border-color 0.18s ease,
+        box-shadow 0.18s ease !important;
+    transform-origin: center center;
+}
+
+.chat-cell:active {
+    transform: scale(0.975) translateY(1px) !important;
+}
+
+.chat-messages {
+    gap: 5px !important;
+    scroll-padding-bottom: 16px;
+    contain: layout paint;
+}
+
+.msg {
+    animation: none !important;
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+
+.msg.imessage-new {
+    animation-duration: 0.34s !important;
+    animation-fill-mode: both !important;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.msg-out.imessage-new {
+    transform-origin: 100% 100%;
+    animation-name: imessageSendOut !important;
+}
+
+.msg-in.imessage-new {
+    transform-origin: 0 100%;
+    animation-name: imessageSendIn !important;
+}
+
+@keyframes imessageSendOut {
+    0% {
+        opacity: 0;
+        transform: translate3d(18px, 22px, 0) scale(0.72);
+        filter: blur(0.4px);
+    }
+    62% {
+        opacity: 1;
+        transform: translate3d(-1px, -1px, 0) scale(1.018);
+        filter: blur(0);
+    }
+    100% {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+        filter: blur(0);
+    }
+}
+
+@keyframes imessageSendIn {
+    0% {
+        opacity: 0;
+        transform: translate3d(-12px, 16px, 0) scale(0.84);
+    }
+    70% {
+        opacity: 1;
+        transform: translate3d(1px, -1px, 0) scale(1.01);
+    }
+    100% {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chats-page,
+    .chats-list,
+    .chat-messages {
+        scroll-behavior: auto;
+    }
+
+    .msg.imessage-new,
+    .chat-cell {
+        animation: none !important;
+        transition: none !important;
     }
 }
 </style>
