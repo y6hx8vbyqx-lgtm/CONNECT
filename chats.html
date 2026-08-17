@@ -13683,5 +13683,77 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
 }
 </style>
 
+
+<style id="CONTEGG-V9-SMALLER-MESSAGE-PHOTOS">
+/* V9 — media scale matched to the denser message UI */
+@media (min-width: 768px) {
+    /* Single photos/videos in ordinary messages */
+    #chatMessages .message img:not(.avatar):not(.message-avatar),
+    #chatMessages .message video,
+    #chatMessages .message-media img,
+    #chatMessages .message-media video,
+    #chatMessages .media-message img,
+    #chatMessages .media-message video {
+        max-width: min(390px, 62vw) !important;
+        max-height: 430px !important;
+        object-fit: contain !important;
+    }
+
+    /* Channel/post media */
+    #chatMessages .channel-post img,
+    #chatMessages .channel-post video,
+    #chatMessages .post-card img,
+    #chatMessages .post-card video,
+    #chatMessages .channel-message img,
+    #chatMessages .channel-message video {
+        max-width: min(430px, 66vw) !important;
+        max-height: 470px !important;
+        object-fit: cover !important;
+    }
+
+    /* Albums should also stay visually inside the compact post width */
+    #chatMessages .album-grid,
+    #chatMessages .post-album,
+    #chatMessages .media-grid,
+    #chatMessages .message-album {
+        max-width: 430px !important;
+    }
+
+    #chatMessages .album-grid img,
+    #chatMessages .post-album img,
+    #chatMessages .media-grid img,
+    #chatMessages .message-album img {
+        max-width: 100% !important;
+        max-height: 310px !important;
+        object-fit: cover !important;
+    }
+}
+
+@media (min-width: 1200px) {
+    #chatMessages .message img:not(.avatar):not(.message-avatar),
+    #chatMessages .message video,
+    #chatMessages .message-media img,
+    #chatMessages .message-media video,
+    #chatMessages .media-message img,
+    #chatMessages .media-message video {
+        max-width: 350px !important;
+        max-height: 390px !important;
+    }
+
+    #chatMessages .channel-post img,
+    #chatMessages .channel-post video,
+    #chatMessages .post-card img,
+    #chatMessages .post-card video,
+    #chatMessages .channel-message img,
+    #chatMessages .channel-message video,
+    #chatMessages .album-grid,
+    #chatMessages .post-album,
+    #chatMessages .media-grid,
+    #chatMessages .message-album {
+        max-width: 390px !important;
+    }
+}
+</style>
+
 </body>
 </html>
