@@ -303,6 +303,22 @@
         }
 
         /* Password strength — только регистрация */
+        .access-code-hint {
+            margin: -7px 4px 16px;
+            color: var(--text-muted);
+            font-size: 12px;
+            line-height: 1.35;
+            text-align: left;
+        }
+
+        .access-code-hint.valid {
+            color: var(--success-color);
+        }
+
+        .access-code-hint.invalid {
+            color: var(--error-color);
+        }
+
         .password-strength {
             margin: -6px 0 16px;
         }
@@ -511,6 +527,24 @@
                 </div>
 
                 <div class="input-group">
+                    <i class="fas fa-shield-alt input-icon"></i>
+                    <input
+                        type="password"
+                        id="regAccessCode"
+                        placeholder="Код доступа"
+                        autocomplete="off"
+                        spellcheck="false"
+                        autocapitalize="none"
+                        required
+                    >
+                    <i class="fas fa-eye toggle-password" onclick="togglePassword('regAccessCode', this)"></i>
+                </div>
+
+                <div class="access-code-hint">
+                    Регистрация доступна только по приглашению
+                </div>
+
+                <div class="input-group">
                     <i class="fas fa-lock input-icon"></i>
                     <input type="password" id="regPassword" placeholder="Пароль" autocomplete="new-password" required>
                     <i class="fas fa-eye toggle-password" onclick="togglePassword('regPassword', this)"></i>
@@ -610,6 +644,11 @@
         const autoLoginBadge = document.getElementById('autoLoginBadge');
 
         const LOGOUT_FLAG_KEY = 'contegg_manual_logout';
+
+        // Закрытая регистрация Contegg
+        // ВАЖНО: клиентская проверка защищает от случайной регистрации,
+        // но код технически можно увидеть в исходном коде браузера.
+        const CONTEGG_REGISTRATION_ACCESS_CODE = 'Ft$d$1Zq.^&HfshF~USnfo2J:x;44A';
 
         window.togglePassword = function(inputId, icon) {
             const input = document.getElementById(inputId);
@@ -744,6 +783,12 @@
             registerFormElement.reset();
             updatePasswordStrength();
 
+            const accessHint = document.querySelector('.access-code-hint');
+            if (accessHint) {
+                accessHint.textContent = 'Регистрация доступна только по приглашению';
+                accessHint.classList.remove('valid', 'invalid');
+            }
+
             registerError.style.display = 'none';
         });
 
@@ -758,16 +803,49 @@
 
         document.getElementById('regPassword').addEventListener('input', updatePasswordStrength);
 
+        document.getElementById('regAccessCode').addEventListener('input', function () {
+            const hint = document.querySelector('.access-code-hint');
+            if (!hint) return;
+
+            hint.classList.remove('valid', 'invalid');
+
+            if (!this.value) {
+                hint.textContent = 'Регистрация доступна только по приглашению';
+                return;
+            }
+
+            if (this.value === CONTEGG_REGISTRATION_ACCESS_CODE) {
+                hint.textContent = 'Код доступа принят';
+                hint.classList.add('valid');
+            } else {
+                hint.textContent = 'Введите действующий код приглашения';
+            }
+        });
+
         registerFormElement.addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const email = document.getElementById('regEmail').value.trim();
             const username = document.getElementById('regUsername').value.trim();
+            const accessCode = document.getElementById('regAccessCode').value;
             const password = document.getElementById('regPassword').value;
             const confirm = document.getElementById('regConfirm').value;
 
-            if (!email || !username || !password || !confirm) {
+            if (!email || !username || !accessCode || !password || !confirm) {
                 showError(registerError, 'Заполните все поля');
+                return;
+            }
+
+            if (accessCode !== CONTEGG_REGISTRATION_ACCESS_CODE) {
+                const hint = document.querySelector('.access-code-hint');
+                if (hint) {
+                    hint.textContent = 'Неверный код доступа';
+                    hint.classList.remove('valid');
+                    hint.classList.add('invalid');
+                }
+
+                document.getElementById('regAccessCode').focus();
+                showError(registerError, 'Неверный код доступа. Регистрация доступна только по приглашению.');
                 return;
             }
 
@@ -812,8 +890,13 @@
                     email,
                     bio: 'Расскажите о себе...',
                     isAdmin: false,
+                    isBlocked: false,
+                    verified: false,
+                    verificationBadgeUrl: '',
+                    usernameLower: username.toLowerCase(),
                     blockedUsers: [],
                     pinnedChats: [],
+                    registrationMethod: 'invite_code',
                     createdAt: new Date()
                 });
 
@@ -942,6 +1025,10 @@
                             email: user.email,
                             bio: 'Расскажите о себе...',
                             isAdmin: false,
+                            isBlocked: false,
+                            verified: false,
+                            verificationBadgeUrl: '',
+                            usernameLower: (user.displayName || 'user_' + user.uid.slice(0, 8)).toLowerCase(),
                             blockedUsers: [],
                             pinnedChats: [],
                             createdAt: new Date()
