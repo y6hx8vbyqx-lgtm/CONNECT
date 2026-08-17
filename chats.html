@@ -6931,32 +6931,70 @@ function settleChatAfterInputChange(options = {}) {
                             addDateDividerIfNeeded(container, d);
                             const shouldStickToBottom = isNearChatBottom(container);
                             renderMessage(change.doc.id, msg, { animate: msg.senderId === currentUser.uid });
+
                             if (shouldStickToBottom || msg.senderId === currentUser.uid) {
-                                requestAnimationFrame(() => settleChatAfterInputChange({ smooth: false }));
+                                requestAnimationFrame(() => {
+                                    scrollMessagesToBottom({ smooth: false });
+                                });
                             }
                             return;
                         }
 
                         if (change.type === 'modified') {
-                            if (msgEl) updateRenderedMessage(change.doc.id, msg);
+                            let liveEl = msgEl;
 
-                            const commentsCount = msgEl?.querySelector(`#commentsCount_${change.doc.id}`);
-                            if (commentsCount) commentsCount.textContent = msg.commentsCount || 0;
+                            // Views, reactions and comment counters change often.
+                            // Never destroy/recreate the whole message for those fields.
+                            const nextSignature = getMessageRenderSignature(msg);
+                            const structuralChanged =
+                                !liveEl ||
+                                liveEl.dataset.renderSignature !== nextSignature;
 
-                            const commentsLabel = msgEl?.querySelector(`#commentsLabel_${change.doc.id}`);
-                            if (commentsLabel) {
-                                const count = msg.commentsCount || 0;
-                                commentsLabel.textContent = count > 0 ? `${count} ${formatCommentsWord(count)}` : 'Прокомментировать';
+                            if (structuralChanged) {
+                                updateRenderedMessageStable(change.doc.id, msg);
+                                liveEl = container.querySelector(`[data-msg-id="${change.doc.id}"]`);
                             }
 
-                            const viewsCount = msgEl?.querySelector(`#viewsCount_${change.doc.id}`);
+                            if (!liveEl) return;
+
+                            // Lightweight mutable fields.
+                            updateMessageReactions(change.doc.id, msg.reactions || {});
+
+                            const commentsCount = liveEl.querySelector(`#commentsCount_${change.doc.id}`);
+                            if (commentsCount) commentsCount.textContent = msg.commentsCount || 0;
+
+                            const commentsLabel = liveEl.querySelector(`#commentsLabel_${change.doc.id}`);
+                            if (commentsLabel) {
+                                const count = msg.commentsCount || 0;
+                                commentsLabel.textContent =
+                                    count > 0
+                                        ? `${count} ${formatCommentsWord(count)}`
+                                        : 'Прокомментировать';
+                            }
+
+                            const viewsCount = liveEl.querySelector(`#viewsCount_${change.doc.id}`);
                             if (viewsCount) viewsCount.textContent = msg.viewsCount || 0;
+
+                            liveEl.dataset.renderSignature = nextSignature;
                         }
                     });
                 }
 
                 if (firstLoad) {
+                    // Initial open should show the newest message. Do it once after
+                    // DOM insertion and once after the browser has calculated layout.
                     scrollMessagesToBottom({ smooth: false });
+
+                    requestAnimationFrame(() => {
+                        scrollMessagesToBottom({ smooth: false });
+                    });
+
+                    setTimeout(() => {
+                        if (currentChatId === chatId && document.activeElement !== document.getElementById('chatInput')) {
+                            scrollMessagesToBottom({ smooth: false });
+                        }
+                    }, 70);
+
                     firstLoad = false;
                     resolve();
                 }
@@ -7154,6 +7192,37 @@ async function recoverFirebaseImage(img) {
     return;
 }
 
+
+function getMessageRenderSignature(msg) {
+    const structural = {
+        senderId: msg?.senderId || '',
+        type: msg?.type || '',
+        text: msg?.text || '',
+        caption: msg?.caption || '',
+        imageUrl: msg?.imageUrl || '',
+        imagePath: msg?.imagePath || '',
+        images: Array.isArray(msg?.images) ? msg.images : [],
+        channelImages: Array.isArray(msg?.channelImages) ? msg.channelImages : [],
+        videoUrl: msg?.videoUrl || '',
+        videoPath: msg?.videoPath || '',
+        audioUrl: msg?.audioUrl || '',
+        audioPath: msg?.audioPath || '',
+        audioDuration: msg?.audioDuration || 0,
+        replyTo: msg?.replyTo || null,
+        forwarded: !!msg?.forwarded,
+        forwardedFromName: msg?.forwardedFromName || '',
+        forwardedFromChatId: msg?.forwardedFromChatId || '',
+        forwardedFromUserId: msg?.forwardedFromUserId || '',
+        edited: !!msg?.edited
+    };
+
+    try {
+        return JSON.stringify(structural);
+    } catch (_) {
+        return String(Date.now());
+    }
+}
+
 function renderMessage(id, msg, options = {}) {
     const container = document.getElementById('chatMessages');
     if (msg.deletedFor?.includes(currentUser.uid)) return;
@@ -7172,6 +7241,7 @@ const hasCaption = !!(msg.text && msg.text.trim());
   div.className = `msg ${isOut ? 'msg-out' : 'msg-in'} ${options.animate ? 'imessage-new' : ''} ${hasVisualMedia ? 'msg-visual-media' : ''} ${hasAudio ? 'msg-voice-media' : ''}`;
     div.setAttribute('data-msg-id', id);
     div.setAttribute('data-sender-id', msg.senderId || '');
+    div.dataset.renderSignature = getMessageRenderSignature(msg);
     
     let html = '';
 
@@ -7817,32 +7887,57 @@ async function registerPostView(postId) {
     }
 }
 
-function updateRenderedMessage(id, msg) {
-    const oldEl = document.querySelector(`[data-msg-id="${id}"]`);
-    if (!oldEl) {
-        renderMessage(id, msg);
-        return;
-    }
-
+function updateRenderedMessageStable(id, msg) {
     const container = document.getElementById('chatMessages');
     if (!container) return;
 
-    const oldScrollBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const oldEl = container.querySelector(`[data-msg-id="${id}"]`);
+
+    if (!oldEl) {
+        renderMessage(id, msg, { animate: false });
+        return;
+    }
+
+    const wasNearBottom = isNearChatBottom(container, 90);
+
+    // Preserve the exact visual position of an element above the viewport.
+    const oldTop = oldEl.getBoundingClientRect().top;
     const nextSibling = oldEl.nextSibling;
 
     oldEl.remove();
-    renderMessage(id, msg);
+    renderMessage(id, msg, { animate: false });
 
-    const newEl = document.querySelector(`[data-msg-id="${id}"]`);
-    if (newEl && nextSibling && nextSibling.parentNode === container) {
+    const newEl = container.querySelector(`[data-msg-id="${id}"]`);
+    if (!newEl) return;
+
+    if (nextSibling && nextSibling.parentNode === container) {
         container.insertBefore(newEl, nextSibling);
     }
 
-    if (oldScrollBottom < 80) {
-        scrollMessagesToBottom({ smooth: false });
+    newEl.dataset.renderSignature = getMessageRenderSignature(msg);
+
+    if (wasNearBottom) {
+        requestAnimationFrame(() => scrollMessagesToBottom({ smooth: false }));
+        return;
     }
+
+    // If user is reading older messages, compensate only for the changed
+    // element's height/position. Never jump them to top or bottom.
+    requestAnimationFrame(() => {
+        const newTop = newEl.getBoundingClientRect().top;
+        const delta = newTop - oldTop;
+
+        if (Number.isFinite(delta) && Math.abs(delta) > 0.5) {
+            container.scrollTop += delta;
+        }
+    });
 }
-    
+
+function updateRenderedMessage(id, msg) {
+    // Backward-compatible alias for old callers.
+    updateRenderedMessageStable(id, msg);
+}
+
 function updateMessageReactions(id, reactions) {
     const el = document.querySelector(`[data-msg-id="${id}"]`);
     if (!el) return;
@@ -16037,6 +16132,35 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
     overflow-anchor: auto;
 }
 
+</style>
+
+
+<style id="CONTEGG-V18-FEED-STABILITY">
+/* Undo the V17 anchoring experiment. We now preserve scroll position explicitly. */
+#chatMessages.chat-messages {
+    contain: none !important;
+    overflow-anchor: none !important;
+}
+
+#chatMessages .msg,
+#chatMessages .msg *,
+#chatMessages .date-divider,
+#chatMessages .media-card {
+    overflow-anchor: none !important;
+}
+
+/* Tablet: reserve a little safe breathing room below the newest item so
+   the composer can never visually cover the final post/message. */
+@media (min-width: 768px) and (max-width: 1199px) {
+    #conteggDesktopChatPane #chatMessages.chat-messages {
+        padding-bottom: 14px !important;
+        scroll-padding-bottom: 14px !important;
+    }
+
+    #conteggDesktopChatPane #chatMessages.chat-messages > :last-child {
+        margin-bottom: 4px !important;
+    }
+}
 </style>
 
 </body>
