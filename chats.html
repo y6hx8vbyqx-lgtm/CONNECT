@@ -7303,6 +7303,16 @@ function settleChatAfterInputChange(options = {}) {
     if (!currentChatId || !container) return;
 
     const chatId = currentChatId;
+    const desktopFeedTransition =
+        window.innerWidth >= 768 &&
+        !document.body.classList.contains('contegg-admin-workspace-open');
+
+    const feedTransitionStartedAt = performance.now();
+
+    if (desktopFeedTransition) {
+        container.classList.remove('contegg-feed-entering');
+        container.classList.add('contegg-feed-switching');
+    }
 
     // Do not replace an already visible feed with a loader while listeners switch.
     // That replacement caused a black/empty flash and random-looking disappearing.
@@ -7324,28 +7334,67 @@ function settleChatAfterInputChange(options = {}) {
             .collection('messages')
             .orderBy('timestamp', 'asc')
             .limitToLast(60)
-            .onSnapshot(snap => {
+            .onSnapshot(async snap => {
                 if (currentChatId !== chatId) {
                     resolve();
                     return;
                 }
 
                 if (firstLoad) {
+                    if (desktopFeedTransition) {
+                        const elapsed = performance.now() - feedTransitionStartedAt;
+                        const wait = Math.max(0, 72 - elapsed);
+
+                        if (wait > 0) {
+                            await new Promise(resolve => setTimeout(resolve, wait));
+                        }
+
+                        if (currentChatId !== chatId) {
+                            resolve();
+                            return;
+                        }
+                    }
+
                     container.innerHTML = '';
                     container.dataset.lastDateKey = '';
 
-                    snap.docs.forEach(doc => {
+                    let visibleIndex = 0;
+                    const visibleDocs = snap.docs.filter(doc => {
                         const msg = doc.data();
+                        return !msg.deletedFor?.includes(currentUser.uid);
+                    });
 
-                        if (msg.deletedFor?.includes(currentUser.uid)) {
-                            return;
-                        }
+                    const totalVisible = visibleDocs.length;
 
+                    visibleDocs.forEach(doc => {
+                        const msg = doc.data();
                         const d = msg.timestamp?.toDate?.() || new Date();
 
                         addDateDividerIfNeeded(container, d);
-                        renderMessage(doc.id, msg, { animate: false });
+
+                        renderMessage(doc.id, msg, {
+                            animate: desktopFeedTransition,
+                            initialBatch: desktopFeedTransition,
+                            initialOrder: visibleIndex,
+                            initialTotal: totalVisible
+                        });
+
+                        visibleIndex++;
                     });
+
+                    if (desktopFeedTransition) {
+                        container.classList.remove('contegg-feed-switching');
+
+                        requestAnimationFrame(() => {
+                            container.classList.add('contegg-feed-entering');
+
+                            setTimeout(() => {
+                                if (currentChatId === chatId) {
+                                    container.classList.remove('contegg-feed-entering');
+                                }
+                            }, 260);
+                        });
+                    }
                 } else {
                     snap.docChanges().forEach(change => {
                         const msg = change.doc.data();
@@ -7669,7 +7718,20 @@ const hasCaption = !!(msg.text && msg.text.trim());
     if (exists) return;
     
     const div = document.createElement('div');
-  div.className = `msg ${isOut ? 'msg-out' : 'msg-in'} ${options.animate ? 'imessage-new' : ''} ${hasVisualMedia ? 'msg-visual-media' : ''} ${hasAudio ? 'msg-voice-media' : ''}`;
+  div.className = `msg ${isOut ? 'msg-out' : 'msg-in'} ${options.animate ? 'imessage-new contegg-msg-animate' : ''} ${options.initialBatch ? 'contegg-msg-initial' : ''} ${hasVisualMedia ? 'msg-visual-media' : ''} ${hasAudio ? 'msg-voice-media' : ''}`;
+
+    if (options.initialBatch) {
+        const order = Number(options.initialOrder || 0);
+        const total = Math.max(1, Number(options.initialTotal || 1));
+
+        // Only stagger the newest few messages. A 60-message history should not
+        // take a full second to appear.
+        const fromEnd = Math.max(0, total - 1 - order);
+        const staggerSlot = Math.max(0, 9 - Math.min(9, fromEnd));
+
+        div.style.setProperty('--contegg-msg-delay', `${staggerSlot * 11}ms`);
+    }
+
     div.setAttribute('data-msg-id', id);
     div.setAttribute('data-sender-id', msg.senderId || '');
     div.dataset.renderSignature = getMessageRenderSignature(msg);
@@ -8340,6 +8402,14 @@ function updateRenderedMessageStable(id, msg) {
 
     const newEl = container.querySelector(`[data-msg-id="${id}"]`);
     if (!newEl) return;
+
+    if (window.innerWidth >= 768) {
+        newEl.classList.add('contegg-msg-replaced');
+
+        setTimeout(() => {
+            newEl.classList.remove('contegg-msg-replaced');
+        }, 190);
+    }
 
     if (nextSibling && nextSibling.parentNode === container) {
         container.insertBefore(newEl, nextSibling);
@@ -13106,15 +13176,26 @@ function openAdminPanel() {
         document.body.classList.add('contegg-admin-workspace-open');
         workspace.setAttribute('aria-hidden', 'false');
 
-        if (content.dataset.adminMounted !== '1') {
+        const adminMarkupMissing =
+            content.dataset.adminMounted !== '1' ||
+            !content.querySelector('.admin-panel');
+
+        if (adminMarkupMissing) {
             content.innerHTML = getAdminPanelMarkup();
             content.dataset.adminMounted = '1';
-            bindAdminPanelInputs();
-        } else {
-            // Keep existing DOM exactly as-is. Replacing list innerHTML on every
-            // open/live event was one of the causes of visible blinking.
-            bindAdminPanelInputs();
         }
+
+        bindAdminPanelInputs();
+
+        // Admin workspace must own the center pane while open.
+        workspace.style.display = 'flex';
+        workspace.style.visibility = 'visible';
+        workspace.style.opacity = '1';
+        workspace.style.pointerEvents = 'auto';
+
+        requestAnimationFrame(() => {
+            workspace.classList.add('contegg-admin-visible');
+        });
 
         return;
     }
@@ -13130,7 +13211,22 @@ function closeAdminPanel() {
     document.body.classList.remove('contegg-admin-workspace-open');
 
     const workspace = document.getElementById('conteggAdminWorkspace');
-    if (workspace) workspace.setAttribute('aria-hidden', 'true');
+    if (workspace) {
+        workspace.setAttribute('aria-hidden', 'true');
+        workspace.classList.remove('contegg-admin-visible');
+
+        if (window.innerWidth >= 768) {
+            workspace.style.opacity = '0';
+            workspace.style.pointerEvents = 'none';
+
+            setTimeout(() => {
+                if (!document.body.classList.contains('contegg-admin-workspace-open')) {
+                    workspace.style.display = 'none';
+                    workspace.style.visibility = 'hidden';
+                }
+            }, 170);
+        }
+    }
 
     document.getElementById('adminPanelModal')?.classList.remove('show');
     currentAdminTargetUser = null;
@@ -16346,9 +16442,22 @@ body.keyboard-no-transition .chat-input-bar {
         rightPanelInitialized = true;
 
         toggle.addEventListener('click', () => {
-            document.body.classList.toggle('contegg-right-collapsed');
-            const collapsed = document.body.classList.contains('contegg-right-collapsed');
-            toggle.setAttribute('aria-label', collapsed ? 'Открыть боковую панель' : 'Скрыть боковую панель');
+            if (document.body.classList.contains('contegg-right-panel-moving')) return;
+
+            const willCollapse = !document.body.classList.contains('contegg-right-collapsed');
+
+            document.body.classList.add('contegg-right-panel-moving');
+            document.body.classList.toggle('contegg-right-collapsed', willCollapse);
+
+            toggle.setAttribute(
+                'aria-label',
+                willCollapse ? 'Открыть боковую панель' : 'Скрыть боковую панель'
+            );
+
+            clearTimeout(window.__conteggRightPanelTimer);
+            window.__conteggRightPanelTimer = setTimeout(() => {
+                document.body.classList.remove('contegg-right-panel-moving');
+            }, 390);
         });
 
         tabs.forEach(tab => tab.addEventListener('click', () => {
@@ -19098,6 +19207,471 @@ body.contegg-tab-switching {
     width:auto !important;
     height:auto !important;
 }
+</style>
+
+
+<style id="CONTEGG-DESKTOP-SMOOTH-ANIMATIONS-V10">
+
+/* =========================================================
+   CHAT FEED SWITCHING
+   ========================================================= */
+@media (min-width:768px) {
+    #chatMessages.chat-messages {
+        transition:
+            opacity 90ms ease-out,
+            transform 110ms cubic-bezier(.2,.75,.25,1),
+            filter 110ms ease-out !important;
+    }
+
+    #chatMessages.chat-messages.contegg-feed-switching {
+        opacity: .12 !important;
+        transform: translate3d(0, 3px, 0) !important;
+        filter: blur(.45px);
+        pointer-events: none;
+    }
+
+    #chatMessages.chat-messages.contegg-feed-entering {
+        animation: conteggFeedReveal 170ms cubic-bezier(.2,.78,.22,1) both;
+    }
+
+    @keyframes conteggFeedReveal {
+        from {
+            opacity: .12;
+            transform: translate3d(0, 4px, 0);
+            filter: blur(.4px);
+        }
+        to {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+            filter: blur(0);
+        }
+    }
+
+    /* First batch when switching chats. */
+    #chatMessages .msg.contegg-msg-initial {
+        animation:
+            conteggMessageEnter 165ms cubic-bezier(.16,.82,.24,1)
+            var(--contegg-msg-delay, 0ms)
+            both !important;
+    }
+
+    /* Newly received/sent message. */
+    #chatMessages .msg.contegg-msg-animate:not(.contegg-msg-initial) {
+        animation:
+            conteggMessageEnter 175ms cubic-bezier(.16,.82,.24,1)
+            both !important;
+    }
+
+    @keyframes conteggMessageEnter {
+        from {
+            opacity: 0;
+            transform: translate3d(0, 6px, 0) scale(.992);
+        }
+        60% {
+            opacity: 1;
+        }
+        to {
+            opacity: 1;
+            transform: translate3d(0, 0, 0) scale(1);
+        }
+    }
+
+    /* Structural message replacement: edited text/media/forwarded state. */
+    #chatMessages .msg.contegg-msg-replaced {
+        animation: conteggMessageReplace 165ms ease-out both !important;
+    }
+
+    @keyframes conteggMessageReplace {
+        from {
+            opacity: .45;
+            transform: translate3d(0, 2px, 0) scale(.997);
+        }
+        to {
+            opacity: 1;
+            transform: none;
+        }
+    }
+}
+
+
+/* =========================================================
+   RIGHT DESKTOP PANEL
+   ========================================================= */
+@media (min-width:1200px) {
+    :root {
+        --contegg-right-motion:
+            360ms cubic-bezier(.22,.80,.20,1);
+    }
+
+    #conteggDesktopChatPane {
+        transition:
+            right var(--contegg-right-motion) !important;
+    }
+
+    #conteggDesktopRightPanel {
+        transform-origin: right center;
+        transition:
+            transform var(--contegg-right-motion),
+            opacity 210ms ease,
+            visibility 0s linear 0s !important;
+        will-change: transform, opacity;
+    }
+
+    #conteggDesktopRightPanel::after {
+        content:"";
+        position:absolute;
+        inset:0;
+        pointer-events:none;
+        background:
+            linear-gradient(
+                90deg,
+                rgba(0,0,0,.09),
+                rgba(0,0,0,0) 20px
+            );
+        opacity:.45;
+        transition: opacity 240ms ease;
+    }
+
+    #conteggSidePanelContent,
+    .contegg-side-tabs {
+        transition:
+            opacity 190ms ease,
+            transform 290ms cubic-bezier(.22,.80,.20,1) !important;
+    }
+
+    body.contegg-right-collapsed #conteggDesktopRightPanel {
+        transform: translate3d(calc(100% + 8px),0,0) scaleX(.985) !important;
+        opacity:0 !important;
+        visibility:hidden;
+        transition:
+            transform var(--contegg-right-motion),
+            opacity 180ms ease,
+            visibility 0s linear 360ms !important;
+    }
+
+    body.contegg-right-collapsed #conteggSidePanelContent,
+    body.contegg-right-collapsed .contegg-side-tabs {
+        opacity:0 !important;
+        transform: translate3d(12px,0,0) !important;
+    }
+
+    body:not(.contegg-right-collapsed) #conteggSidePanelContent,
+    body:not(.contegg-right-collapsed) .contegg-side-tabs {
+        opacity:1;
+        transform:translate3d(0,0,0);
+        transition-delay:70ms !important;
+    }
+
+    #conteggDesktopRightToggle {
+        transition:
+            right var(--contegg-right-motion),
+            transform 220ms cubic-bezier(.2,.8,.2,1),
+            background 160ms ease,
+            border-color 160ms ease,
+            box-shadow 190ms ease !important;
+        will-change:right,transform;
+    }
+
+    #conteggDesktopRightToggle:hover {
+        transform:translate3d(-2px,0,0) scale(1.025);
+        box-shadow:
+            -10px 0 24px rgba(0,0,0,.22),
+            inset 0 1px 0 rgba(255,255,255,.10);
+    }
+
+    #conteggDesktopRightToggle:active {
+        transform:translate3d(0,0,0) scale(.965);
+    }
+
+    body.contegg-right-collapsed #conteggDesktopRightToggle {
+        transform:translate3d(0,0,0);
+    }
+
+    #conteggDesktopRightToggle i {
+        transition:
+            transform 330ms cubic-bezier(.22,.80,.20,1),
+            opacity 170ms ease !important;
+    }
+
+    body.contegg-right-panel-moving #conteggDesktopRightToggle i {
+        opacity:.78;
+    }
+
+    body.contegg-right-collapsed #conteggDesktopRightToggle i {
+        transform:rotate(180deg);
+    }
+
+    /* Emoji cells should not all repaint during panel movement. */
+    body.contegg-right-panel-moving .contegg-emoji-btn {
+        pointer-events:none;
+    }
+}
+
+
+/* =========================================================
+   SMALL DESKTOP INTERACTIONS
+   ========================================================= */
+@media (min-width:768px) {
+    .chat-cell {
+        transition:
+            background 145ms ease,
+            border-color 145ms ease,
+            transform 145ms cubic-bezier(.2,.8,.2,1),
+            box-shadow 145ms ease !important;
+    }
+
+    .chat-cell:hover {
+        transform:translate3d(1px,0,0);
+    }
+
+    .chat-cell:active {
+        transform:scale(.992);
+    }
+
+    .contegg-side-tab,
+    .contegg-emoji-btn {
+        transition:
+            background 130ms ease,
+            transform 130ms cubic-bezier(.2,.8,.2,1),
+            opacity 130ms ease !important;
+    }
+
+    .contegg-emoji-btn:hover {
+        transform:translate3d(0,-1px,0) scale(1.055);
+    }
+
+    .contegg-emoji-btn:active {
+        transform:scale(.92);
+    }
+}
+
+
+/* Respect accessibility preference without changing the ordinary experience. */
+@media (prefers-reduced-motion:reduce) {
+    #chatMessages.chat-messages,
+    #chatMessages .msg,
+    #conteggDesktopRightPanel,
+    #conteggDesktopChatPane,
+    #conteggDesktopRightToggle,
+    #conteggSidePanelContent,
+    .contegg-side-tabs {
+        animation-duration:.01ms !important;
+        transition-duration:.01ms !important;
+    }
+}
+</style>
+
+
+<style id="CONTEGG-DESKTOP-ANIMATIONS-ADMIN-FIX-V11">
+
+/* =========================================================
+   ADMIN WORKSPACE — AUTHORITATIVE STATE
+   ========================================================= */
+@media (min-width:768px) {
+    #conteggAdminWorkspace {
+        position:absolute !important;
+        inset:0 !important;
+        z-index:90 !important;
+
+        display:none;
+        flex-direction:column !important;
+
+        width:100% !important;
+        height:100% !important;
+        min-width:0 !important;
+        min-height:0 !important;
+
+        overflow:hidden !important;
+        background:#0b0b0c !important;
+
+        opacity:0;
+        visibility:hidden;
+        pointer-events:none;
+
+        transform:translate3d(0,4px,0);
+        transition:
+            opacity 150ms ease,
+            transform 170ms cubic-bezier(.2,.8,.2,1),
+            visibility 0s linear 170ms !important;
+
+        contain:none !important;
+        isolation:isolate;
+    }
+
+    body.contegg-admin-workspace-open #conteggAdminWorkspace {
+        display:flex !important;
+        visibility:visible !important;
+        pointer-events:auto !important;
+
+        opacity:1 !important;
+        transform:translate3d(0,0,0) !important;
+
+        transition:
+            opacity 150ms ease,
+            transform 170ms cubic-bezier(.2,.8,.2,1),
+            visibility 0s linear 0s !important;
+    }
+
+    #conteggAdminWorkspace.contegg-admin-visible {
+        opacity:1 !important;
+        transform:translate3d(0,0,0) !important;
+    }
+
+    body.contegg-admin-workspace-open #conteggDesktopEmptyState,
+    body.contegg-admin-workspace-open #chatOverlay,
+    body.contegg-admin-workspace-open #conteggDiscussionPane {
+        opacity:0 !important;
+        visibility:hidden !important;
+        pointer-events:none !important;
+    }
+
+    .contegg-admin-workspace-header {
+        flex:0 0 52px !important;
+        height:52px !important;
+        min-height:52px !important;
+        opacity:1 !important;
+        visibility:visible !important;
+    }
+
+    #conteggAdminWorkspaceContent,
+    .contegg-admin-workspace-content {
+        display:block !important;
+        flex:1 1 auto !important;
+        height:auto !important;
+        min-height:0 !important;
+        overflow-y:auto !important;
+        overflow-x:hidden !important;
+
+        opacity:1 !important;
+        visibility:visible !important;
+        pointer-events:auto !important;
+
+        contain:none !important;
+    }
+
+    #conteggAdminWorkspaceContent > .admin-panel {
+        display:block !important;
+        opacity:1 !important;
+        visibility:visible !important;
+        transform:none !important;
+    }
+}
+
+
+/* =========================================================
+   CHAT SWITCH — FAST + SMOOTH
+   ========================================================= */
+@media (min-width:768px) {
+    #chatMessages.chat-messages {
+        transition:
+            opacity 85ms ease-out,
+            transform 100ms cubic-bezier(.2,.75,.25,1) !important;
+    }
+
+    #chatMessages.chat-messages.contegg-feed-switching {
+        opacity:.20 !important;
+        transform:translate3d(0,3px,0) !important;
+        filter:none !important;
+    }
+
+    #chatMessages.chat-messages.contegg-feed-entering {
+        animation:conteggFeedRevealV11 145ms cubic-bezier(.2,.8,.2,1) both !important;
+    }
+
+    @keyframes conteggFeedRevealV11 {
+        from {
+            opacity:.16;
+            transform:translate3d(0,4px,0);
+        }
+        to {
+            opacity:1;
+            transform:none;
+        }
+    }
+
+    #chatMessages .msg.contegg-msg-initial {
+        animation:
+            conteggMsgEnterV11 145ms cubic-bezier(.16,.82,.24,1)
+            var(--contegg-msg-delay,0ms)
+            both !important;
+    }
+
+    #chatMessages .msg.contegg-msg-animate:not(.contegg-msg-initial) {
+        animation:conteggMsgEnterV11 155ms cubic-bezier(.16,.82,.24,1) both !important;
+    }
+
+    @keyframes conteggMsgEnterV11 {
+        from {
+            opacity:0;
+            transform:translate3d(0,5px,0) scale(.994);
+        }
+        to {
+            opacity:1;
+            transform:none;
+        }
+    }
+}
+
+
+/* =========================================================
+   RIGHT PANEL — SMOOTH BUT NOT SLOW
+   ========================================================= */
+@media (min-width:1200px) {
+    #conteggDesktopRightPanel {
+        transition:
+            transform 300ms cubic-bezier(.22,.82,.22,1),
+            opacity 185ms ease,
+            visibility 0s linear 0s !important;
+    }
+
+    body.contegg-right-collapsed #conteggDesktopRightPanel {
+        transform:translate3d(calc(100% + 8px),0,0) !important;
+        opacity:0 !important;
+        visibility:hidden !important;
+
+        transition:
+            transform 300ms cubic-bezier(.22,.82,.22,1),
+            opacity 170ms ease,
+            visibility 0s linear 300ms !important;
+    }
+
+    #conteggSidePanelContent,
+    .contegg-side-tabs {
+        transition:
+            opacity 165ms ease,
+            transform 235ms cubic-bezier(.22,.82,.22,1) !important;
+    }
+
+    body.contegg-right-collapsed #conteggSidePanelContent,
+    body.contegg-right-collapsed .contegg-side-tabs {
+        opacity:0 !important;
+        transform:translate3d(9px,0,0) !important;
+    }
+
+    body:not(.contegg-right-collapsed) #conteggSidePanelContent,
+    body:not(.contegg-right-collapsed) .contegg-side-tabs {
+        opacity:1 !important;
+        transform:none !important;
+        transition-delay:55ms !important;
+    }
+
+    #conteggDesktopRightToggle {
+        transition:
+            right 300ms cubic-bezier(.22,.82,.22,1),
+            transform 170ms cubic-bezier(.2,.8,.2,1),
+            background 150ms ease,
+            box-shadow 170ms ease !important;
+    }
+
+    #conteggDesktopRightToggle i {
+        transition:transform 285ms cubic-bezier(.22,.82,.22,1) !important;
+    }
+
+    body.contegg-right-collapsed #conteggDesktopRightToggle i {
+        transform:rotate(180deg);
+    }
+}
+
 </style>
 
 </body>
