@@ -5734,6 +5734,52 @@ async function handleProfileQrDeepLink() {
     }
 }
 
+
+const CONTEGG_TEMP_MANUAL_ENTRY_KEY = 'contegg_temp_manual_entry';
+
+function isTemporaryConteggSession(user, data = null) {
+    return (
+        String(user?.email || '').toLowerCase() === 'test@test.contegg' ||
+        data?.temporaryAccount === true
+    );
+}
+
+async function enforceTemporaryManualEntry(user) {
+    if (!user) return false;
+
+    // Fetch only enough metadata to decide whether this is a temp account.
+    let data = null;
+
+    try {
+        const snap = await db.collection('users').doc(user.uid).get();
+        data = snap.exists ? (snap.data() || {}) : null;
+    } catch (error) {
+        console.warn('Temporary session check warning:', error);
+    }
+
+    if (!isTemporaryConteggSession(user, data)) {
+        return true;
+    }
+
+    const manualEntry = sessionStorage.getItem(CONTEGG_TEMP_MANUAL_ENTRY_KEY) === '1';
+
+    if (manualEntry) {
+        // One manual login grants exactly ONE chats.html mount.
+        // Refresh/reopen no longer auto-enters the temp account.
+        sessionStorage.removeItem(CONTEGG_TEMP_MANUAL_ENTRY_KEY);
+        return true;
+    }
+
+    console.log('Temporary account auto-session rejected');
+
+    try {
+        await auth.signOut();
+    } catch (_) {}
+
+    location.replace('index.html?temporary_login_required=1');
+    return false;
+}
+
 auth.onAuthStateChanged(async user => {
     if (!user) { 
         if (deviceControlListener) {
@@ -5747,6 +5793,9 @@ auth.onAuthStateChanged(async user => {
         }
         return; 
     }
+
+    const tempSessionAllowed = await enforceTemporaryManualEntry(user);
+    if (!tempSessionAllowed) return;
 
     currentUser = user;
 
@@ -15490,12 +15539,148 @@ body.keyboard-no-transition .chat-input-bar {
 </style>
     
 <script id="CONTEGG-PC-AUTO-FULLSCREEN">
-/*
- * V7: automatic fullscreen intentionally disabled.
- * Entering browser fullscreen from the first click generated a burst of
- * resize/fullscreen events and caused the responsive DOM to rebuild mid-action.
- * Fullscreen is now entirely controlled by the browser/user.
- */
+(() => {
+    /*
+     * DESKTOP FULLSCREEN CONTROLLER V8
+     *
+     * ESC while NOT fullscreen  -> enter real browser fullscreen.
+     * ESC while fullscreen      -> browser exits fullscreen natively.
+     * Entering fullscreen       -> hard layout rebuild, NO page reload.
+     * Exiting fullscreen        -> full page reload.
+     *
+     * A reload immediately after entering fullscreen would itself terminate
+     * fullscreen, so actual reload is intentionally exit-only.
+     */
+
+    const DESKTOP_MIN_WIDTH = 1200;
+    let fullscreenTransition = false;
+    let reloadScheduled = false;
+
+    function isRealFullscreen() {
+        return !!(
+            document.fullscreenElement ||
+            document.webkitFullscreenElement
+        );
+    }
+
+    async function enterConteggFullscreen() {
+        if (window.innerWidth < DESKTOP_MIN_WIDTH) return;
+        if (isRealFullscreen()) return;
+        if (fullscreenTransition) return;
+
+        fullscreenTransition = true;
+        document.body.classList.add('contegg-layout-settling');
+
+        try {
+            const root = document.documentElement;
+
+            if (root.requestFullscreen) {
+                await root.requestFullscreen({ navigationUI: 'hide' });
+            } else if (root.webkitRequestFullscreen) {
+                root.webkitRequestFullscreen();
+            }
+        } catch (error) {
+            console.warn('Fullscreen request rejected:', error);
+
+            if (typeof toast === 'function') {
+                toast('Браузер не разрешил fullscreen по Esc');
+            }
+        } finally {
+            setTimeout(() => {
+                fullscreenTransition = false;
+            }, 260);
+        }
+    }
+
+    function hardRebuildFullscreenLayout() {
+        document.body.classList.add('contegg-layout-settling');
+
+        // Clear stale inline geometry from previous viewport state.
+        const structural = [
+            document.getElementById('conteggDesktopShell'),
+            document.getElementById('conteggDesktopWorkspace'),
+            document.getElementById('conteggDesktopChatPane'),
+            document.getElementById('conteggDesktopRightPanel'),
+            document.getElementById('conteggAdminWorkspace')
+        ].filter(Boolean);
+
+        structural.forEach(el => {
+            el.style.removeProperty('transform');
+            el.style.removeProperty('width');
+            el.style.removeProperty('height');
+            el.style.removeProperty('top');
+            el.style.removeProperty('left');
+        });
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (typeof window.__conteggRunLayout === 'function') {
+                    window.__conteggRunLayout('force');
+                } else if (typeof window.__conteggScheduleLayout === 'function') {
+                    window.__conteggScheduleLayout('fullscreen-enter');
+                }
+
+                setTimeout(() => {
+                    document.body.classList.remove('contegg-layout-settling');
+                }, 190);
+            });
+        });
+    }
+
+    function handleFullscreenStateChange() {
+        if (isRealFullscreen()) {
+            // Stay fullscreen. Recalculate everything in-place.
+            hardRebuildFullscreenLayout();
+            return;
+        }
+
+        // Fullscreen was exited. A real reload guarantees that Chromium does
+        // not retain stale fullscreen compositing/layout geometry.
+        if (reloadScheduled) return;
+        reloadScheduled = true;
+
+        document.body.classList.add('contegg-layout-settling');
+
+        sessionStorage.setItem('contegg_returned_from_fullscreen', '1');
+
+        setTimeout(() => {
+            location.reload();
+        }, 110);
+    }
+
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        if (window.innerWidth < DESKTOP_MIN_WIDTH) return;
+
+        /*
+         * When already fullscreen, do NOT preventDefault:
+         * the browser owns ESC and exits fullscreen itself.
+         */
+        if (isRealFullscreen()) return;
+
+        // Outside fullscreen ESC becomes the explicit enter shortcut.
+        event.preventDefault();
+        event.stopPropagation();
+
+        enterConteggFullscreen();
+    }, true);
+
+    document.addEventListener('fullscreenchange', handleFullscreenStateChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenStateChange);
+
+    // After exit-triggered reload, force one clean initial layout pass.
+    if (sessionStorage.getItem('contegg_returned_from_fullscreen') === '1') {
+        sessionStorage.removeItem('contegg_returned_from_fullscreen');
+
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                if (typeof window.__conteggRunLayout === 'function') {
+                    window.__conteggRunLayout('force');
+                }
+            }, 80);
+        }, { once: true });
+    }
+})();
 </script>
 
 
@@ -16632,23 +16817,8 @@ body.keyboard-no-transition .chat-input-bar {
         }, 140);
     }, { passive: true });
 
-    document.addEventListener('fullscreenchange', () => {
-        document.body.classList.add('contegg-layout-settling');
-
-        clearTimeout(layoutEngineSettleTimer);
-        layoutEngineSettleTimer = setTimeout(() => {
-            scheduleConteggLayout('fullscreen');
-        }, 160);
-    }, { passive: true });
-
-    document.addEventListener('webkitfullscreenchange', () => {
-        document.body.classList.add('contegg-layout-settling');
-
-        clearTimeout(layoutEngineSettleTimer);
-        layoutEngineSettleTimer = setTimeout(() => {
-            scheduleConteggLayout('fullscreen');
-        }, 160);
-    }, { passive: true });
+    // Fullscreen lifecycle is owned by CONTEGG-PC-AUTO-FULLSCREEN V8.
+    // Do not attach another competing fullscreen layout handler here.
 
     // Initial state: exactly one initial layout pass.
     runConteggLayout('force');
@@ -18999,6 +19169,31 @@ body.contegg-layout-settling .modal-sheet {
     #conteggAdminWorkspace {
         animation:none !important;
     }
+}
+</style>
+
+
+<style id="CONTEGG-FULLSCREEN-V8-CSS">
+@media (min-width:1200px) {
+    body:not(.contegg-layout-settling) {
+        --contegg-fullscreen-shortcut: "Esc";
+    }
+}
+
+/* No transition should run while entering/exiting native fullscreen. */
+body.contegg-layout-settling #conteggDesktopShell,
+body.contegg-layout-settling #conteggDesktopShell *,
+:fullscreen #conteggDesktopShell,
+:fullscreen #conteggDesktopShell * {
+    animation-play-state: paused !important;
+}
+
+:fullscreen #conteggDesktopShell {
+    width:100vw !important;
+    height:100vh !important;
+    height:100dvh !important;
+    max-width:none !important;
+    max-height:none !important;
 }
 </style>
 
