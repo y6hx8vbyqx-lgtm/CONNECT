@@ -10561,126 +10561,760 @@ body.keyboard-no-transition .chat-input-bar {
 })();
 </script>
 
-<style id="CONTEGG-SEPARATE-HEADER-LAYER-FINAL">
-/* ============================================================
-   MOBILE CHAT HEADER — SEPARATE COMPOSITOR / DOM LAYER
 
-   The header is a direct child of BODY while chat is open.
-   It is NOT inside #chatOverlay, so keyboard viewport changes,
-   chat overlay height changes and overlay transforms cannot move it.
+<style id="CONTEGG-RESPONSIVE-ARCHITECTURE-V3">
+/* ============================================================
+   CONTEGG RESPONSIVE ARCHITECTURE V3
+   PHONE  < 768px : chat body moves for keyboard, header does not.
+   TABLET >= 768px: 20% chat list / 80% workspace.
+   DESKTOP>=1200px: 20% list / 60% chat / 20% emoji panel.
    ============================================================ */
 
-@media (max-width: 900px), (pointer: coarse) {
-    #conteggChatHeaderLayer {
+:root {
+    --contegg-phone-header-h: var(--navbar-height, 56px);
+    --contegg-phone-base-h: 100dvh;
+    --contegg-phone-keyboard-shift: 0px;
+    --contegg-desktop-left: 20vw;
+    --contegg-desktop-right: 20vw;
+}
+
+/* ---------------- PHONE ---------------- */
+@media (max-width: 767px) {
+    #conteggDesktopShell,
+    #conteggDesktopEmptyState,
+    #conteggDesktopRightPanel,
+    #conteggDesktopRightToggle {
+        display: none !important;
+    }
+
+    /* Header is a BODY child and never enters the moving keyboard layer. */
+    #conteggPhoneHeaderLayer {
         position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        bottom: auto !important;
-        width: 100% !important;
-        height: var(--navbar-height) !important;
-        min-height: var(--navbar-height) !important;
-        max-height: var(--navbar-height) !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        overflow: visible !important;
-        z-index: 100002 !important;
+        inset: 0 0 auto 0 !important;
+        height: var(--contegg-phone-header-h) !important;
+        min-height: var(--contegg-phone-header-h) !important;
+        z-index: 2147482000 !important;
+        overflow: hidden !important;
         pointer-events: none !important;
-        translate: none !important;
         transform: none !important;
-        scale: 1 !important;
+        translate: none !important;
+        transition: none !important;
+        animation: none !important;
+        contain: layout paint !important;
+        isolation: isolate !important;
+    }
+
+    #conteggPhoneHeaderLayer > #chatNavbar.chat-navbar {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: var(--contegg-phone-header-h) !important;
+        min-height: var(--contegg-phone-header-h) !important;
+        max-height: var(--contegg-phone-header-h) !important;
+        display: flex !important;
+        pointer-events: auto !important;
+        transform: none !important;
+        translate: none !important;
         transition: none !important;
         animation: none !important;
         will-change: auto !important;
     }
 
-    #conteggChatHeaderLayer > #chatNavbar.chat-navbar,
-    body.chat-open #conteggChatHeaderLayer > #chatNavbar.chat-navbar,
-    body.chat-open.keyboard-open #conteggChatHeaderLayer > #chatNavbar.chat-navbar,
-    body.chat-open.keyboard-settling-in #conteggChatHeaderLayer > #chatNavbar.chat-navbar,
-    body.chat-open.keyboard-settling-out #conteggChatHeaderLayer > #chatNavbar.chat-navbar,
-    body.chat-open.keyboard-no-transition #conteggChatHeaderLayer > #chatNavbar.chat-navbar {
-        position: relative !important;
+    body:not(.chat-open) #conteggPhoneHeaderLayer {
+        visibility: hidden !important;
+        pointer-events: none !important;
+    }
+
+    body.chat-open #conteggPhoneHeaderLayer {
+        visibility: visible !important;
+    }
+
+    /* Horizontal open/close animation belongs to overlay only. */
+    #chatOverlay.chat-overlay {
+        position: fixed !important;
         top: 0 !important;
         left: 0 !important;
+        right: auto !important;
+        bottom: auto !important;
+        width: 100vw !important;
+        height: var(--contegg-phone-base-h) !important;
+        max-height: none !important;
+        overflow: hidden !important;
+        display: block !important;
+        transform: translate3d(100%,0,0) !important;
+        transition: transform .28s cubic-bezier(.2,.8,.2,1) !important;
+        z-index: 100000 !important;
+    }
+
+    #chatOverlay.chat-overlay.show {
+        transform: translate3d(0,0,0) !important;
+    }
+
+    /* Only this layer follows the keyboard. Header is NOT inside it. */
+    #conteggPhoneChatMotionLayer {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        overflow: hidden !important;
+        transform: translate3d(0, calc(-1 * var(--contegg-phone-keyboard-shift)), 0) !important;
+        transition: none !important;
+        animation: none !important;
+        will-change: transform !important;
+        contain: layout paint !important;
+    }
+
+    #conteggPhoneChatMotionLayer > #chatMessages.chat-messages {
+        position: absolute !important;
+        top: var(--contegg-phone-header-h) !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: var(--contegg-input-bar-height, 58px) !important;
+        min-height: 0 !important;
+        overflow-y: auto !important;
+        padding: 12px !important;
+        padding-bottom: 12px !important;
+        transform: none !important;
+        transition: none !important;
+    }
+
+    #conteggPhoneChatMotionLayer > #chatInputBar.chat-input-bar {
+        position: absolute !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+        transform: none !important;
+        transition: none !important;
+        padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+    }
+
+    body.keyboard-open #conteggPhoneChatMotionLayer > #chatInputBar.chat-input-bar {
+        padding-bottom: 8px !important;
+    }
+
+    /* Kill every old keyboard rule that tried to move these children separately. */
+    body.keyboard-open #chatMessages.chat-messages,
+    body.keyboard-settling-in #chatMessages.chat-messages,
+    body.keyboard-settling-out #chatMessages.chat-messages,
+    body.keyboard-no-transition #chatMessages.chat-messages {
+        bottom: var(--contegg-input-bar-height, 58px) !important;
+        transform: none !important;
+        transition: none !important;
+    }
+
+    body.keyboard-open #chatInputBar.chat-input-bar,
+    body.keyboard-settling-in #chatInputBar.chat-input-bar,
+    body.keyboard-settling-out #chatInputBar.chat-input-bar,
+    body.keyboard-no-transition #chatInputBar.chat-input-bar {
+        bottom: 0 !important;
+        transform: none !important;
+        transition: none !important;
+    }
+}
+
+/* ---------------- TABLET + DESKTOP ---------------- */
+@media (min-width: 768px) {
+    html, body {
+        width: 100% !important;
+        height: 100% !important;
+        overflow: hidden !important;
+    }
+
+    body {
+        position: fixed !important;
+        inset: 0 !important;
+        margin: 0 !important;
+        background: #000 !important;
+    }
+
+    #conteggPhoneHeaderLayer { display: none !important; }
+
+    #conteggDesktopShell {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        grid-template-columns: var(--contegg-desktop-left) minmax(0,1fr);
+        width: 100vw;
+        height: 100dvh;
+        overflow: hidden;
+        background: #000;
+    }
+
+    #conteggDesktopLeft {
+        position: relative;
+        min-width: 0;
+        height: 100%;
+        overflow: hidden;
+        border-right: 0.5px solid rgba(255,255,255,.10);
+        background: rgba(20,20,21,.98);
+    }
+
+    #conteggDesktopLeft > .app-container {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+        transform: none !important;
+        padding-bottom: 82px !important;
+        background: transparent !important;
+    }
+
+    body.chat-open #conteggDesktopLeft > .app-container {
+        opacity: 1 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+    }
+
+    #conteggDesktopLeft .navbar {
+        position: relative !important;
+        top: auto !important;
+        width: 100% !important;
+        flex: 0 0 auto !important;
+    }
+
+    #conteggDesktopLeft .content-area {
+        min-height: 0 !important;
+    }
+
+    #conteggDesktopLeft .page,
+    #conteggDesktopLeft #pageChats {
+        width: 100% !important;
+    }
+
+    #conteggDesktopLeft .chats-list {
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+    }
+
+    #conteggDesktopLeft .chat-cell {
+        border-radius: 13px !important;
+    }
+
+    #conteggDesktopWorkspace {
+        position: relative;
+        min-width: 0;
+        height: 100%;
+        overflow: hidden;
+        background:
+            radial-gradient(circle at 50% 38%, rgba(10,132,255,.07), transparent 35%),
+            #09090a;
+    }
+
+    #conteggDesktopChatPane {
+        position: absolute;
+        inset: 0;
+        min-width: 0;
+        overflow: hidden;
+        transition: right .28s cubic-bezier(.2,.8,.2,1);
+    }
+
+    #conteggDesktopEmptyState {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        z-index: 2;
+    }
+
+    #conteggDesktopEmptyState > div {
+        padding: 10px 16px;
+        border-radius: 999px;
+        color: rgba(235,235,245,.72);
+        background: rgba(44,44,46,.72);
+        border: 0.5px solid rgba(255,255,255,.10);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        font-size: 14px;
+        box-shadow: 0 10px 30px rgba(0,0,0,.22);
+    }
+
+    body.chat-open #conteggDesktopEmptyState {
+        display: none !important;
+    }
+
+    #conteggDesktopChatPane > #chatOverlay.chat-overlay {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        max-height: none !important;
+        display: none !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+        transform: none !important;
+        transition: none !important;
+        z-index: 3 !important;
+        background: #000 !important;
+    }
+
+    #conteggDesktopChatPane > #chatOverlay.chat-overlay.show,
+    body.chat-open #conteggDesktopChatPane > #chatOverlay.chat-overlay {
+        display: flex !important;
+        transform: none !important;
+    }
+
+    #conteggDesktopChatPane #chatNavbar.chat-navbar {
+        position: relative !important;
+        top: auto !important;
+        left: auto !important;
         right: auto !important;
         bottom: auto !important;
         width: 100% !important;
         height: var(--navbar-height) !important;
         min-height: var(--navbar-height) !important;
-        max-height: var(--navbar-height) !important;
-        margin: 0 !important;
         display: flex !important;
-        pointer-events: auto !important;
-        translate: none !important;
         transform: none !important;
-        scale: 1 !important;
         transition: none !important;
-        animation: none !important;
-        will-change: auto !important;
-        z-index: 1 !important;
+        flex: 0 0 var(--navbar-height) !important;
+        z-index: 20 !important;
     }
 
-    body:not(.chat-open) #conteggChatHeaderLayer {
+    #conteggDesktopChatPane .chat-back {
         display: none !important;
     }
 
-    body.chat-open #conteggChatHeaderLayer {
-        display: block !important;
+    #conteggDesktopChatPane #chatMessages.chat-messages {
+        position: relative !important;
+        inset: auto !important;
+        top: auto !important;
+        left: auto !important;
+        right: auto !important;
+        bottom: auto !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        width: 100% !important;
+        overflow-y: auto !important;
+        transform: none !important;
+        transition: none !important;
     }
 
-    /* The messages keep a permanent header-sized reserved area. */
-    body.chat-open #chatMessages.chat-messages {
-        top: var(--navbar-height) !important;
+    #conteggDesktopChatPane #chatInputBar.chat-input-bar {
+        position: relative !important;
+        inset: auto !important;
+        left: auto !important;
+        right: auto !important;
+        bottom: auto !important;
+        width: 100% !important;
+        flex: 0 0 auto !important;
+        transform: none !important;
+        transition: none !important;
+        padding-bottom: max(8px, env(safe-area-inset-bottom,0px)) !important;
     }
+
+    #conteggDesktopRightPanel {
+        display: none;
+    }
+
+    /* Old full-screen/mobile rules must never hide the side list here. */
+    body.chat-open .tabbar {
+        visibility: visible !important;
+    }
+}
+
+/* ---------------- WIDE DESKTOP RIGHT PANEL ---------------- */
+@media (min-width: 1200px) {
+    #conteggDesktopChatPane {
+        right: var(--contegg-desktop-right) !important;
+        transition: right .28s cubic-bezier(.2,.8,.2,1) !important;
+    }
+
+    body.contegg-right-collapsed #conteggDesktopChatPane {
+        right: 0 !important;
+    }
+
+    #conteggDesktopRightPanel {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: var(--contegg-desktop-right);
+        min-width: 240px;
+        display: flex;
+        flex-direction: column;
+        border-left: 0.5px solid rgba(255,255,255,.10);
+        background: rgba(22,22,24,.98);
+        transform: translate3d(0,0,0);
+        transition: transform .28s cubic-bezier(.2,.8,.2,1), opacity .2s ease;
+        z-index: 10;
+    }
+
+    body.contegg-right-collapsed #conteggDesktopRightPanel {
+        transform: translate3d(100%,0,0);
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    #conteggDesktopRightToggle {
+        position: absolute;
+        top: 50%;
+        right: calc(var(--contegg-desktop-right) - 18px);
+        width: 36px;
+        height: 56px;
+        margin-top: -28px;
+        border: 0.5px solid rgba(255,255,255,.12);
+        border-right: none;
+        border-radius: 18px 0 0 18px;
+        background: rgba(44,44,46,.88);
+        color: rgba(255,255,255,.78);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        z-index: 30;
+        cursor: pointer;
+        transition: right .28s cubic-bezier(.2,.8,.2,1), background .18s ease;
+    }
+
+    body.contegg-right-collapsed #conteggDesktopRightToggle {
+        right: 0;
+    }
+
+    #conteggDesktopRightToggle i {
+        transition: transform .28s cubic-bezier(.2,.8,.2,1);
+    }
+
+    body.contegg-right-collapsed #conteggDesktopRightToggle i {
+        transform: rotate(180deg);
+    }
+
+    .contegg-side-tabs {
+        flex: 0 0 auto;
+        display: grid;
+        grid-template-columns: repeat(3,1fr);
+        gap: 4px;
+        padding: 10px;
+        border-bottom: 0.5px solid rgba(255,255,255,.08);
+    }
+
+    .contegg-side-tab {
+        border: none;
+        border-radius: 10px;
+        padding: 9px 4px;
+        background: transparent;
+        color: rgba(235,235,245,.62);
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    .contegg-side-tab.active {
+        background: rgba(255,255,255,.09);
+        color: #fff;
+    }
+
+    #conteggSidePanelContent {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 12px;
+    }
+
+    .contegg-emoji-grid {
+        display: grid;
+        grid-template-columns: repeat(6,1fr);
+        gap: 5px;
+    }
+
+    .contegg-emoji-btn {
+        aspect-ratio: 1;
+        border: none;
+        border-radius: 10px;
+        background: transparent;
+        font-size: clamp(20px,2vw,29px);
+        cursor: pointer;
+    }
+
+    .contegg-emoji-btn:hover {
+        background: rgba(255,255,255,.08);
+    }
+
+    .contegg-panel-placeholder {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        color: rgba(235,235,245,.48);
+        text-align: center;
+        font-size: 13px;
+    }
+
+    .contegg-panel-placeholder i {
+        font-size: 32px;
+        color: rgba(235,235,245,.28);
+    }
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+    :root { --contegg-desktop-left: 20vw; }
+    #conteggDesktopRightToggle { display: none !important; }
 }
 </style>
 
-<script id="CONTEGG-SEPARATE-HEADER-LAYER-FINAL-JS">
+<script id="CONTEGG-RESPONSIVE-ARCHITECTURE-V3-JS">
 (() => {
-    function mobileHeaderMode() {
-        return window.matchMedia('(max-width: 900px), (pointer: coarse)').matches ||
-               /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    'use strict';
+
+    const PHONE_QUERY = '(max-width: 767px)';
+    const WIDE_QUERY = '(min-width: 1200px)';
+    const emojis = '😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 🙃 😉 😌 😍 🥰 😘 😗 😙 😚 😋 😛 😝 😜 🤪 🤨 🧐 🤓 😎 🥸 🤩 🥳 😏 😒 😞 😔 😟 😕 🙁 ☹️ 😣 😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 😓 🤗 🤔 🫣 🤭 🫢 🫡 🤫 🫠 🤥 😶 🫥 😐 🫤 😑 😬 🙄 😯 😦 😧 😮 😲 🥱 😴 🤤 😪 😵 🤐 🥴 🤢 🤮 🤧 😷 🤒 🤕 🤑 🤠 😈 👿 👻 💀 ☠️ 👽 🤖 🎃 😺 😸 😹 😻 😼 😽 🙀 😿 😾 ❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 ❣️ 💕 💞 💓 💗 💖 💘 💝 💟 👍 👎 👌 🤌 🤏 ✌️ 🤞 🫰 🤟 🤘 🤙 👈 👉 👆 👇 ☝️ ✋ 🤚 🖐️ 🖖 👋 🤝 👏 🙌 🫶 👐 🤲 🙏 ✍️ 💅 🤳 💪 🦾 🦿 🦵 🦶 👂 👃 👀 👁️ 🧠 🫀 🫁 🗣️ 👤 👥 🫂'.split(' ');
+
+    function isPhone() {
+        return window.matchMedia(PHONE_QUERY).matches;
     }
 
-    function hardPinHeader() {
-        if (!mobileHeaderMode()) return;
-
+    function ensurePhoneLayers() {
+        const overlay = document.getElementById('chatOverlay');
         const navbar = document.getElementById('chatNavbar');
-        if (!navbar) return;
+        const messages = document.getElementById('chatMessages');
+        const inputBar = document.getElementById('chatInputBar');
+        if (!overlay || !navbar || !messages || !inputBar) return;
 
-        let layer = document.getElementById('conteggChatHeaderLayer');
-        if (!layer) {
-            layer = document.createElement('div');
-            layer.id = 'conteggChatHeaderLayer';
-            document.body.appendChild(layer);
+        let headerLayer = document.getElementById('conteggPhoneHeaderLayer');
+        if (!headerLayer) {
+            headerLayer = document.createElement('div');
+            headerLayer.id = 'conteggPhoneHeaderLayer';
+            document.body.appendChild(headerLayer);
+        }
+        if (navbar.parentElement !== headerLayer) headerLayer.appendChild(navbar);
+
+        let motion = document.getElementById('conteggPhoneChatMotionLayer');
+        if (!motion) {
+            motion = document.createElement('div');
+            motion.id = 'conteggPhoneChatMotionLayer';
+            overlay.appendChild(motion);
+        }
+        if (messages.parentElement !== motion) motion.appendChild(messages);
+        if (inputBar.parentElement !== motion) motion.appendChild(inputBar);
+    }
+
+    function ensureDesktopShell() {
+        const app = document.querySelector('.app-container');
+        const overlay = document.getElementById('chatOverlay');
+        const navbar = document.getElementById('chatNavbar');
+        const messages = document.getElementById('chatMessages');
+        const inputBar = document.getElementById('chatInputBar');
+        if (!app || !overlay || !navbar || !messages || !inputBar) return;
+
+        let shell = document.getElementById('conteggDesktopShell');
+        if (!shell) {
+            shell = document.createElement('div');
+            shell.id = 'conteggDesktopShell';
+            shell.innerHTML = `
+                <aside id="conteggDesktopLeft"></aside>
+                <main id="conteggDesktopWorkspace">
+                    <section id="conteggDesktopChatPane">
+                        <div id="conteggDesktopEmptyState"><div>Откройте чат, чтобы начать общаться</div></div>
+                    </section>
+                    <aside id="conteggDesktopRightPanel">
+                        <div class="contegg-side-tabs">
+                            <button class="contegg-side-tab active" data-side-tab="emoji">Эмодзи</button>
+                            <button class="contegg-side-tab" data-side-tab="stickers">Стикеры</button>
+                            <button class="contegg-side-tab" data-side-tab="gif">GIF</button>
+                        </div>
+                        <div id="conteggSidePanelContent"></div>
+                    </aside>
+                    <button id="conteggDesktopRightToggle" type="button" aria-label="Скрыть боковую панель"><i class="fas fa-chevron-right"></i></button>
+                </main>`;
+            document.body.insertBefore(shell, document.body.firstChild);
         }
 
-        if (navbar.parentElement !== layer) {
-            layer.appendChild(navbar);
+        const left = document.getElementById('conteggDesktopLeft');
+        const pane = document.getElementById('conteggDesktopChatPane');
+        if (app.parentElement !== left) left.appendChild(app);
+        if (overlay.parentElement !== pane) pane.appendChild(overlay);
+
+        // On tablet/desktop navbar belongs to the chat itself.
+        if (navbar.parentElement !== overlay) overlay.insertBefore(navbar, overlay.firstChild);
+        if (messages.parentElement !== overlay) overlay.appendChild(messages);
+        if (inputBar.parentElement !== overlay) overlay.appendChild(inputBar);
+
+        initRightPanel();
+    }
+
+    function renderSideTab(name) {
+        const content = document.getElementById('conteggSidePanelContent');
+        if (!content) return;
+        content.replaceChildren();
+
+        if (name === 'emoji') {
+            const grid = document.createElement('div');
+            grid.className = 'contegg-emoji-grid';
+            emojis.forEach(emoji => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'contegg-emoji-btn';
+                b.textContent = emoji;
+                b.addEventListener('click', () => {
+                    const input = document.getElementById('chatInput');
+                    if (!input) return;
+                    const start = input.selectionStart ?? input.value.length;
+                    const end = input.selectionEnd ?? start;
+                    input.setRangeText(emoji, start, end, 'end');
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.focus({ preventScroll: true });
+                });
+                grid.appendChild(b);
+            });
+            content.appendChild(grid);
+            return;
         }
 
-        // Clear any inline geometry left by old code/debugging.
-        for (const prop of ['top','bottom','left','right','transform','translate','position']) {
-            navbar.style.removeProperty(prop);
+        const empty = document.createElement('div');
+        empty.className = 'contegg-panel-placeholder';
+        empty.innerHTML = name === 'stickers'
+            ? '<i class="far fa-sticky-note"></i><div>Стикеры появятся здесь</div>'
+            : '<i class="fas fa-film"></i><div>GIF-панель появится здесь</div>';
+        content.appendChild(empty);
+    }
+
+    let rightPanelInitialized = false;
+    function initRightPanel() {
+        if (rightPanelInitialized) return;
+        const toggle = document.getElementById('conteggDesktopRightToggle');
+        const tabs = [...document.querySelectorAll('.contegg-side-tab')];
+        if (!toggle || !tabs.length) return;
+        rightPanelInitialized = true;
+
+        toggle.addEventListener('click', () => {
+            document.body.classList.toggle('contegg-right-collapsed');
+            const collapsed = document.body.classList.contains('contegg-right-collapsed');
+            toggle.setAttribute('aria-label', collapsed ? 'Открыть боковую панель' : 'Скрыть боковую панель');
+        });
+
+        tabs.forEach(tab => tab.addEventListener('click', () => {
+            tabs.forEach(x => x.classList.toggle('active', x === tab));
+            renderSideTab(tab.dataset.sideTab);
+        }));
+        renderSideTab('emoji');
+    }
+
+    function restoreFromDesktopToPhone() {
+        const app = document.querySelector('.app-container');
+        const overlay = document.getElementById('chatOverlay');
+        if (app && app.parentElement?.id === 'conteggDesktopLeft') document.body.insertBefore(app, document.body.firstChild);
+        if (overlay && overlay.parentElement?.id === 'conteggDesktopChatPane') document.body.appendChild(overlay);
+        ensurePhoneLayers();
+    }
+
+    function freezePhoneBaseHeight() {
+        if (!isPhone()) return;
+        const vv = window.visualViewport;
+        const input = document.getElementById('chatInput');
+        const keyboardLikelyOpen = document.activeElement === input || (vv && window.innerHeight - vv.height > 80);
+        if (keyboardLikelyOpen) return;
+        const h = Math.round(window.innerHeight || document.documentElement.clientHeight || 0);
+        if (h > 0) document.documentElement.style.setProperty('--contegg-phone-base-h', h + 'px');
+    }
+
+    let keyboardRaf = 0;
+    function syncPhoneKeyboard() {
+        if (!isPhone()) {
+            document.documentElement.style.setProperty('--contegg-phone-keyboard-shift', '0px');
+            return;
+        }
+        cancelAnimationFrame(keyboardRaf);
+        keyboardRaf = requestAnimationFrame(() => {
+            ensurePhoneLayers();
+            const vv = window.visualViewport;
+            const input = document.getElementById('chatInput');
+            if (!vv || !document.body.classList.contains('chat-open')) {
+                document.documentElement.style.setProperty('--contegg-phone-keyboard-shift', '0px');
+                freezePhoneBaseHeight();
+                return;
+            }
+
+            const base = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--contegg-phone-base-h')) || window.innerHeight;
+            const keyboardOpen = document.activeElement === input || window.innerHeight - vv.height > 80;
+            const covered = keyboardOpen ? Math.max(0, Math.round(base - vv.height - Math.max(0, vv.offsetTop || 0))) : 0;
+
+            document.documentElement.style.setProperty('--contegg-phone-keyboard-shift', covered + 'px');
+            document.body.classList.toggle('keyboard-open', covered > 0 || keyboardOpen);
+
+            // Safari occasionally pans the layout viewport to reveal a textarea.
+            // Keep document scrolling locked; only the dedicated motion layer moves.
+            if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+        });
+    }
+
+    function arrangeForViewport() {
+        if (isPhone()) {
+            restoreFromDesktopToPhone();
+            freezePhoneBaseHeight();
+            syncPhoneKeyboard();
+        } else {
+            document.documentElement.style.setProperty('--contegg-phone-keyboard-shift', '0px');
+            ensureDesktopShell();
         }
     }
 
-    // Pin once after parsing.
-    hardPinHeader();
+    // Replace the old helper's tablet detection. Tablet is desktop-layout now.
+    window.ensureChatNavbarInOverlay = function() {
+        if (isPhone()) ensurePhoneLayers();
+        else ensureDesktopShell();
+    };
 
-    // Repin when chat state changes. This also defeats any old helper that
-    // accidentally tries to put the navbar back inside #chatOverlay later.
-    new MutationObserver(() => {
-        if (document.body.classList.contains('chat-open')) {
-            hardPinHeader();
-        }
-    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    const originalShow = window.showChatOverlay;
+    if (typeof originalShow === 'function') {
+        window.showChatOverlay = function(...args) {
+            arrangeForViewport();
+            const result = originalShow.apply(this, args);
+            arrangeForViewport();
+            if (isPhone()) {
+                freezePhoneBaseHeight();
+                syncPhoneKeyboard();
+            }
+            return result;
+        };
+    }
 
-    // Keyboard events are intentionally NOT used to position the header.
-    // We only assert the parent layer, never calculate top/offset/transform.
-    document.getElementById('chatInput')?.addEventListener('focus', hardPinHeader, true);
-    document.getElementById('chatInput')?.addEventListener('blur', hardPinHeader, true);
+    const originalHide = window.hideChatOverlay;
+    if (typeof originalHide === 'function') {
+        window.hideChatOverlay = function(...args) {
+            const result = originalHide.apply(this, args);
+            document.documentElement.style.setProperty('--contegg-phone-keyboard-shift', '0px');
+            return result;
+        };
+    }
+
+    const input = document.getElementById('chatInput');
+    if (input) {
+        input.addEventListener('focus', () => {
+            if (!isPhone()) return;
+            freezePhoneBaseHeight();
+            requestAnimationFrame(syncPhoneKeyboard);
+            setTimeout(syncPhoneKeyboard, 40);
+            setTimeout(syncPhoneKeyboard, 120);
+            setTimeout(syncPhoneKeyboard, 240);
+        }, true);
+        input.addEventListener('blur', () => {
+            if (!isPhone()) return;
+            document.documentElement.style.setProperty('--contegg-phone-keyboard-shift', '0px');
+            setTimeout(() => {
+                freezePhoneBaseHeight();
+                syncPhoneKeyboard();
+            }, 120);
+        }, true);
+    }
+
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', syncPhoneKeyboard, { passive: true });
+        window.visualViewport.addEventListener('scroll', syncPhoneKeyboard, { passive: true });
+    }
+    window.addEventListener('resize', () => {
+        arrangeForViewport();
+        syncPhoneKeyboard();
+    }, { passive: true });
+    window.addEventListener('orientationchange', () => setTimeout(arrangeForViewport, 180), { passive: true });
+
+    // Initial state: desktop/tablet always show chat list and empty workspace.
+    arrangeForViewport();
 })();
 </script>
 
