@@ -9686,7 +9686,19 @@ document.getElementById('chatInput').addEventListener('keydown', function(e) {
 
 document.getElementById('chatInput').addEventListener('input', function() {
     this.style.height = 'auto';
-    this.style.height = Math.min(this.scrollHeight, 100) + 'px';
+
+    const contentHeight = this.scrollHeight;
+    const nextHeight = Math.min(contentHeight, 100);
+    this.style.height = nextHeight + 'px';
+
+    // Do not reserve/show a scrollbar while the field still fits its content.
+    // The same translucent capsule style as the emoji panel appears only
+    // once the composer reaches its maximum height and really needs scrolling.
+    const needsScroll = contentHeight > 100;
+    this.classList.toggle('has-scroll', needsScroll);
+    this.style.overflowY = needsScroll ? 'auto' : 'hidden';
+
+    if (!needsScroll) this.scrollTop = 0;
     settleChatAfterInputChange({ smooth: false });
 });
 
@@ -11152,32 +11164,43 @@ body.keyboard-no-transition .chat-input-bar {
         background-clip: padding-box;
     }
 
-    /* Message composer: same quiet translucent capsule instead of the white OS scrollbar. */
+    /* Composer scrollbar: hidden until the textarea actually overflows. */
     #chatInput.chat-input {
-        overflow-y: auto !important;
-        scrollbar-width: thin;
-        scrollbar-color: rgba(235,235,245,.22) transparent;
+        overflow-y: hidden !important;
+        scrollbar-width: none;
+        scrollbar-color: transparent transparent;
         scrollbar-gutter: auto;
     }
 
     #chatInput.chat-input::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+    }
+
+    #chatInput.chat-input.has-scroll {
+        overflow-y: auto !important;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(235,235,245,.24) transparent;
+    }
+
+    #chatInput.chat-input.has-scroll::-webkit-scrollbar {
         width: 7px;
     }
 
-    #chatInput.chat-input::-webkit-scrollbar-track {
+    #chatInput.chat-input.has-scroll::-webkit-scrollbar-track {
         background: transparent;
         margin: 7px 0;
     }
 
-    #chatInput.chat-input::-webkit-scrollbar-thumb {
+    #chatInput.chat-input.has-scroll::-webkit-scrollbar-thumb {
         min-height: 26px;
         border: 2px solid transparent;
         border-radius: 999px;
-        background: rgba(235,235,245,.20);
+        background: rgba(235,235,245,.22);
         background-clip: padding-box;
     }
 
-    #chatInput.chat-input::-webkit-scrollbar-thumb:hover {
+    #chatInput.chat-input.has-scroll::-webkit-scrollbar-thumb:hover {
         background: rgba(235,235,245,.34);
         background-clip: padding-box;
     }
