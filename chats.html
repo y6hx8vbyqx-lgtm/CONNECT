@@ -6957,11 +6957,43 @@ if (msg.replyTo) {
     if (msg.isSystemMessage && msg.senderName) {
         html += `<div style="font-size:11px;color:var(--accent);margin-bottom:4px;font-weight:500;">${esc(msg.senderName)}</div>`;
     } else if (currentChatIsGroup && !isOut && msg.senderId && msg.senderId !== 'system') {
-        getUserInfo(msg.senderId).then(u => {
-            const el = div.querySelector('.msg-sender');
-            if (el) el.textContent = (u.displayName || u.username) + ': ';
-        });
-        html += `<span class="msg-sender" style="font-size:12px;color:var(--accent);font-weight:500;"></span>`;
+        const senderId = msg.senderId;
+
+        html += `
+            <button
+                type="button"
+                class="contegg-group-sender"
+                data-group-sender-id="${esc(senderId)}"
+                onclick="event.stopPropagation(); openCommentUserProfile(${jsString(senderId)})"
+                aria-label="Открыть профиль пользователя"
+            >
+                <span class="contegg-group-sender-avatar">
+                    <span class="contegg-group-sender-fallback">?</span>
+                </span>
+                <span class="msg-sender contegg-group-sender-name">Пользователь</span>
+            </button>
+        `;
+
+        getUserInfo(senderId).then(u => {
+            const senderButton = div.querySelector(`[data-group-sender-id="${CSS.escape(senderId)}"]`);
+            if (!senderButton) return;
+
+            const nameEl = senderButton.querySelector('.contegg-group-sender-name');
+            const avatarEl = senderButton.querySelector('.contegg-group-sender-avatar');
+
+            if (nameEl) {
+                nameEl.textContent = u.displayName || u.username || 'Пользователь';
+            }
+
+            if (avatarEl) {
+                const avatarSrc = getAvatarSrc(u);
+                if (avatarSrc) {
+                    avatarEl.innerHTML = `<img src="${avatarSrc}" alt="">`;
+                } else {
+                    avatarEl.innerHTML = `<span class="contegg-group-sender-fallback">${esc((u.displayName || u.username || 'U')[0].toUpperCase())}</span>`;
+                }
+            }
+        }).catch(console.error);
     }
     
 if (msg.videoUrl) {
@@ -7777,8 +7809,9 @@ async function openCommentUserProfile(userId) {
 
     const user = await getUserInfo(userId);
 
-    const avHTML = user.avatarBase64
-        ? `<img src="${user.avatarBase64}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;">`
+    const profileAvatarSrc = getAvatarSrc(user);
+    const avHTML = profileAvatarSrc
+        ? `<img src="${profileAvatarSrc}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;">`
         : `<div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#007aff,#5856d6);display:flex;align-items:center;justify-content:center;font-size:32px;color:white;margin:0 auto;">${esc((user.displayName || user.username || 'U')[0]?.toUpperCase())}</div>`;
 
     document.getElementById('userProfileContent').innerHTML = `
@@ -7829,6 +7862,9 @@ async function openChatFromCommentProfile(userId, username = '') {
     }
 }
 window.openChatFromCommentProfile = openChatFromCommentProfile;
+
+window.openUserProfile = openCommentUserProfile;
+
 
 async function sendMessage() {
     const input = document.getElementById('chatInput');
@@ -8375,10 +8411,21 @@ async function resolveForwardOrigin(msg) {
     };
 }
 
+function detectForwardMessageType(msg) {
+    if (msg.type) return msg.type;
+    if (msg.audioUrl) return 'audio';
+    if (msg.videoUrl) return 'video';
+    if (msg.imageUrl || (Array.isArray(msg.images) && msg.images.length) || (Array.isArray(msg.channelImages) && msg.channelImages.length)) return 'image';
+    return 'text';
+}
+
 function buildForwardedMessagePayload(msg, origin) {
     const out = {
         senderId: currentUser.uid,
         timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        read: false,
+        type: detectForwardMessageType(msg),
+
         forwarded: true,
         forwardedFromName: origin.name,
         forwardedFromChatId: origin.chatId || '',
@@ -8402,62 +8449,113 @@ function buildForwardedMessagePayload(msg, origin) {
     ];
 
     for (const key of copyFields) {
-        if (msg[key] !== undefined && msg[key] !== null) out[key] = msg[key];
+        if (msg[key] !== undefined && msg[key] !== null) {
+            out[key] = msg[key];
+        }
     }
 
     return out;
 }
 
 async function forwardSelectedMessageToChat(targetChatId) {
-    if (!forwardSourceMessage || !targetChatId) return;
-
-    const target = forwardDestinationChats.find(c => c.id === targetChatId);
-    if (!target || !canForwardToChat(target)) {
-        toast('В этот чат нельзя отправлять сообщения');
+    if (!forwardSourceMessage || !targetChatId || !currentUser) {
+        toast('Не удалось определить сообщение для пересылки');
         return;
     }
 
-    const row = document.querySelector(`.contegg-forward-chat[onclick*="${targetChatId}"]`);
-    row?.classList.add('is-sending');
+    const button = [...document.querySelectorAll('.contegg-forward-chat')]
+        .find(el => el.getAttribute('onclick')?.includes(targetChatId));
+
+    button?.classList.add('is-sending');
+    if (button) button.disabled = true;
 
     try {
+        // Always read the destination from Firestore again.
+        // This prevents stale/malformed objects in the picker from breaking the send.
+        const targetDoc = await db.collection('chats').doc(targetChatId).get();
+
+        if (!targetDoc.exists) {
+            throw new Error('Destination chat does not exist');
+        }
+
+        const target = {
+            id: targetDoc.id,
+            ...targetDoc.data()
+        };
+
+        if (!canForwardToChat(target)) {
+            throw new Error('No permission to send to destination chat');
+        }
+
         const origin = await resolveForwardOrigin(forwardSourceMessage);
         const payload = buildForwardedMessagePayload(forwardSourceMessage, origin);
 
-        await db.collection('chats')
+        const newMessageRef = await db.collection('chats')
             .doc(targetChatId)
             .collection('messages')
             .add(payload);
 
-        const participants = Array.isArray(target.participants) ? target.participants : [];
-        const unreadFor = participants.filter(uid => uid !== currentUser.uid);
-
         let preview = payload.text || payload.caption || '';
+
         if (!preview) {
-            if (payload.imageUrl || payload.images || payload.channelImages) preview = '📷 Фото';
-            else if (payload.videoUrl) preview = '🎥 Видео';
-            else if (payload.audioUrl) preview = '🎤 Голосовое сообщение';
-            else preview = 'Пересланное сообщение';
+            if (payload.imageUrl || (Array.isArray(payload.images) && payload.images.length) || (Array.isArray(payload.channelImages) && payload.channelImages.length)) {
+                preview = '📷 Фото';
+            } else if (payload.videoUrl) {
+                preview = '🎥 Видео';
+            } else if (payload.audioUrl) {
+                preview = '🎤 Голосовое сообщение';
+            } else {
+                preview = 'Пересланное сообщение';
+            }
         }
 
-        const update = {
+        let recipients = [];
+
+        if (target.isChannel || target.type === 'channel') {
+            recipients = (target.subscribers || target.participants || [])
+                .filter(uid => uid && uid !== currentUser.uid);
+        } else {
+            recipients = (target.participants || [])
+                .filter(uid => uid && uid !== currentUser.uid);
+        }
+
+        const updateData = {
             lastMessage: preview.substring(0, 120),
+            lastSender: currentUser.uid,
             lastMessageTime: firebase.firestore.FieldValue.serverTimestamp()
         };
-        if (unreadFor.length) {
-            update.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
+
+        if (recipients.length) {
+            updateData.unreadFor = firebase.firestore.FieldValue.arrayUnion(...recipients);
         }
 
-        await db.collection('chats').doc(targetChatId).update(update).catch(console.error);
+        await db.collection('chats')
+            .doc(targetChatId)
+            .update(updateData);
 
-        const display = getForwardChatDisplay(target);
+        const pickerTarget =
+            forwardDestinationChats.find(c => c.id === targetChatId) ||
+            target;
+
+        const display = getForwardChatDisplay(pickerTarget);
+
         closeForwardMessageModal();
         toast(`Переслано: ${display.name}`);
-        loadChats();
+
+        // Refresh the left list immediately.
+        await loadChats();
+
+        console.log('✅ Forwarded message', {
+            sourceChatId: forwardSourceChatId,
+            targetChatId,
+            newMessageId: newMessageRef.id,
+            type: payload.type
+        });
     } catch (e) {
         console.error('forwardSelectedMessageToChat error:', e);
-        toast('Ошибка пересылки');
-        row?.classList.remove('is-sending');
+        toast(`Ошибка пересылки${e?.message ? ': ' + e.message : ''}`);
+        button?.classList.remove('is-sending');
+        if (button) button.disabled = false;
     }
 }
 
@@ -14422,6 +14520,69 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
     #forwardMessageModal.show .contegg-forward-sheet {
         transform: translateY(0);
     }
+}
+</style>
+
+
+<style id="CONTEGG-V11-GROUP-PROFILES-FORWARD-FIX">
+.contegg-group-sender {
+    max-width: 100%;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0 0 4px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.contegg-group-sender-avatar {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    border-radius: 50%;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg,#0a84ff,#5e5ce6);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+}
+
+.contegg-group-sender-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.contegg-group-sender-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px !important;
+    font-weight: 650 !important;
+    color: var(--accent) !important;
+}
+
+.contegg-group-sender:hover .contegg-group-sender-name {
+    text-decoration: underline;
+}
+
+.comment-avatar,
+.comment-author {
+    cursor: pointer;
+}
+
+.comment-author:hover {
+    text-decoration: underline;
 }
 </style>
 
