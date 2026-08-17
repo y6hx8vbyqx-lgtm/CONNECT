@@ -13874,43 +13874,115 @@ body.keyboard-no-transition .chat-input-bar {
         ensurePhoneLayers();
     }
 
+    let phoneBaseVisualHeight = 0;
+
     function freezePhoneBaseHeight() {
         if (!isPhone()) return;
-        const vv = window.visualViewport;
+
         const input = document.getElementById('chatInput');
-        const keyboardLikelyOpen = document.activeElement === input || (vv && window.innerHeight - vv.height > 80);
-        if (keyboardLikelyOpen) return;
-        const h = Math.round(window.innerHeight || document.documentElement.clientHeight || 0);
-        if (h > 0) document.documentElement.style.setProperty('--contegg-phone-base-h', h + 'px');
+        const inputFocused = document.activeElement === input;
+
+        // Never rewrite the base while the keyboard is actually open.
+        if (inputFocused) return;
+
+        const vv = window.visualViewport;
+        const layoutHeight = Math.round(
+            window.innerHeight ||
+            document.documentElement.clientHeight ||
+            vv?.height ||
+            0
+        );
+
+        if (layoutHeight > 0) {
+            document.documentElement.style.setProperty(
+                '--contegg-phone-base-h',
+                layoutHeight + 'px'
+            );
+        }
+
+        // This is the only reliable keyboard baseline on iOS Safari.
+        // Browser chrome may make visualViewport smaller than innerHeight even
+        // with NO keyboard, so never use innerHeight-vv.height as an open test.
+        if (vv?.height > 0) {
+            phoneBaseVisualHeight = Math.round(vv.height);
+        }
+
+        document.documentElement.style.setProperty(
+            '--contegg-phone-keyboard-shift',
+            '0px'
+        );
+
+        document.body.classList.remove('keyboard-open');
     }
 
     let keyboardRaf = 0;
+
     function syncPhoneKeyboard() {
         if (!isPhone()) {
-            document.documentElement.style.setProperty('--contegg-phone-keyboard-shift', '0px');
+            document.documentElement.style.setProperty(
+                '--contegg-phone-keyboard-shift',
+                '0px'
+            );
+            document.body.classList.remove('keyboard-open');
             return;
         }
+
         cancelAnimationFrame(keyboardRaf);
+
         keyboardRaf = requestAnimationFrame(() => {
             ensurePhoneLayers();
+
             const vv = window.visualViewport;
             const input = document.getElementById('chatInput');
-            if (!vv || !document.body.classList.contains('chat-open')) {
-                document.documentElement.style.setProperty('--contegg-phone-keyboard-shift', '0px');
-                freezePhoneBaseHeight();
+            const chatOpen = document.body.classList.contains('chat-open');
+            const inputFocused = document.activeElement === input;
+
+            // CRITICAL:
+            // If the composer is not focused, the keyboard is considered closed.
+            // iOS Safari browser bars are NOT a keyboard.
+            if (!chatOpen || !vv || !inputFocused) {
+                document.documentElement.style.setProperty(
+                    '--contegg-phone-keyboard-shift',
+                    '0px'
+                );
+                document.body.classList.remove('keyboard-open');
+
+                if (!inputFocused) {
+                    freezePhoneBaseHeight();
+                }
+
+                if (window.scrollX !== 0 || window.scrollY !== 0) {
+                    window.scrollTo(0, 0);
+                }
                 return;
             }
 
-            const base = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--contegg-phone-base-h')) || window.innerHeight;
-            const keyboardOpen = document.activeElement === input || window.innerHeight - vv.height > 80;
-            const covered = keyboardOpen ? Math.max(0, Math.round(base - vv.height - Math.max(0, vv.offsetTop || 0))) : 0;
+            // The baseline is captured while the input is not focused.
+            // Fallback to the largest sane viewport value we have.
+            if (!phoneBaseVisualHeight || phoneBaseVisualHeight < vv.height) {
+                phoneBaseVisualHeight = Math.round(vv.height);
+            }
 
-            document.documentElement.style.setProperty('--contegg-phone-keyboard-shift', covered + 'px');
-            document.body.classList.toggle('keyboard-open', covered > 0 || keyboardOpen);
+            const keyboardHeight = Math.max(
+                0,
+                Math.round(phoneBaseVisualHeight - vv.height)
+            );
 
-            // Safari occasionally pans the layout viewport to reveal a textarea.
-            // Keep document scrolling locked; only the dedicated motion layer moves.
-            if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+            // Ignore tiny viewport fluctuations caused by Safari chrome.
+            const shift = keyboardHeight >= 90 ? keyboardHeight : 0;
+
+            document.documentElement.style.setProperty(
+                '--contegg-phone-keyboard-shift',
+                shift + 'px'
+            );
+
+            document.body.classList.toggle('keyboard-open', shift > 0);
+
+            // Safari may pan the document while focusing textarea.
+            // The document itself must stay locked; only our motion layer moves.
+            if (window.scrollX !== 0 || window.scrollY !== 0) {
+                window.scrollTo(0, 0);
+            }
         });
     }
 
@@ -13951,7 +14023,11 @@ body.keyboard-no-transition .chat-input-bar {
     if (typeof originalHide === 'function') {
         window.hideChatOverlay = function(...args) {
             const result = originalHide.apply(this, args);
-            document.documentElement.style.setProperty('--contegg-phone-keyboard-shift', '0px');
+            document.documentElement.style.setProperty(
+                '--contegg-phone-keyboard-shift',
+                '0px'
+            );
+            document.body.classList.remove('keyboard-open');
             if (typeof closeInlinePostComments === 'function') closeInlinePostComments();
             return result;
         };
@@ -13969,11 +14045,22 @@ body.keyboard-no-transition .chat-input-bar {
         }, true);
         input.addEventListener('blur', () => {
             if (!isPhone()) return;
-            document.documentElement.style.setProperty('--contegg-phone-keyboard-shift', '0px');
+
+            document.documentElement.style.setProperty(
+                '--contegg-phone-keyboard-shift',
+                '0px'
+            );
+            document.body.classList.remove('keyboard-open');
+
+            requestAnimationFrame(() => {
+                freezePhoneBaseHeight();
+                syncPhoneKeyboard();
+            });
+
             setTimeout(() => {
                 freezePhoneBaseHeight();
                 syncPhoneKeyboard();
-            }, 120);
+            }, 160);
         }, true);
     }
 
@@ -14785,6 +14872,37 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
 .contegg-comment-profile-trigger {
     cursor: pointer;
     touch-action: manipulation;
+}
+</style>
+
+
+<style id="CONTEGG-V14-IPHONE-CHAT-VISIBILITY-FIX">
+@media (max-width: 767px) {
+    /* With keyboard closed the chat body must physically occupy the full frozen
+       chat viewport. No Safari browser-bar calculation may move it. */
+    body:not(.keyboard-open) #conteggPhoneChatMotionLayer {
+        transform: translate3d(0, 0, 0) !important;
+    }
+
+    body:not(.keyboard-open) #conteggPhoneChatMotionLayer > #chatMessages.chat-messages {
+        top: var(--contegg-phone-header-h) !important;
+        bottom: var(--contegg-input-bar-height, 58px) !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+
+    body:not(.keyboard-open) #conteggPhoneChatMotionLayer > #chatInputBar.chat-input-bar {
+        bottom: 0 !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        transform: none !important;
+    }
+
+    /* Keep the independent header untouched. */
+    body.chat-open #conteggPhoneHeaderLayer {
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
 }
 </style>
 
