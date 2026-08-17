@@ -3247,6 +3247,7 @@ async function openPhotoEditor(file) {
     try {
         const dataUrl = await readFileAsDataURL(file);
 
+        document.body.classList.add('photo-editor-open');
         modal.classList.add('show');
 
         img.src = dataUrl;
@@ -3295,6 +3296,7 @@ function closePhotoEditor(clearQueue = true) {
     if (modal) {
         modal.classList.remove('show');
     }
+    document.body.classList.remove('photo-editor-open');
 
     cleanupPhotoEditor(true);
 
@@ -3309,6 +3311,7 @@ function cancelPhotoEditor() {
         const active = document.activeElement;
         if (modal && active && modal.contains(active) && typeof active.blur === 'function') active.blur();
         modal?.classList.remove('show');
+        document.body.classList.remove('photo-editor-open');
         cleanupPhotoEditor(true);
         channelMediaComposerEditingId = null;
         channelMediaComposerRequestedTool = 'crop';
@@ -3993,6 +3996,7 @@ async function sendEditedPhoto() {
             const active = document.activeElement;
             if (modal && active && modal.contains(active) && typeof active.blur === 'function') active.blur();
             modal?.classList.remove('show');
+            document.body.classList.remove('photo-editor-open');
             cleanupPhotoEditor(true);
             channelMediaComposerEditingId = null;
             channelMediaComposerRequestedTool = 'crop';
@@ -13038,5 +13042,71 @@ body.keyboard-no-transition .chat-input-bar {
     <div class="contegg-album-counter" id="conteggAlbumCounter"></div>
 </div>
 
+
+<style id="CONTEGG-PHOTO-EDITOR-ABSOLUTE-TOP-FIX">
+/* FINAL: photo editor must be above composer, chat header and every modal. */
+#photoEditModal.modal-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 2147483647 !important;
+    isolation: isolate !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 18px !important;
+    background: rgba(0,0,0,.82) !important;
+    backdrop-filter: blur(18px) saturate(130%) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(130%) !important;
+}
+
+#photoEditModal.modal-overlay.show {
+    display: flex !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+#photoEditModal .photo-editor-sheet {
+    position: relative !important;
+    z-index: 2 !important;
+    width: min(94vw, 980px) !important;
+    max-width: 980px !important;
+    height: min(92dvh, 860px) !important;
+    max-height: 92dvh !important;
+    border-radius: 28px !important;
+    overflow-y: auto !important;
+    transform: none !important;
+    opacity: 1 !important;
+}
+
+body.photo-editor-open .channel-media-composer-overlay {
+    pointer-events: none !important;
+}
+
+body.photo-editor-open .channel-media-composer-sheet {
+    filter: brightness(.72) !important;
+}
+
+/* The fixed phone header normally uses a huge z-index. Hide it only while
+   the editor is open so it can never cover editor controls. */
+body.photo-editor-open #conteggPhoneHeaderLayer {
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+@media (max-width: 767px) {
+    #photoEditModal.modal-overlay {
+        padding: 0 !important;
+        align-items: flex-end !important;
+    }
+
+    #photoEditModal .photo-editor-sheet {
+        width: 100% !important;
+        max-width: none !important;
+        height: 94dvh !important;
+        max-height: 94dvh !important;
+        border-radius: 26px 26px 0 0 !important;
+    }
+}
+</style>
 </body>
 </html>
