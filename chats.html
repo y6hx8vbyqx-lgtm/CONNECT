@@ -20034,5 +20034,314 @@ body.contegg-tab-switching {
 
 </style>
 
+
+<style id="CONTEGG-MOBILE-REBUILD-V13">
+@media (max-width:767px) {
+    :root {
+        --contegg-mobile-header-h: 88px;
+        --contegg-mobile-composer-h: 72px;
+    }
+
+    html, body {
+        width:100% !important;
+        height:100% !important;
+        min-height:100% !important;
+        overflow:hidden !important;
+        overscroll-behavior:none !important;
+        background:#000 !important;
+    }
+
+    body {
+        position:fixed !important;
+        inset:0 !important;
+    }
+
+    /* The chat is a single isolated viewport. */
+    #chatOverlay.chat-overlay {
+        position:fixed !important;
+        inset:0 !important;
+        width:100% !important;
+        height:100dvh !important;
+        min-height:0 !important;
+        max-height:none !important;
+        overflow:hidden !important;
+        background:#000 !important;
+        z-index:100000 !important;
+
+        display:grid !important;
+        grid-template-rows:
+            var(--contegg-mobile-header-h)
+            minmax(0,1fr)
+            auto !important;
+
+        opacity:1 !important;
+        visibility:visible !important;
+
+        transform:translate3d(100%,0,0) !important;
+        transition:transform 240ms cubic-bezier(.22,.82,.22,1) !important;
+        will-change:transform;
+        contain:layout paint style;
+    }
+
+    #chatOverlay.chat-overlay.show {
+        transform:translate3d(0,0,0) !important;
+    }
+
+    body:not(.chat-open) #chatOverlay.chat-overlay {
+        pointer-events:none !important;
+    }
+
+    body.chat-open #chatOverlay.chat-overlay {
+        pointer-events:auto !important;
+    }
+
+    /* Header lives in the overlay again. No detached fixed layer. */
+    #chatOverlay > #chatNavbar.chat-navbar {
+        position:relative !important;
+        inset:auto !important;
+        grid-row:1 !important;
+        width:100% !important;
+        height:var(--contegg-mobile-header-h) !important;
+        min-height:var(--contegg-mobile-header-h) !important;
+        max-height:var(--contegg-mobile-header-h) !important;
+        z-index:3 !important;
+        transform:none !important;
+        transition:none !important;
+        visibility:visible !important;
+        opacity:1 !important;
+    }
+
+    /* Old layers must never participate in layout on mobile. */
+    #conteggPhoneHeaderLayer,
+    #conteggPhoneChatMotionLayer {
+        display:contents !important;
+        position:static !important;
+        width:auto !important;
+        height:auto !important;
+        transform:none !important;
+        contain:none !important;
+    }
+
+    #chatOverlay > #chatMessages.chat-messages {
+        position:relative !important;
+        inset:auto !important;
+        grid-row:2 !important;
+        width:100% !important;
+        height:auto !important;
+        min-height:0 !important;
+        max-height:none !important;
+        overflow-x:hidden !important;
+        overflow-y:auto !important;
+        -webkit-overflow-scrolling:touch;
+        overscroll-behavior-y:contain;
+        padding:10px 12px 12px !important;
+        margin:0 !important;
+        transform:none !important;
+        translate:none !important;
+        opacity:1 !important;
+        visibility:visible !important;
+        transition:none !important;
+        contain:layout style !important;
+    }
+
+    #chatOverlay > #chatInputBar.chat-input-bar {
+        position:relative !important;
+        inset:auto !important;
+        grid-row:3 !important;
+        width:100% !important;
+        min-height:var(--contegg-mobile-composer-h) !important;
+        height:auto !important;
+        margin:0 !important;
+        z-index:4 !important;
+        transform:none !important;
+        translate:none !important;
+        opacity:1 !important;
+        visibility:visible !important;
+        transition:none !important;
+        padding-bottom:max(8px, env(safe-area-inset-bottom, 0px)) !important;
+    }
+
+    /* Absolutely kill all legacy keyboard transforms. 100dvh handles resize. */
+    body.keyboard-open #chatOverlay,
+    body.keyboard-open #chatMessages,
+    body.keyboard-open #chatInputBar,
+    body.keyboard-settling-in #chatMessages,
+    body.keyboard-settling-out #chatMessages,
+    body.keyboard-no-transition #chatMessages,
+    body.keyboard-settling-in #chatInputBar,
+    body.keyboard-settling-out #chatInputBar,
+    body.keyboard-no-transition #chatInputBar {
+        transform:none !important;
+        translate:none !important;
+    }
+
+    body.keyboard-open #chatOverlay.chat-overlay.show {
+        transform:translate3d(0,0,0) !important;
+    }
+
+    /* Preserve message design and give only newly inserted messages a tiny motion. */
+    #chatMessages .msg.contegg-msg-animate:not(.contegg-msg-initial) {
+        animation:conteggMobileMessageInV13 135ms cubic-bezier(.18,.82,.22,1) both !important;
+    }
+
+    @keyframes conteggMobileMessageInV13 {
+        from { opacity:0; transform:translate3d(0,4px,0); }
+        to   { opacity:1; transform:none; }
+    }
+}
+</style>
+
+<script id="CONTEGG-MOBILE-REBUILD-V13-JS">
+(() => {
+    'use strict';
+
+    const isPhoneV13 = () => window.matchMedia('(max-width:767px)').matches;
+
+    function rebuildMobileDOMV13() {
+        if (!isPhoneV13()) return;
+
+        const overlay = document.getElementById('chatOverlay');
+        const navbar = document.getElementById('chatNavbar');
+        const messages = document.getElementById('chatMessages');
+        const inputBar = document.getElementById('chatInputBar');
+
+        if (!overlay || !navbar || !messages || !inputBar) return;
+
+        // Stable invariant: these three nodes ALWAYS belong directly to overlay.
+        if (navbar.parentElement !== overlay) overlay.appendChild(navbar);
+        if (messages.parentElement !== overlay) overlay.appendChild(messages);
+        if (inputBar.parentElement !== overlay) overlay.appendChild(inputBar);
+
+        // DOM order is part of layout correctness.
+        if (overlay.children[0] !== navbar) overlay.insertBefore(navbar, overlay.firstChild);
+        if (navbar.nextElementSibling !== messages) navbar.after(messages);
+        if (messages.nextElementSibling !== inputBar) messages.after(inputBar);
+
+        document.documentElement.style.setProperty('--contegg-phone-keyboard-shift', '0px');
+        document.body.classList.remove(
+            'keyboard-settling-in',
+            'keyboard-settling-out',
+            'keyboard-no-transition'
+        );
+
+        if (document.body.classList.contains('chat-open')) {
+            overlay.classList.add('show');
+            overlay.style.visibility = 'visible';
+            overlay.style.opacity = '1';
+        }
+
+        // Remove inline leftovers created by older repair code.
+        [messages, inputBar].forEach(el => {
+            el.style.removeProperty('display');
+            el.style.removeProperty('position');
+            el.style.removeProperty('top');
+            el.style.removeProperty('bottom');
+            el.style.removeProperty('left');
+            el.style.removeProperty('right');
+            el.style.removeProperty('height');
+            el.style.removeProperty('transform');
+        });
+    }
+
+    // Disable old phone layer creator by replacing the exported helper.
+    // Desktop/tablet still use the existing desktop architecture.
+    const oldEnsureNavbar = window.ensureChatNavbarInOverlay;
+    window.ensureChatNavbarInOverlay = function() {
+        if (isPhoneV13()) {
+            rebuildMobileDOMV13();
+            return;
+        }
+        if (typeof oldEnsureNavbar === 'function') {
+            return oldEnsureNavbar.apply(this, arguments);
+        }
+    };
+
+    // Wrap open/close only to reassert the invariant, never to animate children.
+    const oldShowV13 = window.showChatOverlay;
+    if (typeof oldShowV13 === 'function') {
+        window.showChatOverlay = function() {
+            if (isPhoneV13()) rebuildMobileDOMV13();
+            const result = oldShowV13.apply(this, arguments);
+            if (isPhoneV13()) {
+                rebuildMobileDOMV13();
+                requestAnimationFrame(rebuildMobileDOMV13);
+            }
+            return result;
+        };
+    }
+
+    const oldHideV13 = window.hideChatOverlay;
+    if (typeof oldHideV13 === 'function') {
+        window.hideChatOverlay = function() {
+            const result = oldHideV13.apply(this, arguments);
+            if (isPhoneV13()) {
+                document.documentElement.style.setProperty('--contegg-phone-keyboard-shift', '0px');
+                document.body.classList.remove('keyboard-open');
+            }
+            return result;
+        };
+    }
+
+    // visualViewport only updates a CSS variable. It never moves the feed.
+    function syncViewportV13() {
+        if (!isPhoneV13()) return;
+        const vv = window.visualViewport;
+        if (!vv) return;
+
+        document.documentElement.style.setProperty(
+            '--contegg-vv-height',
+            Math.max(1, Math.round(vv.height)) + 'px'
+        );
+
+        // If iOS has resized the visual viewport, the grid itself stays intact.
+        // Reasserting DOM ownership is cheap and prevents legacy handlers from
+        // stealing nodes into their old motion/header layers.
+        rebuildMobileDOMV13();
+    }
+
+    window.addEventListener('resize', syncViewportV13, { passive:true });
+    window.addEventListener('orientationchange', () => {
+        setTimeout(syncViewportV13, 80);
+        setTimeout(syncViewportV13, 260);
+    }, { passive:true });
+
+    window.visualViewport?.addEventListener('resize', syncViewportV13, { passive:true });
+    window.visualViewport?.addEventListener('scroll', syncViewportV13, { passive:true });
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) requestAnimationFrame(rebuildMobileDOMV13);
+    });
+
+    window.addEventListener('pageshow', () => {
+        requestAnimationFrame(rebuildMobileDOMV13);
+    }, { passive:true });
+
+    // One observer only watches ownership, not message contents.
+    const observer = new MutationObserver(() => {
+        if (!isPhoneV13()) return;
+
+        const overlay = document.getElementById('chatOverlay');
+        const navbar = document.getElementById('chatNavbar');
+        const messages = document.getElementById('chatMessages');
+        const inputBar = document.getElementById('chatInputBar');
+
+        if (!overlay || !navbar || !messages || !inputBar) return;
+
+        if (
+            navbar.parentElement !== overlay ||
+            messages.parentElement !== overlay ||
+            inputBar.parentElement !== overlay
+        ) {
+            requestAnimationFrame(rebuildMobileDOMV13);
+        }
+    });
+
+    observer.observe(document.body, { childList:true, subtree:true });
+
+    rebuildMobileDOMV13();
+    syncViewportV13();
+})();
+</script>
+
 </body>
 </html>
