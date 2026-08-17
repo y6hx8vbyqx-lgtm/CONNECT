@@ -5436,11 +5436,6 @@ function showChatOverlay() {
     // в горизонтальной анимации и поэтому стоит неподвижно.
     overlay.classList.add('show');
 
-    // Отдельно запускаем мягкую анимацию только контента чата.
-    overlay.classList.remove('chat-content-enter');
-    void overlay.offsetWidth;
-    overlay.classList.add('chat-content-enter');
-
     // На мобильном открытый чат = отдельный шаг history.
     pushChatHistoryEntry();
 }
@@ -5461,7 +5456,7 @@ function hideChatOverlay() {
     const overlay = document.getElementById('chatOverlay');
     if (!overlay) return;
 
-    overlay.classList.remove('show', 'chat-content-enter');
+    overlay.classList.remove('show');
     document.body.classList.remove(
         'chat-open',
         'keyboard-open',
@@ -5472,8 +5467,7 @@ function hideChatOverlay() {
     );
 
     const root = document.documentElement;
-    root.style.setProperty('--contegg-keyboard-inset', '0px');
-    root.style.setProperty('--contegg-input-bottom', 'max(14px, env(safe-area-inset-bottom, 0px))');
+    root.style.setProperty('--contegg-chat-visible-height', '100dvh');
 }
 
 function getChannelRights(chat) {
@@ -9714,53 +9708,16 @@ if (postCommentInput) {
     });
 }
 
-/* ===== CLEAN MOBILE VISUAL VIEWPORT CONTROLLER =====
-   Один источник правды для iOS/Android:
-   - весь чат привязан к visualViewport;
-   - шапка absolute внутри чата и не уезжает;
-   - input absolute внизу видимой области;
-   - никаких вычислений "высоты клавиатуры" и двойных компенсаций.
+/* ===== MOBILE CHAT VIEWPORT: MINIMAL / STABLE =====
+   Никаких top/bottom/transform-компенсаций для шапки или input.
+   Меняем только высоту доступного экрана чата.
+   Flex-layout сам ужимает ТОЛЬКО область сообщений.
 */
 
 let __conteggViewportRaf = 0;
-let __conteggLastVVTop = -1;
-let __conteggLastVVHeight = -1;
-let __conteggKeepBottomOnKeyboard = false;
 
 function isChatOverlayOpen() {
     return document.getElementById('chatOverlay')?.classList.contains('show') === true;
-}
-
-function getMobileViewportMetrics() {
-    const vv = window.visualViewport;
-    const layoutHeight = Math.max(
-        window.innerHeight || 0,
-        document.documentElement.clientHeight || 0
-    );
-
-    if (!isMobileLike || !vv) {
-        return {
-            top: 0,
-            height: layoutHeight,
-            keyboardInset: 0
-        };
-    }
-
-    const visualTop = Math.max(0, Math.round(vv.offsetTop || 0));
-    const visualHeight = Math.max(1, Math.round(vv.height || layoutHeight));
-
-    // Не двигаем сам chat-overlay.
-    // Считаем только сколько пространства снизу заняла клавиатура.
-    const keyboardInset = Math.max(
-        0,
-        Math.round(layoutHeight - visualHeight - visualTop)
-    );
-
-    return {
-        top: visualTop,
-        height: visualHeight,
-        keyboardInset
-    };
 }
 
 function syncMobileChatViewport(options = {}) {
@@ -9774,41 +9731,21 @@ function syncMobileChatViewport(options = {}) {
         __conteggViewportRaf = 0;
 
         const root = document.documentElement;
-        const input = document.getElementById('chatInput');
-        const metrics = getMobileViewportMetrics();
+        const vv = window.visualViewport;
 
-        const changed =
-            Math.abs(metrics.top - __conteggLastVVTop) > 1 ||
-            Math.abs(metrics.height - __conteggLastVVHeight) > 1;
-
-        __conteggLastVVTop = metrics.top;
-        __conteggLastVVHeight = metrics.height;
-
-        // ВАЖНО:
-        // overlay всегда остаётся top:0 и закрывает весь экран.
-        // Меняем только нижний inset под клавиатуру.
-        root.style.setProperty('--contegg-keyboard-inset', `${metrics.keyboardInset}px`);
-
-        const fullHeight = Math.max(
-            window.innerHeight || 0,
-            document.documentElement.clientHeight || 0
+        const visibleHeight = Math.max(
+            1,
+            Math.round(
+                vv?.height ||
+                window.innerHeight ||
+                document.documentElement.clientHeight ||
+                1
+            )
         );
 
-        const keyboardOpen =
-            document.activeElement === input &&
-            (metrics.keyboardInset > 80 || fullHeight - metrics.height > 80);
+        root.style.setProperty('--contegg-chat-visible-height', `${visibleHeight}px`);
 
-        document.body.classList.toggle('keyboard-open', keyboardOpen);
-
-        updateChatInputBarHeight();
-
-        // Скроллим к низу только когда геометрия реально изменилась,
-        // а не на каждый scroll-event Safari.
-        const shouldKeepBottom =
-            options.keepBottom === true ||
-            (__conteggKeepBottomOnKeyboard && keyboardOpen);
-
-        if (changed && shouldKeepBottom && isChatOverlayOpen()) {
+        if (options.keepBottom === true && isChatOverlayOpen()) {
             requestAnimationFrame(() => {
                 scrollMessagesToBottom({ smooth: false });
             });
@@ -9831,55 +9768,40 @@ function scheduleMobileChatViewportSync(delay = 0, options = {}) {
 
 if (isMobileLike && window.visualViewport) {
     window.visualViewport.addEventListener('resize', () => {
-        scheduleMobileChatViewportSync(0, {
-            keepBottom: __conteggKeepBottomOnKeyboard
-        });
+        syncMobileChatViewport({ keepBottom: false });
     }, { passive: true });
-
 }
 
 if (isMobileLike) {
     window.addEventListener('resize', () => {
-        scheduleMobileChatViewportSync(0, {
-            keepBottom: __conteggKeepBottomOnKeyboard
-        });
+        syncMobileChatViewport({ keepBottom: false });
     }, { passive: true });
 }
 
 window.addEventListener('orientationchange', () => {
     if (!isMobileLike) return;
-    scheduleMobileChatViewportSync(120, { keepBottom: true });
+    scheduleMobileChatViewportSync(120, { keepBottom: false });
 });
 
 document.getElementById('chatInput')?.addEventListener('focus', () => {
     if (!isMobileLike) return;
 
     const messages = document.getElementById('chatMessages');
-    __conteggKeepBottomOnKeyboard = isNearChatBottom(messages, 180);
+    const wasNearBottom = isNearChatBottom(messages, 180);
 
-    // Один быстрый sync + один после завершения основной анимации клавиатуры.
-    syncMobileChatViewport({
-        keepBottom: __conteggKeepBottomOnKeyboard
-    });
+    // Никаких классов keyboard-open и никаких перемещений элементов.
+    syncMobileChatViewport({ keepBottom: false });
 
-    setTimeout(() => {
-        syncMobileChatViewport({
-            keepBottom: __conteggKeepBottomOnKeyboard
-        });
-    }, 140);
+    if (wasNearBottom) {
+        setTimeout(() => {
+            scrollMessagesToBottom({ smooth: false });
+        }, 120);
+    }
 });
 
 document.getElementById('chatInput')?.addEventListener('blur', () => {
     if (!isMobileLike) return;
-
-    __conteggKeepBottomOnKeyboard = false;
-    document.body.classList.remove('keyboard-open');
-
     syncMobileChatViewport({ keepBottom: false });
-
-    setTimeout(() => {
-        syncMobileChatViewport({ keepBottom: false });
-    }, 80);
 });
 
 console.log('✅ Contegg Messenger · Полная версия с фото, видео и голосовыми');
@@ -10197,49 +10119,40 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
 </style>
 
     <style id="CONTEGG-FINAL-MOBILE-KEYBOARD-FIX">
-/* ===== CLEAN / STABLE MOBILE CHAT LAYOUT ===== */
-
-:root {
-    --contegg-keyboard-inset: 0px;
-    --contegg-input-bar-height: 58px;
-    --contegg-input-bottom: max(14px, env(safe-area-inset-bottom, 0px));
-}
-
-/*
-   ВАЖНО:
-   основной экран чатов НЕ скрываем.
-   Он остаётся под chat-overlay, поэтому даже на переходном кадре
-   не может появиться пустой чёрный экран.
+/* ===== FIXED CHAT SHELL V3 =====
+   Шапка и input НЕ двигаются отдельными transform/top/bottom.
+   Каркас: header -> messages -> input.
+   При клавиатуре меняется только высота shell,
+   а ужимается только messages через flex:1.
 */
 
+:root {
+    --contegg-chat-visible-height: 100dvh;
+}
+
+/* Сам экран чата всегда закрывает фон целиком. */
 .chat-overlay {
     position: fixed !important;
-    left: 0 !important;
-    right: auto !important;
-    top: 0 !important;
-    bottom: auto !important;
+    inset: 0 !important;
 
     width: 100% !important;
     height: 100dvh !important;
     max-height: none !important;
 
-    display: block !important;
-    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
 
+    overflow: hidden !important;
     background: var(--bg-primary) !important;
     z-index: 900 !important;
 
-    /* ВАЖНО: весь экран чата больше НЕ ездит вправо-влево.
-       Это полностью убирает движение/рывки шапки. */
     transform: none !important;
-    transition: none !important;
+    transition: opacity 0.12s ease !important;
+    animation: none !important;
 
     opacity: 0 !important;
     visibility: hidden !important;
     pointer-events: none !important;
-
-    backface-visibility: hidden !important;
-    -webkit-backface-visibility: hidden !important;
 }
 
 .chat-overlay.show {
@@ -10248,36 +10161,44 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
     pointer-events: auto !important;
 }
 
-/* На мобильном весь экран чата следует за visualViewport целиком. */
+/* На мобильном меняется только ВЫСОТА shell.
+   top всегда 0. Никаких offsetTop / keyboardInset / bottom-компенсаций. */
 @media (max-width: 900px), (pointer: coarse) {
     .chat-overlay {
         top: 0 !important;
-        bottom: var(--contegg-keyboard-inset) !important;
-        height: 100dvh !important;
+        right: 0 !important;
+        bottom: auto !important;
+        left: 0 !important;
+
+        height: var(--contegg-chat-visible-height) !important;
         min-height: 0 !important;
     }
 }
 
-/* Шапка всегда внутри overlay. Больше никаких fixed + offsetTop одновременно. */
+/* ===== HEADER: полностью статичный flex-item ===== */
 .chat-navbar {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
+    position: relative !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: auto !important;
 
-    height: var(--navbar-height) !important;
+    flex: 0 0 var(--navbar-height) !important;
+    width: 100% !important;
     min-height: var(--navbar-height) !important;
+    height: var(--navbar-height) !important;
 
     display: flex !important;
     z-index: 20 !important;
 
-    background: rgba(0,0,0,0.92) !important;
-    backdrop-filter: blur(18px) saturate(150%) !important;
-    -webkit-backdrop-filter: blur(18px) saturate(150%) !important;
-
     transform: none !important;
     transition: none !important;
     animation: none !important;
+    will-change: auto !important;
+
+    background: rgba(0,0,0,0.92) !important;
+    backdrop-filter: blur(18px) saturate(150%) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(150%) !important;
 }
 
 body:not(.chat-open) .chat-navbar {
@@ -10287,46 +10208,47 @@ body:not(.chat-open) .chat-navbar {
 }
 
 body.chat-open .chat-navbar {
-    display: flex !important;
     opacity: 1 !important;
     visibility: visible !important;
     pointer-events: auto !important;
-
-    /* Шапка статична: никаких transition/transform */
-    transform: none !important;
-    transition: none !important;
-    animation: none !important;
 }
 
-/* Сообщения занимают пространство между шапкой и input bar. */
+/* ===== MESSAGES: единственная зона, которая ужимается ===== */
 .chat-messages {
-    position: absolute !important;
-    top: var(--navbar-height) !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: calc(var(--contegg-input-bar-height) + var(--contegg-keyboard-inset)) !important;
+    position: relative !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: auto !important;
 
+    flex: 1 1 auto !important;
     min-height: 0 !important;
+    width: 100% !important;
+
     overflow-y: auto !important;
     overflow-x: hidden !important;
 
     padding: 12px !important;
-    padding-bottom: 12px !important;
 
     -webkit-overflow-scrolling: touch !important;
-    overscroll-behavior-y: contain;
+    overscroll-behavior-y: contain !important;
     overflow-anchor: none !important;
 
+    transform: none !important;
     transition: none !important;
+    animation: none !important;
+    will-change: auto !important;
 }
 
-/* Input всегда внизу VISIBLE viewport, потому что сам overlay уже правильной высоты. */
+/* ===== INPUT: полностью статичный flex-item ===== */
 .chat-input-bar {
-    position: absolute !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
+    position: relative !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: auto !important;
 
+    flex: 0 0 auto !important;
     width: 100% !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
@@ -10335,90 +10257,32 @@ body.chat-open .chat-navbar {
 
     margin: 0 !important;
     transform: none !important;
+    transition: none !important;
+    animation: none !important;
+    will-change: auto !important;
 
     padding-top: 8px !important;
     padding-left: max(10px, env(safe-area-inset-left, 0px)) !important;
     padding-right: max(10px, env(safe-area-inset-right, 0px)) !important;
-    padding-bottom: calc(8px + var(--contegg-input-bottom)) !important;
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px)) !important;
 
     background: rgba(0,0,0,0.90) !important;
     backdrop-filter: blur(18px) saturate(150%) !important;
     -webkit-backdrop-filter: blur(18px) saturate(150%) !important;
     border-top: 0.5px solid var(--separator) !important;
-
-    transition: padding-bottom 0.14s ease !important;
 }
 
-/* При клавиатуре safe-area снизу не нужна. */
-body.keyboard-open {
-    --contegg-input-bottom: 0px;
-}
-
-body.keyboard-open .chat-input-bar {
-    padding-bottom: 8px !important;
-}
-
-/* ===== OPEN CHAT: ANIMATE CONTENT ONLY, HEADER STAYS STATIC ===== */
-
-@keyframes conteggChatMessagesIn {
-    from {
-        opacity: 0;
-        transform: translate3d(18px, 0, 0);
-    }
-    to {
-        opacity: 1;
-        transform: translate3d(0, 0, 0);
-    }
-}
-
-@keyframes conteggChatInputIn {
-    from {
-        opacity: 0;
-        transform: translate3d(0, 8px, 0);
-    }
-    to {
-        opacity: 1;
-        transform: translate3d(0, 0, 0);
-    }
-}
-
-.chat-overlay.chat-content-enter .chat-messages {
-    animation: conteggChatMessagesIn 0.22s cubic-bezier(0.22, 1, 0.36, 1) both !important;
-}
-
+/* Убираем вообще все enter-классы для каркаса чата. */
+.chat-overlay.chat-content-enter .chat-navbar,
+.chat-overlay.chat-content-enter .chat-messages,
 .chat-overlay.chat-content-enter .chat-input-bar {
-    animation: conteggChatInputIn 0.20s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+    transform: none !important;
+    animation: none !important;
 }
 
-/* После первого открытия никаких постоянных will-change */
-.chat-messages,
-.chat-input-bar,
-.chat-navbar {
-    will-change: auto !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .chat-overlay.chat-content-enter .chat-messages,
-    .chat-overlay.chat-content-enter .chat-input-bar {
-        animation: none !important;
-    }
-}
-
-/* На мобильном никакая часть интерфейса чата не переигрывает enter-анимацию
-   при изменениях visualViewport/клавиатуры. */
-@media (max-width: 900px), (pointer: coarse) {
-    .chat-overlay.chat-content-enter .chat-messages,
-    .chat-overlay.chat-content-enter .chat-input-bar {
-        animation: none !important;
-        transform: none !important;
-        opacity: 1 !important;
-    }
-}
-
-/* ПК остаётся обычным полноэкранным overlay. */
+/* ПК остаётся полноэкранным без mobile-height JS. */
 @media (min-width: 901px) and (pointer: fine) {
     .chat-overlay {
-        top: 0 !important;
         height: 100dvh !important;
     }
 
