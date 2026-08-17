@@ -9605,6 +9605,21 @@ function renderProfileQrCode(link) {
         colorLight: '#ffffff',
         correctLevel: QRCode.CorrectLevel.H
     });
+
+    // QRCode.js creates a canvas and then an img representation.
+    // Keep only one visible QR so the modal can never double in height.
+    requestAnimationFrame(() => {
+        const img = target.querySelector('img');
+        const canvas = target.querySelector('canvas');
+
+        if (img) {
+            img.style.display = 'block';
+        }
+
+        if (canvas && img) {
+            canvas.style.display = 'none';
+        }
+    });
 }
 
 function refreshProfileQr() {
@@ -18015,15 +18030,37 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
 }
 
 .contegg-qr-code {
+    position:relative;
     width:240px;
     height:240px;
+    overflow:hidden;
+    flex:0 0 240px;
 }
 
-.contegg-qr-code img,
-.contegg-qr-code canvas {
-    display:block !important;
+/*
+QRCode.js internally creates BOTH canvas + img.
+The library hides the canvas after converting it to the final image.
+Do not override that display state or two QR codes appear.
+*/
+.contegg-qr-code img {
+    display:block;
     width:240px !important;
     height:240px !important;
+    max-width:240px !important;
+    max-height:240px !important;
+    object-fit:contain;
+}
+
+.contegg-qr-code canvas {
+    width:240px !important;
+    height:240px !important;
+    max-width:240px !important;
+    max-height:240px !important;
+}
+
+/* Once QRCode.js has produced its img, only that visible result is needed. */
+.contegg-qr-code img[style*="display: block"] ~ canvas {
+    display:none !important;
 }
 
 .contegg-qr-avatar {
@@ -18088,16 +18125,38 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
         padding:14px;
     }
 
-    .contegg-qr-code,
+    .contegg-qr-code {
+        width:220px !important;
+        height:220px !important;
+        flex-basis:220px !important;
+    }
+
     .contegg-qr-code img,
     .contegg-qr-code canvas {
         width:220px !important;
         height:220px !important;
+        max-width:220px !important;
+        max-height:220px !important;
     }
 
     .contegg-qr-actions {
         grid-template-columns:1fr;
     }
+}
+</style>
+
+
+<style id="CONTEGG-QR-V4-HARD-CONTAINMENT">
+#profileQrModal .contegg-qr-stage {
+    overflow:hidden !important;
+}
+
+#profileQrCode {
+    overflow:hidden !important;
+}
+
+#profileQrCode > * {
+    margin:0 !important;
 }
 </style>
 
