@@ -5126,7 +5126,15 @@ async function sendSystemNotification(userId, type, data = {}) {
                 notificationText = `⚠️ Неудачная попытка входа: ${data.deviceName || 'устройство'} · ${new Date().toLocaleString()}. Если это были не вы, смените пароль.`;
                 break;
             case 'username_changed':
-                notificationText = `🔔 Ваш никнейм был изменен на @${data.newUsername}`;
+                notificationText = `🔔 Ваш никнейм был изменен на @${data.newUsername || data.username || 'username'}`;
+                break;
+            case 'verification_granted':
+                notificationText = data.customBadge
+                    ? '✅ Ваш аккаунт был верифицирован. Для вас установлен персональный значок.'
+                    : '✅ Ваш аккаунт был верифицирован';
+                break;
+            case 'verification_removed':
+                notificationText = 'ℹ️ Верификация вашего аккаунта была снята';
                 break;
             case 'password_changed':
                 notificationText = '🔐 Ваш пароль был успешно изменен';
@@ -6332,6 +6340,10 @@ function clearStaleChatHistoryState() {
 clearStaleChatHistoryState();
 
 function showChatOverlay() {
+    document.body.classList.remove('contegg-admin-workspace-open');
+    const adminWorkspace = document.getElementById('conteggAdminWorkspace');
+    if (adminWorkspace) adminWorkspace.setAttribute('aria-hidden', 'true');
+
     const overlay = document.getElementById('chatOverlay');
     if (!overlay) return;
 
@@ -9263,7 +9275,7 @@ const avHTML = myAvatarSrc
                 ${renderVerificationBadge(userData, 16)}
                 <i class="fas fa-pen" style="font-size:14px;color:var(--accent);cursor:pointer;" onclick="openProfileEdit()"></i>
             </div>
-            <div class="profile-username">@${esc(userData.username)}</div>
+            <div class="profile-username" style="display:flex;align-items:center;justify-content:center;gap:5px;">@${esc(userData.username)} ${renderVerificationBadge(userData, 13)}</div>
             <div class="profile-bio">${esc(userData.bio || 'Нет описания')}</div>
         </div>
         
@@ -11331,6 +11343,8 @@ async function applyAdminUserControls() {
     const isBlocked = !!document.getElementById('adminBlockedToggle')?.checked;
     const verified = !!document.getElementById('adminVerifiedToggle')?.checked;
     const badgeFile = document.getElementById('adminBadgeInput')?.files?.[0];
+    const wasVerified = currentAdminTargetUser.verified === true;
+    const oldBadgeUrl = currentAdminTargetUser.verificationBadgeUrl || '';
 
     try {
         let verificationBadgeUrl = currentAdminTargetUser.verificationBadgeUrl || '';
@@ -11361,6 +11375,20 @@ async function applyAdminUserControls() {
             verificationBadgeUrl
         };
 
+        if (verified !== wasVerified) {
+            await sendSystemNotification(
+                uid,
+                verified ? 'verification_granted' : 'verification_removed',
+                { customBadge: verified && !!verificationBadgeUrl }
+            ).catch(console.error);
+        } else if (verified && verificationBadgeUrl !== oldBadgeUrl) {
+            await sendSystemNotification(
+                uid,
+                'verification_granted',
+                { customBadge: !!verificationBadgeUrl }
+            ).catch(console.error);
+        }
+
         renderAdminTargetUser(currentAdminTargetUser);
         await loadAllUsers();
         await loadChats();
@@ -11372,19 +11400,12 @@ async function applyAdminUserControls() {
     }
 }
 
-function openAdminPanel() {
-    if (!isCurrentUserDeveloper) {
-        toast('Недостаточно прав');
-        return;
-    }
-
-    const content = document.getElementById('adminPanelContent');
-
-    content.innerHTML = `
+function getAdminPanelMarkup() {
+    return `
         ${isConteggSuperAdmin() ? `
         <div class="admin-panel contegg-super-admin-panel">
             <div class="admin-panel-title">
-                <i class="fas fa-shield-alt"></i>
+                <i class="fas fa-user-shield"></i>
                 Управление аккаунтами
             </div>
 
@@ -11397,19 +11418,22 @@ function openAdminPanel() {
             </div>
 
             <div id="conteggAdminTargetCard" class="contegg-admin-target-card">
-                <div style="color:var(--text-secondary);font-size:13px;">Введите username или почту пользователя</div>
+                <div class="contegg-admin-empty-hint">
+                    <i class="fas fa-user-cog"></i>
+                    <span>Введите username или почту пользователя</span>
+                </div>
             </div>
         </div>
         ` : ''}
 
-        <div class="admin-panel">
+        <div class="admin-panel contegg-broadcast-panel">
             <div class="admin-panel-title">
-                <i class="fas fa-crown"></i>
-                Панель разработчика
+                <i class="fas fa-bullhorn"></i>
+                Системная рассылка
             </div>
 
             <div class="input-row">
-                <label>Рассылка всем пользователям</label>
+                <label>Сообщение всем пользователям</label>
                 <textarea class="admin-textarea" id="broadcastMessage" placeholder="Введите текст рассылки..."></textarea>
             </div>
 
@@ -11417,36 +11441,91 @@ function openAdminPanel() {
                 <i class="fas fa-paper-plane"></i> Отправить рассылку
             </button>
         </div>
-
-        <button class="btn btn-secondary" onclick="closeAdminPanel()">Закрыть</button>
     `;
+}
+
+function bindAdminPanelInputs() {
+    requestAnimationFrame(() => {
+        const input = document.getElementById('adminUserLookup');
+        if (input && input.dataset.enterBound !== '1') {
+            input.dataset.enterBound = '1';
+            input.addEventListener('keydown', e => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    adminLookupUser();
+                }
+            });
+        }
+    });
+}
+
+function openAdminPanel() {
+    if (!isCurrentUserDeveloper) {
+        toast('Недостаточно прав');
+        return;
+    }
 
     currentAdminTargetUser = null;
-    document.getElementById('adminPanelModal').classList.add('show');
 
-    setTimeout(() => {
-        const input = document.getElementById('adminUserLookup');
-        input?.addEventListener('keydown', e => {
-            if (e.key === 'Enter') adminLookupUser();
-        });
-    }, 0);
+    if (window.innerWidth >= 768) {
+        // Build the desktop/tablet shell first. The admin panel then lives in
+        // exactly the same central pane as an ordinary chat.
+        if (typeof ensureChatNavbarInOverlay === 'function') {
+            ensureChatNavbarInOverlay();
+        }
+
+        const workspace = document.getElementById('conteggAdminWorkspace');
+        const content = document.getElementById('conteggAdminWorkspaceContent');
+
+        if (!workspace || !content) {
+            toast('Не удалось открыть админ панель');
+            return;
+        }
+
+        if (typeof closeInlinePostComments === 'function') {
+            closeInlinePostComments();
+        }
+
+        document.body.classList.remove('chat-open');
+        document.body.classList.add('contegg-admin-workspace-open');
+        workspace.setAttribute('aria-hidden', 'false');
+        content.innerHTML = getAdminPanelMarkup();
+        bindAdminPanelInputs();
+        return;
+    }
+
+    // Phone: use a full-height sheet, because there is no split chat pane.
+    const content = document.getElementById('adminPanelContent');
+    content.innerHTML = getAdminPanelMarkup();
+    document.getElementById('adminPanelModal').classList.add('show');
+    bindAdminPanelInputs();
 }
 
 function closeAdminPanel() {
-    document.getElementById('adminPanelModal').classList.remove('show');
+    document.body.classList.remove('contegg-admin-workspace-open');
+
+    const workspace = document.getElementById('conteggAdminWorkspace');
+    if (workspace) workspace.setAttribute('aria-hidden', 'true');
+
+    document.getElementById('adminPanelModal')?.classList.remove('show');
+    currentAdminTargetUser = null;
 }
 
 async function sendBroadcastFromPanel() {
-    const message = document.getElementById('broadcastMessage').value.trim();
+    const message = document.getElementById('broadcastMessage')?.value?.trim();
     if (!message) {
         toast('Введите текст сообщения');
         return;
     }
-    
+
     if (!confirm('Отправить рассылку всем пользователям?')) return;
-    
+
     await sendBroadcast(message);
-    closeAdminPanel();
+
+    const textarea = document.getElementById('broadcastMessage');
+    if (textarea) textarea.value = '';
+
+    toast('Рассылка отправлена');
 }
 
 let searchTimeout;
@@ -14430,6 +14509,16 @@ body.keyboard-no-transition .chat-input-bar {
                                 </div>
                             </div>
                         </section>
+                        <section id="conteggAdminWorkspace" aria-hidden="true">
+                            <div class="contegg-admin-workspace-header">
+                                <div class="contegg-admin-workspace-icon"><i class="fas fa-shield-alt"></i></div>
+                                <div class="contegg-admin-workspace-heading">
+                                    <div class="contegg-admin-workspace-title">Админ панель</div>
+                                    <div class="contegg-admin-workspace-subtitle">Управление Contegg</div>
+                                </div>
+                            </div>
+                            <div id="conteggAdminWorkspaceContent" class="contegg-admin-workspace-content"></div>
+                        </section>
                     </section>
                     <aside id="conteggDesktopRightPanel">
                         <div class="contegg-side-tabs">
@@ -15794,6 +15883,142 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
     .contegg-admin-find-btn {
         width:100% !important;
     }
+}
+</style>
+
+
+<style id="CONTEGG-V16-ADMIN-WORKSPACE-STYLES">
+@media (min-width:768px) {
+    #conteggAdminWorkspace {
+        position:absolute;
+        inset:0;
+        z-index:45;
+        display:none;
+        flex-direction:column;
+        min-width:0;
+        min-height:0;
+        overflow:hidden;
+        background:#0b0b0c;
+    }
+
+    body.contegg-admin-workspace-open #conteggAdminWorkspace {
+        display:flex;
+    }
+
+    body.contegg-admin-workspace-open #conteggDesktopEmptyState,
+    body.contegg-admin-workspace-open #conteggDesktopChatPane > #chatOverlay,
+    body.contegg-admin-workspace-open #conteggDiscussionPane {
+        display:none !important;
+    }
+
+    .contegg-admin-workspace-header {
+        height:52px;
+        min-height:52px;
+        flex:0 0 52px;
+        display:flex;
+        align-items:center;
+        gap:10px;
+        padding:0 14px;
+        border-bottom:.5px solid rgba(255,255,255,.09);
+        background:rgba(22,22,24,.96);
+        backdrop-filter:blur(20px) saturate(160%);
+        -webkit-backdrop-filter:blur(20px) saturate(160%);
+    }
+
+    .contegg-admin-workspace-icon {
+        width:34px;
+        height:34px;
+        flex:0 0 34px;
+        border-radius:50%;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        background:linear-gradient(135deg,#ff9f0a,#ff453a);
+        color:white;
+        font-size:14px;
+    }
+
+    .contegg-admin-workspace-heading {
+        min-width:0;
+        display:flex;
+        flex-direction:column;
+        line-height:1.15;
+    }
+
+    .contegg-admin-workspace-title {
+        font-size:14px;
+        font-weight:650;
+        color:#fff;
+    }
+
+    .contegg-admin-workspace-subtitle {
+        margin-top:2px;
+        font-size:10px;
+        color:rgba(235,235,245,.48);
+    }
+
+    .contegg-admin-workspace-content {
+        flex:1 1 auto;
+        min-height:0;
+        overflow-y:auto;
+        overscroll-behavior:contain;
+        padding:14px clamp(12px,2.4vw,28px) 26px;
+        scrollbar-width:thin;
+        scrollbar-color:rgba(235,235,245,.18) transparent;
+    }
+
+    .contegg-admin-workspace-content::-webkit-scrollbar { width:7px; }
+    .contegg-admin-workspace-content::-webkit-scrollbar-track { background:transparent; }
+    .contegg-admin-workspace-content::-webkit-scrollbar-thumb {
+        border-radius:999px;
+        background:rgba(235,235,245,.18);
+        border:2px solid transparent;
+        background-clip:padding-box;
+    }
+
+    .contegg-admin-workspace-content .admin-panel {
+        width:min(100%,620px);
+        margin:0 auto 12px;
+        padding:14px;
+        border-radius:16px;
+        background:rgba(28,28,30,.78);
+        border:.5px solid rgba(255,255,255,.09);
+        box-shadow:none;
+    }
+
+    .contegg-admin-workspace-content .admin-panel-title {
+        margin-bottom:12px;
+        font-size:15px;
+    }
+
+    .contegg-admin-workspace-content .contegg-admin-target-card {
+        min-height:76px;
+    }
+
+    .contegg-admin-empty-hint {
+        min-height:66px;
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        gap:7px;
+        color:rgba(235,235,245,.42);
+        font-size:12px;
+    }
+
+    .contegg-admin-empty-hint i { font-size:22px; }
+
+    .contegg-admin-workspace-content .admin-textarea {
+        resize:none;
+        min-height:90px;
+        max-height:180px;
+    }
+}
+
+/* Own profile username badge should sit like Telegram, not jump the line. */
+.profile-username .contegg-verification-check,
+.profile-username .contegg-verification-badge-image {
+    flex:0 0 auto;
 }
 </style>
 
