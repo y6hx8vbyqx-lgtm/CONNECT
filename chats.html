@@ -5776,28 +5776,32 @@ function closeChatUIOnly() {
     }
 }
 
+let conteggProgrammaticChatBack = false;
+
 function closeChat() {
     const overlay = document.getElementById('chatOverlay');
     const chatIsOpen = overlay?.classList.contains('show');
 
     if (!chatIsOpen) return;
 
-    // На мобильном кнопка назад снимает history-step чата.
-    // Точно так же работает системный свайп Safari от левого края.
+    // Кнопка «назад»: history нужен для корректной навигации,
+    // но отмечаем, что это НЕ системный edge-swipe Safari.
     if (
         isMobileChatNavigation() &&
         history.state?.conteggChatOpen === true
     ) {
+        conteggProgrammaticChatBack = true;
         history.back();
         return;
     }
 
-    // ПК / запасной сценарий.
+    // ПК / запасной сценарий — обычная CSS-анимация всего overlay.
     closeChatUIOnly();
 }
 
-// Safari edge-swipe / browser Back:
-// если открыт чат — закрываем только чат и остаёмся на списке.
+// Safari edge-swipe / browser Back.
+// При настоящем системном свайпе Safari уже визуально уводит страницу сам.
+// Поэтому после popstate нельзя запускать второй translateX — это и давало рывок.
 window.addEventListener('popstate', () => {
     const overlay = document.getElementById('chatOverlay');
 
@@ -5805,8 +5809,23 @@ window.addEventListener('popstate', () => {
         isMobileChatNavigation() &&
         overlay?.classList.contains('show')
     ) {
-        closeChatUIOnly();
+        if (!conteggProgrammaticChatBack) {
+            overlay.classList.add('contegg-instant-back-close');
+            closeChatUIOnly();
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    overlay.classList.remove('contegg-instant-back-close');
+                });
+            });
+        } else {
+            // Нажатие нашей кнопки назад: весь chat-overlay, включая шапку,
+            // уезжает одним transform без отдельного слоя шапки.
+            closeChatUIOnly();
+        }
     }
+
+    conteggProgrammaticChatBack = false;
 });
 
 async function markAsRead() {
@@ -10465,15 +10484,22 @@ body.keyboard-no-transition .chat-input-bar {
 
 
 <style id="CONTEGG-LOCKED-CHAT-HEADER">
-/* ===== HARD LOCK: CHAT HEADER NEVER MOVES WITH KEYBOARD ===== */
+/* ===== CHAT HEADER: LOCKED VERTICALLY, PART OF THE SWIPE LAYER ===== */
 
-/* Шапка открытого чата всегда привязана именно к экрану. */
+/*
+   ВАЖНО:
+   Шапка НЕ fixed относительно окна. Она остаётся внутри chat-overlay,
+   поэтому горизонтальный свайп двигает весь чат единым GPU-слоем.
+   При этом по вертикали она жёстко стоит в top:0 и клавиатура её не трогает.
+*/
+.chat-overlay .chat-navbar,
 .chat-overlay.show .chat-navbar,
 body.chat-open .chat-navbar,
 body.chat-open.keyboard-open .chat-navbar,
 body.chat-open.keyboard-settling-in .chat-navbar,
-body.chat-open.keyboard-settling-out .chat-navbar {
-    position: fixed !important;
+body.chat-open.keyboard-settling-out .chat-navbar,
+body.chat-open.keyboard-no-transition .chat-navbar {
+    position: absolute !important;
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
@@ -10482,10 +10508,10 @@ body.chat-open.keyboard-settling-out .chat-navbar {
     min-height: var(--navbar-height) !important;
     height: var(--navbar-height) !important;
     margin: 0 !important;
-    transform: translate3d(0, 0, 0) !important;
+    transform: none !important;
     translate: none !important;
     scale: 1 !important;
-    z-index: 100001 !important;
+    z-index: 20 !important;
     transition: none !important;
     animation: none !important;
     will-change: auto !important;
@@ -10493,21 +10519,25 @@ body.chat-open.keyboard-settling-out .chat-navbar {
     -webkit-backface-visibility: hidden !important;
 }
 
-/* Никакая фаза открытия/закрытия клавиатуры не имеет права двигать шапку. */
+/* Клавиатура меняет только сообщения/инпут, но никогда координаты шапки. */
 body.keyboard-open .chat-navbar,
 body.keyboard-settling-in .chat-navbar,
 body.keyboard-settling-out .chat-navbar,
 body.keyboard-no-transition .chat-navbar {
     top: 0 !important;
     bottom: auto !important;
-    transform: translate3d(0, 0, 0) !important;
+    transform: none !important;
     transition: none !important;
     animation: none !important;
 }
 
-/* Сообщения начинаются строго под неподвижной шапкой. */
 body.chat-open .chat-messages {
     top: var(--navbar-height) !important;
+}
+
+/* Safari уже сам анимирует edge-back. В момент popstate второй CSS-выезд запрещён. */
+.chat-overlay.contegg-instant-back-close {
+    transition: none !important;
 }
 </style>
 
