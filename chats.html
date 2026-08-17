@@ -2568,6 +2568,9 @@ let audioChunks = [];
 let isRecording = false;
 let currentCommentsPostId = null;
 let commentsListener = null;
+let currentCommentsMode = null;
+let currentCommentsChatId = null;
+let currentCommentsPostData = null;
 let currentChannelCommentsEnabled = true;
     
 const MAX_IMAGE_WIDTH = 1280;
@@ -6857,35 +6860,132 @@ function updateMessageReactions(id, reactions) {
     });
 }
 
-    async function openPostComments(postId) {
-    if (!currentChatId || !currentChatIsChannel || !postId) return;
 
-    currentCommentsPostId = postId;
+    function isInlineDiscussionMode() {
+    return window.innerWidth >= 768;
+}
 
-    const modal = document.getElementById('postCommentsModal');
-    const list = document.getElementById('postCommentsList');
-    const input = document.getElementById('postCommentInput');
+function formatDiscussionSubtitle(count) {
+    return `${count} ${formatCommentsWord(count)}`;
+}
 
-    if (!modal || !list || !input) return;
+function getActivePostCommentInput() {
+    if (currentCommentsMode === 'inline' && isInlineDiscussionMode()) {
+        return document.getElementById('conteggDiscussionCommentInput');
+    }
+    return document.getElementById('postCommentInput');
+}
 
-    list.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка...</span></div>';
-    input.value = '';
+function updateCommentsSubtitle(count) {
+    const subtitle = document.getElementById('conteggDiscussionSubtitle');
+    if (subtitle) subtitle.textContent = formatDiscussionSubtitle(count || 0);
+}
 
-    modal.classList.add('show');
+function buildDiscussionPostPreview(post, postId) {
+    const safeTitle = esc(post?.title || '');
+    const safeText = esc(post?.text || post?.caption || '');
+    const mediaSrc = post?.imageBase64 || post?.imageUrl || post?.mediaUrl || '';
+    const time = timeFormat(post?.timestamp?.toDate?.() || new Date());
+    const reactions = Array.isArray(post?.reactionsSummary)
+        ? post.reactionsSummary
+        : Object.entries(post?.reactions || {}).map(([emoji, users]) => ({ emoji, count: Array.isArray(users) ? users.length : Number(users) || 0 })).filter(x => x.count > 0).slice(0, 5);
+    const reactionsHTML = reactions.length
+        ? `<div class="contegg-discussion-post-reactions">${reactions.map(r => `<span><span>${esc(r.emoji)}</span><b>${r.count}</b></span>`).join('')}</div>`
+        : '';
+    const mediaHTML = mediaSrc
+        ? `<div class="contegg-discussion-post-media"><img src="${mediaSrc}" alt="post media" onerror="this.closest('.contegg-discussion-post-media')?.remove()"></div>`
+        : '';
+    return `
+        <article class="contegg-discussion-post-card" data-post-id="${postId}">
+            ${mediaHTML}
+            ${safeTitle ? `<div class="contegg-discussion-post-title">${safeTitle}</div>` : ''}
+            ${safeText ? `<div class="contegg-discussion-post-text">${safeText}</div>` : ''}
+            <div class="contegg-discussion-post-footer">
+                ${reactionsHTML}
+                <span class="contegg-discussion-post-time">${time}</span>
+            </div>
+        </article>
+    `;
+}
+
+function openInlineDiscussionShell() {
+    const pane = document.getElementById('conteggDiscussionPane');
+    if (!pane) return;
+    document.body.classList.add('contegg-discussion-open');
+    pane.setAttribute('aria-hidden', 'false');
+}
+
+function closeInlinePostComments() {
+    document.body.classList.remove('contegg-discussion-open');
+    const pane = document.getElementById('conteggDiscussionPane');
+    if (pane) pane.setAttribute('aria-hidden', 'true');
 
     if (commentsListener) {
         commentsListener();
         commentsListener = null;
     }
 
-    commentsListener = db.collection('chats')
+    currentCommentsPostId = null;
+    currentCommentsMode = null;
+    currentCommentsChatId = null;
+    currentCommentsPostData = null;
+}
+window.closeInlinePostComments = closeInlinePostComments;
+
+    async function openPostComments(postId) {
+    if (!currentChatId || !currentChatIsChannel || !postId) return;
+
+    currentCommentsPostId = postId;
+    currentCommentsChatId = currentChatId;
+    currentCommentsMode = isInlineDiscussionMode() ? 'inline' : 'modal';
+
+    const postRef = db.collection('chats')
         .doc(currentChatId)
         .collection('messages')
-        .doc(postId)
+        .doc(postId);
+
+    let postData = null;
+    try {
+        const postSnap = await postRef.get();
+        postData = postSnap.exists ? postSnap.data() : null;
+        currentCommentsPostData = postData;
+    } catch (e) {
+        console.error('post fetch error:', e);
+    }
+
+    const list = currentCommentsMode === 'inline'
+        ? document.getElementById('conteggDiscussionCommentsList')
+        : document.getElementById('postCommentsList');
+    const input = getActivePostCommentInput();
+
+    if (!list || !input) return;
+
+    list.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка...</span></div>';
+    input.value = '';
+    input.style.height = 'auto';
+
+    if (currentCommentsMode === 'inline') {
+        const preview = document.getElementById('conteggDiscussionPostPreview');
+        if (preview) preview.innerHTML = postData ? buildDiscussionPostPreview(postData, postId) : '';
+        updateCommentsSubtitle(postData?.commentsCount || 0);
+        openInlineDiscussionShell();
+        requestAnimationFrame(() => input.focus({ preventScroll: true }));
+    } else {
+        const modal = document.getElementById('postCommentsModal');
+        if (modal) modal.classList.add('show');
+    }
+
+    if (commentsListener) {
+        commentsListener();
+        commentsListener = null;
+    }
+
+    commentsListener = postRef
         .collection('comments')
         .orderBy('timestamp', 'asc')
         .onSnapshot(async snap => {
             list.innerHTML = '';
+            updateCommentsSubtitle(snap.size || postData?.commentsCount || 0);
 
             if (snap.empty) {
                 list.innerHTML = `
@@ -6900,10 +7000,13 @@ function updateMessageReactions(id, reactions) {
 
             for (const doc of snap.docs) {
                 const comment = doc.data();
-                await renderPostComment(doc.id, comment);
+                await renderPostComment(doc.id, comment, list);
             }
 
-            list.scrollTop = list.scrollHeight;
+            const scroller = currentCommentsMode === 'inline'
+                ? document.getElementById('conteggDiscussionScroll')
+                : list;
+            if (scroller) scroller.scrollTop = scroller.scrollHeight;
         }, error => {
             console.error('comments listener error:', error);
             list.innerHTML = `
@@ -6923,10 +7026,13 @@ function closePostComments() {
     }
 
     currentCommentsPostId = null;
+    currentCommentsMode = null;
+    currentCommentsChatId = null;
+    currentCommentsPostData = null;
 }
 
-async function renderPostComment(commentId, comment) {
-    const list = document.getElementById('postCommentsList');
+async function renderPostComment(commentId, comment, targetList) {
+    const list = targetList || document.getElementById('postCommentsList');
     if (!list) return;
 
     const user = await getUserInfo(comment.senderId);
@@ -6963,9 +7069,10 @@ const avatarHTML = avatarSrc
 }
     
 async function sendPostComment() {
-    if (!currentChatId || !currentCommentsPostId) return;
+    if (!currentCommentsChatId || !currentCommentsPostId) return;
 
-    const input = document.getElementById('postCommentInput');
+    const input = getActivePostCommentInput();
+    if (!input) return;
     const text = input.value.trim();
 
     if (!text) return;
@@ -6975,7 +7082,7 @@ async function sendPostComment() {
         input.style.height = 'auto';
 
         const postRef = db.collection('chats')
-            .doc(currentChatId)
+            .doc(currentCommentsChatId)
             .collection('messages')
             .doc(currentCommentsPostId);
 
@@ -9931,6 +10038,23 @@ if (postCommentInput) {
     });
 }
 
+const inlineDiscussionInput = document.getElementById('conteggDiscussionCommentInput');
+const inlineDiscussionComposer = document.querySelector('.contegg-discussion-composer');
+if (inlineDiscussionInput) {
+    inlineDiscussionInput.addEventListener('input', function () {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 110) + 'px';
+        inlineDiscussionComposer?.classList.toggle('has-text', this.value.trim().length > 0);
+    });
+
+    inlineDiscussionInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendPostComment();
+        }
+    });
+}
+
 /* ===== MOBILE KEYBOARD VIEWPORT FIX ===== */
 
 function updateMobileKeyboardViewport() {
@@ -10197,6 +10321,221 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
 .post-comments-btn:active {
     transform: none !important;
     background: rgba(255,255,255,0.075) !important;
+}
+
+
+/* Inline discussion pane for tablet/desktop */
+#conteggDiscussionPane {
+    position: absolute;
+    inset: 0;
+    z-index: 35;
+    display: none;
+    flex-direction: column;
+    background: #0f0f11;
+}
+
+body.contegg-discussion-open #conteggDiscussionPane {
+    display: flex;
+}
+
+.contegg-discussion-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: var(--navbar-height);
+    padding: 0 14px;
+    border-bottom: 0.5px solid rgba(255,255,255,.08);
+    background: rgba(22,22,24,.94);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+}
+
+.contegg-discussion-back,
+.contegg-discussion-icon,
+.contegg-discussion-attach {
+    border: none;
+    background: transparent;
+    color: rgba(235,235,245,.82);
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.contegg-discussion-back:hover,
+.contegg-discussion-icon:hover,
+.contegg-discussion-attach:hover {
+    background: rgba(255,255,255,.08);
+}
+
+.contegg-discussion-headings {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.contegg-discussion-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+    line-height: 1.15;
+}
+
+.contegg-discussion-subtitle {
+    font-size: 12px;
+    color: rgba(235,235,245,.52);
+    line-height: 1.15;
+}
+
+.contegg-discussion-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px 14px 16px;
+}
+
+.contegg-discussion-scroll::-webkit-scrollbar,
+#conteggDiscussionCommentsList::-webkit-scrollbar {
+    width: 8px;
+}
+
+.contegg-discussion-scroll::-webkit-scrollbar-track,
+#conteggDiscussionCommentsList::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.contegg-discussion-scroll::-webkit-scrollbar-thumb,
+#conteggDiscussionCommentsList::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(235,235,245,.18);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+.contegg-discussion-post-preview {
+    margin-bottom: 10px;
+}
+
+.contegg-discussion-post-card {
+    width: min(100%, 360px);
+    border-radius: 22px;
+    overflow: hidden;
+    background: rgba(44,44,46,.92);
+    box-shadow: 0 10px 28px rgba(0,0,0,.22);
+}
+
+.contegg-discussion-post-media {
+    width: 100%;
+    max-height: 420px;
+    overflow: hidden;
+    background: #111;
+}
+
+.contegg-discussion-post-media img {
+    display: block;
+    width: 100%;
+    height: auto;
+    object-fit: cover;
+}
+
+.contegg-discussion-post-title {
+    padding: 10px 12px 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.contegg-discussion-post-text {
+    padding: 8px 12px 0;
+    font-size: 14px;
+    line-height: 1.42;
+    color: rgba(245,245,247,.9);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.contegg-discussion-post-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px 10px;
+}
+
+.contegg-discussion-post-reactions {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.contegg-discussion-post-reactions span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 24px;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.08);
+    font-size: 12px;
+    color: rgba(245,245,247,.9);
+}
+
+.contegg-discussion-post-reactions b {
+    font-weight: 600;
+}
+
+.contegg-discussion-post-time {
+    font-size: 12px;
+    color: rgba(235,235,245,.54);
+}
+
+.contegg-discussion-comments {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.contegg-discussion-composer {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 10px 14px max(10px, env(safe-area-inset-bottom, 0px));
+    border-top: 0.5px solid rgba(255,255,255,.08);
+    background: rgba(22,22,24,.96);
+}
+
+.contegg-discussion-input {
+    min-height: 40px !important;
+    max-height: 110px !important;
+    border-radius: 20px !important;
+}
+
+.contegg-discussion-actions {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.contegg-discussion-send {
+    display: none !important;
+}
+
+.contegg-discussion-input:not(:placeholder-shown) ~ .contegg-discussion-actions .contegg-discussion-send,
+.contegg-discussion-composer.has-text .contegg-discussion-send {
+    display: inline-flex !important;
+}
+
+.contegg-discussion-composer.has-text .contegg-discussion-icon:last-child {
+    display: none !important;
+}
+
+@media (max-width: 767px) {
+    #conteggDiscussionPane { display: none !important; }
 }
 
 .comments-sheet {
@@ -11499,6 +11838,28 @@ body.keyboard-no-transition .chat-input-bar {
                 <main id="conteggDesktopWorkspace">
                     <section id="conteggDesktopChatPane">
                         <div id="conteggDesktopEmptyState"><div>Откройте чат, чтобы начать общаться</div></div>
+                        <section id="conteggDiscussionPane" aria-hidden="true">
+                            <div class="contegg-discussion-header">
+                                <button type="button" class="contegg-discussion-back" onclick="closeInlinePostComments()"><i class="fas fa-chevron-left"></i></button>
+                                <div class="contegg-discussion-headings">
+                                    <div class="contegg-discussion-title">Обсуждение</div>
+                                    <div class="contegg-discussion-subtitle" id="conteggDiscussionSubtitle">0 комментариев</div>
+                                </div>
+                            </div>
+                            <div class="contegg-discussion-scroll" id="conteggDiscussionScroll">
+                                <div id="conteggDiscussionPostPreview" class="contegg-discussion-post-preview"></div>
+                                <div id="conteggDiscussionCommentsList" class="contegg-discussion-comments"></div>
+                            </div>
+                            <div class="contegg-discussion-composer">
+                                <button type="button" class="contegg-discussion-attach" aria-label="Прикрепить"><i class="fas fa-paperclip"></i></button>
+                                <textarea id="conteggDiscussionCommentInput" class="chat-input contegg-discussion-input" placeholder="Комментировать..." rows="1"></textarea>
+                                <div class="contegg-discussion-actions">
+                                    <button type="button" class="contegg-discussion-icon" aria-label="Эмодзи"><i class="far fa-smile"></i></button>
+                                    <button type="button" class="contegg-discussion-icon" aria-label="Голосовое сообщение"><i class="fas fa-microphone"></i></button>
+                                    <button type="button" class="chat-send contegg-discussion-send" onclick="sendPostComment()"><i class="fas fa-arrow-up"></i></button>
+                                </div>
+                            </div>
+                        </section>
                     </section>
                     <aside id="conteggDesktopRightPanel">
                         <div class="contegg-side-tabs">
@@ -11633,6 +11994,7 @@ body.keyboard-no-transition .chat-input-bar {
 
     function arrangeForViewport() {
         if (isPhone()) {
+            if (typeof closeInlinePostComments === 'function') closeInlinePostComments();
             restoreFromDesktopToPhone();
             freezePhoneBaseHeight();
             syncPhoneKeyboard();
@@ -11652,6 +12014,7 @@ body.keyboard-no-transition .chat-input-bar {
     if (typeof originalShow === 'function') {
         window.showChatOverlay = function(...args) {
             arrangeForViewport();
+            if (typeof closeInlinePostComments === 'function') closeInlinePostComments();
             const result = originalShow.apply(this, args);
             arrangeForViewport();
             if (isPhone()) {
@@ -11667,6 +12030,7 @@ body.keyboard-no-transition .chat-input-bar {
         window.hideChatOverlay = function(...args) {
             const result = originalHide.apply(this, args);
             document.documentElement.style.setProperty('--contegg-phone-keyboard-shift', '0px');
+            if (typeof closeInlinePostComments === 'function') closeInlinePostComments();
             return result;
         };
     }
