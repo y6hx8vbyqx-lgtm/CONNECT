@@ -13367,6 +13367,77 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
         border-radius: 26px 26px 0 0 !important;
     }
 }
+
+/* ===== V6 · COMPACT MESSAGE ACTIONS (~50% smaller) ===== */
+#msgContextMenu.contegg-message-menu {
+    min-width: 170px !important;
+    width: min(190px, calc(100vw - 12px)) !important;
+    padding: 4px !important;
+    border-radius: 13px !important;
+}
+#msgContextMenu .context-item {
+    min-height: 31px !important;
+    padding: 0 7px !important;
+    border-radius: 7px !important;
+    gap: 8px !important;
+    font-size: 11px !important;
+}
+#msgContextMenu .context-item:not(:last-child)::after {
+    left: 30px !important;
+    right: 5px !important;
+}
+#msgContextMenu .context-item > i:first-child {
+    width: 15px !important;
+    flex: 0 0 15px !important;
+    font-size: 13px !important;
+}
+#msgContextMenu .context-chevron { font-size: 9px !important; }
+
+#reactionsPanel.reactions-panel {
+    min-height: 40px !important;
+    padding: 4px 39px 4px 7px !important;
+    border-radius: 22px !important;
+}
+.contegg-reaction-main, .contegg-reaction-more { gap: 2px !important; }
+#reactionsPanel.expanded {
+    border-radius: 17px !important;
+    padding-bottom: 7px !important;
+    min-height: 72px !important;
+}
+#reactionsPanel.expanded .contegg-reaction-more { padding-top: 2px !important; }
+#reactionsPanel span {
+    width: 32px !important;
+    height: 32px !important;
+    flex: 0 0 32px !important;
+    font-size: 21px !important;
+}
+.contegg-reaction-expand {
+    right: 4px !important;
+    top: 4px !important;
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 11px !important;
+}
+@media (max-width: 620px) {
+    #msgContextMenu.contegg-message-menu {
+        width: min(190px, calc(100vw - 12px)) !important;
+    }
+    #msgContextMenu .context-item {
+        min-height: 31px !important;
+        font-size: 11px !important;
+    }
+    #reactionsPanel.reactions-panel {
+        padding-right: 39px !important;
+        min-height: 40px !important;
+    }
+    #reactionsPanel span {
+        width: 32px !important;
+        height: 32px !important;
+        flex-basis: 32px !important;
+        font-size: 21px !important;
+    }
+    .contegg-reaction-expand { width: 32px !important; height: 32px !important; }
+}
 </style>
 </body>
 </html>
