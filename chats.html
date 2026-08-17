@@ -2863,6 +2863,7 @@ let photoLastPoint = null;
 // Channel media composer (Telegram-like preview before publishing)
 let channelMediaComposerItems = [];
 let channelMediaComposerEditingId = null;
+let channelMediaComposerRequestedTool = 'crop';
 let channelMediaComposerObjectUrls = new Set();
 
     async function handleSelectedImages(files) {
@@ -3225,6 +3226,16 @@ async function openPhotoEditor(file) {
             });
 
             updatePhotoToolButtons();
+
+            // When the editor was opened from the channel media composer,
+            // activate the requested tool only after the image/cropper is ready.
+            if (channelMediaComposerEditingId) {
+                const requestedTool = channelMediaComposerRequestedTool || 'crop';
+                requestAnimationFrame(() => {
+                    if (!channelMediaComposerEditingId) return;
+                    setPhotoTool(requestedTool);
+                });
+            }
         }, 120);
     };
 
@@ -3300,6 +3311,7 @@ function cancelPhotoEditor() {
         modal?.classList.remove('show');
         cleanupPhotoEditor(true);
         channelMediaComposerEditingId = null;
+        channelMediaComposerRequestedTool = 'crop';
         const btn = document.getElementById('photoEditorSendBtn');
         if (btn) btn.textContent = 'Отправить';
         return;
@@ -3758,7 +3770,7 @@ function renderChannelMediaComposer() {
     }
 
     grid.innerHTML = channelMediaComposerItems.map(item => `
-        <div class="channel-media-item" data-media-id="${item.id}">
+        <div class="channel-media-item" data-media-id="${item.id}" onclick="editChannelMediaItem('${item.id}', 'crop')">
             <img src="${item.previewUrl}" alt="Фото">
             <div class="channel-media-item-tools">
                 <button class="channel-media-item-tool" type="button" title="Обрезать" aria-label="Обрезать" onclick="event.stopPropagation(); editChannelMediaItem('${item.id}', 'crop')">
@@ -3813,7 +3825,22 @@ async function openChannelMediaComposer(files) {
 window.openChannelMediaComposer = openChannelMediaComposer;
 
 function closeChannelMediaComposer(force = false) {
-    if (channelMediaComposerEditingId && !force) return;
+    // The close button must ALWAYS work. If an item editor is open,
+    // close that editor first and clear its state instead of silently ignoring X.
+    if (channelMediaComposerEditingId) {
+        const editorModal = document.getElementById('photoEditModal');
+        const editorActive = document.activeElement;
+        if (editorModal && editorActive && editorModal.contains(editorActive) && typeof editorActive.blur === 'function') {
+            editorActive.blur();
+        }
+        editorModal?.classList.remove('show');
+        cleanupPhotoEditor(true);
+        channelMediaComposerEditingId = null;
+        channelMediaComposerRequestedTool = 'crop';
+        const editorBtn = document.getElementById('photoEditorSendBtn');
+        if (editorBtn) editorBtn.textContent = 'Отправить';
+    }
+
     const modal = document.getElementById('channelMediaComposerModal');
     const active = document.activeElement;
     if (modal && active && modal.contains(active) && typeof active.blur === 'function') active.blur();
@@ -3843,17 +3870,15 @@ async function editChannelMediaItem(id, mode = 'crop') {
     if (!item) return;
 
     channelMediaComposerEditingId = id;
+    channelMediaComposerRequestedTool = mode === 'draw' ? 'draw' : 'crop';
+
     const source = item.editedBlob || item.file;
+
+    // Open the real full photo editor. It sits above the album composer.
     await openPhotoEditor(source);
 
     const editorSendBtn = document.getElementById('photoEditorSendBtn');
     if (editorSendBtn) editorSendBtn.textContent = 'Готово';
-
-    if (mode === 'draw') {
-        setTimeout(() => {
-            if (channelMediaComposerEditingId === id) setPhotoTool('draw');
-        }, 260);
-    }
 }
 window.editChannelMediaItem = editChannelMediaItem;
 
@@ -3970,6 +3995,7 @@ async function sendEditedPhoto() {
             modal?.classList.remove('show');
             cleanupPhotoEditor(true);
             channelMediaComposerEditingId = null;
+            channelMediaComposerRequestedTool = 'crop';
             renderChannelMediaComposer();
             return;
         }
@@ -11528,6 +11554,54 @@ body.contegg-discussion-open #conteggDiscussionPane {
     .channel-media-item { min-height: 115px; }
 }
 </style>
+/* ===== MEDIA COMPOSER EDITOR LAYER FIX ===== */
+#photoEditModal {
+    z-index: 100090 !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 18px !important;
+}
+
+#photoEditModal .photo-editor-sheet {
+    width: min(94vw, 980px) !important;
+    max-width: 980px !important;
+    height: min(92dvh, 860px) !important;
+    max-height: 92dvh !important;
+    border-radius: 28px !important;
+    overflow-y: auto !important;
+    transform: translateY(14px) scale(.99) !important;
+}
+
+#photoEditModal.show .photo-editor-sheet {
+    transform: translateY(0) scale(1) !important;
+}
+
+#photoEditModal .photo-editor-stage {
+    min-height: min(62vh, 620px) !important;
+    max-height: 66vh !important;
+}
+
+#photoEditModal #photoEditImage,
+#photoEditModal #photoEditCanvas {
+    max-height: 66vh !important;
+}
+
+.channel-media-item { cursor: pointer; }
+.channel-media-item-tool { cursor: pointer; }
+
+@media (max-width: 767px) {
+    #photoEditModal {
+        padding: 0 !important;
+        align-items: flex-end !important;
+    }
+    #photoEditModal .photo-editor-sheet {
+        width: 100% !important;
+        height: 94dvh !important;
+        max-height: 94dvh !important;
+        border-radius: 26px 26px 0 0 !important;
+    }
+}
+
 
     <style id="CONTEGG-PHOTO-EDITOR-STYLES">
 .photo-editor-sheet {
