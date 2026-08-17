@@ -2491,6 +2491,34 @@ body {
     </div>
 </div>
 
+<div class="modal-overlay channel-media-composer-overlay" id="channelMediaComposerModal">
+    <div class="modal-sheet channel-media-composer-sheet">
+        <div class="channel-media-composer-header">
+            <button class="channel-media-composer-close" type="button" onclick="closeChannelMediaComposer()" aria-label="Закрыть">
+                <i class="fas fa-times"></i>
+            </button>
+            <div class="channel-media-composer-title" id="channelMediaComposerTitle">Медиа</div>
+            <button class="channel-media-composer-more" type="button" aria-label="Параметры">
+                <i class="fas fa-ellipsis-h"></i>
+            </button>
+        </div>
+
+        <div class="channel-media-composer-body">
+            <div id="channelMediaComposerGrid" class="channel-media-composer-grid"></div>
+        </div>
+
+        <div class="channel-media-composer-footer">
+            <textarea id="channelMediaComposerCaption" class="channel-media-composer-caption" rows="1" placeholder="Добавить подпись…"></textarea>
+            <button class="channel-media-composer-emoji" type="button" aria-label="Эмодзи" onclick="focusChannelMediaCaption()">
+                <i class="far fa-smile"></i>
+            </button>
+            <button id="channelMediaComposerSend" class="channel-media-composer-send" type="button" onclick="sendChannelMediaComposer()" aria-label="Отправить">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="photoEditModal">
     <div class="modal-sheet photo-editor-sheet">
         <div class="modal-handle"></div>
@@ -2831,6 +2859,11 @@ let photoEditObjectUrl = null;
 let photoEditorMode = 'crop';
 let photoIsDrawing = false;
 let photoLastPoint = null;
+
+// Channel media composer (Telegram-like preview before publishing)
+let channelMediaComposerItems = [];
+let channelMediaComposerEditingId = null;
+let channelMediaComposerObjectUrls = new Set();
 
     async function handleSelectedImages(files) {
     const fileArray = Array.from(files || []);
@@ -3260,6 +3293,17 @@ function closePhotoEditor(clearQueue = true) {
 }
 
 function cancelPhotoEditor() {
+    if (channelMediaComposerEditingId) {
+        const modal = document.getElementById('photoEditModal');
+        const active = document.activeElement;
+        if (modal && active && modal.contains(active) && typeof active.blur === 'function') active.blur();
+        modal?.classList.remove('show');
+        cleanupPhotoEditor(true);
+        channelMediaComposerEditingId = null;
+        const btn = document.getElementById('photoEditorSendBtn');
+        if (btn) btn.textContent = 'Отправить';
+        return;
+    }
     closePhotoEditor(true);
 }
 
@@ -3595,6 +3639,7 @@ function openImageAlbum(items, index = 0) {
     if (!viewer || !Array.isArray(items) || !items.length) return;
     conteggAlbumItems = items.filter(Boolean);
     conteggAlbumIndex = Math.max(0, Math.min(index, conteggAlbumItems.length - 1));
+    viewer.removeAttribute('inert');
     viewer.classList.add('show');
     viewer.setAttribute('aria-hidden', 'false');
     document.body.classList.add('contegg-album-open');
@@ -3623,8 +3668,17 @@ window.stepImageAlbum = stepImageAlbum;
 
 function closeImageAlbum() {
     const viewer = document.getElementById('conteggAlbumViewer');
-    viewer?.classList.remove('show');
-    viewer?.setAttribute('aria-hidden', 'true');
+    if (!viewer) return;
+
+    // Do not hide an element while one of its descendants still owns focus.
+    const active = document.activeElement;
+    if (active && viewer.contains(active) && typeof active.blur === 'function') {
+        active.blur();
+    }
+
+    viewer.classList.remove('show');
+    viewer.setAttribute('inert', '');
+    requestAnimationFrame(() => viewer.setAttribute('aria-hidden', 'true'));
     document.body.classList.remove('contegg-album-open');
     conteggAlbumItems = [];
     conteggAlbumIndex = 0;
@@ -3656,39 +3710,175 @@ document.addEventListener('touchend', e => {
     conteggAlbumTouchStartX = null;
 }, { passive: true });
 
-async function sendChannelPhotoAlbum(files) {
-    if (!currentChatId || !currentChatIsChannel) return false;
-    if (!(await canSendToCurrentChat())) {
-        toast('Нет права публиковать в канал');
-        return true;
+function makeChannelMediaComposerId() {
+    return `media_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
+}
+
+function revokeChannelMediaComposerUrl(url) {
+    if (!url || !channelMediaComposerObjectUrls.has(url)) return;
+    try { URL.revokeObjectURL(url); } catch (_) {}
+    channelMediaComposerObjectUrls.delete(url);
+}
+
+function createChannelMediaPreviewUrl(source) {
+    const url = URL.createObjectURL(source);
+    channelMediaComposerObjectUrls.add(url);
+    return url;
+}
+
+function cleanupChannelMediaComposerItems() {
+    channelMediaComposerItems.forEach(item => revokeChannelMediaComposerUrl(item.previewUrl));
+    channelMediaComposerItems = [];
+    channelMediaComposerEditingId = null;
+}
+
+function focusChannelMediaCaption() {
+    document.getElementById('channelMediaComposerCaption')?.focus({ preventScroll: true });
+}
+window.focusChannelMediaCaption = focusChannelMediaCaption;
+
+function renderChannelMediaComposer() {
+    const grid = document.getElementById('channelMediaComposerGrid');
+    const title = document.getElementById('channelMediaComposerTitle');
+    const send = document.getElementById('channelMediaComposerSend');
+    if (!grid) return;
+
+    const count = channelMediaComposerItems.length;
+    grid.className = `channel-media-composer-grid count-${Math.max(1, count)}`;
+    if (title) title.textContent = count === 1 ? '1 фото' : `${count} фото`;
+    if (send) send.disabled = count === 0;
+
+    if (!count) {
+        grid.innerHTML = `
+            <div class="empty-state" style="padding:50px 20px;grid-column:1/-1;">
+                <div class="empty-state-icon">📷</div>
+                <div class="empty-state-title">Фото не выбраны</div>
+            </div>`;
+        return;
     }
 
-    const chosen = Array.from(files || []).filter(isProbablyImageFile).slice(0,5);
+    grid.innerHTML = channelMediaComposerItems.map(item => `
+        <div class="channel-media-item" data-media-id="${item.id}">
+            <img src="${item.previewUrl}" alt="Фото">
+            <div class="channel-media-item-tools">
+                <button class="channel-media-item-tool" type="button" title="Обрезать" aria-label="Обрезать" onclick="event.stopPropagation(); editChannelMediaItem('${item.id}', 'crop')">
+                    <i class="fas fa-crop-alt"></i>
+                </button>
+                <button class="channel-media-item-tool" type="button" title="Рисовать" aria-label="Рисовать" onclick="event.stopPropagation(); editChannelMediaItem('${item.id}', 'draw')">
+                    <i class="fas fa-signature"></i>
+                </button>
+                <button class="channel-media-item-tool remove" type="button" title="Убрать" aria-label="Убрать" onclick="event.stopPropagation(); removeChannelMediaItem('${item.id}')">
+                    <i class="far fa-trash-alt"></i>
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function openChannelMediaComposer(files) {
+    if (!currentChatId || !currentChatIsChannel) return;
+    if (!(await canSendToCurrentChat())) {
+        toast('Нет права публиковать в канал');
+        return;
+    }
+
+    const chosen = Array.from(files || []).filter(isProbablyImageFile).slice(0, 5);
     if (!chosen.length) {
         toast('Фото не выбрано');
-        return true;
+        return;
     }
     if ((files?.length || 0) > 5) toast('В один пост можно добавить максимум 5 фото');
 
-    const sendBtn = document.getElementById('sendBtn');
+    cleanupChannelMediaComposerItems();
+    channelMediaComposerItems = chosen.map(file => ({
+        id: makeChannelMediaComposerId(),
+        file,
+        editedBlob: null,
+        previewUrl: createChannelMediaPreviewUrl(file)
+    }));
+
+    const caption = document.getElementById('channelMediaComposerCaption');
+    if (caption) {
+        // If the user had already typed a post caption in the chat composer,
+        // move it into the media composer instead of losing it.
+        const chatInput = document.getElementById('chatInput');
+        caption.value = chatInput?.value || '';
+        caption.style.height = 'auto';
+        caption.classList.remove('is-scrollable');
+    }
+
+    renderChannelMediaComposer();
+    document.getElementById('channelMediaComposerModal')?.classList.add('show');
+}
+window.openChannelMediaComposer = openChannelMediaComposer;
+
+function closeChannelMediaComposer(force = false) {
+    if (channelMediaComposerEditingId && !force) return;
+    const modal = document.getElementById('channelMediaComposerModal');
+    const active = document.activeElement;
+    if (modal && active && modal.contains(active) && typeof active.blur === 'function') active.blur();
+    modal?.classList.remove('show');
+    cleanupChannelMediaComposerItems();
+    const caption = document.getElementById('channelMediaComposerCaption');
+    if (caption) {
+        caption.value = '';
+        caption.style.height = 'auto';
+        caption.classList.remove('is-scrollable');
+    }
+}
+window.closeChannelMediaComposer = closeChannelMediaComposer;
+
+function removeChannelMediaItem(id) {
+    const index = channelMediaComposerItems.findIndex(item => item.id === id);
+    if (index < 0) return;
+    const [item] = channelMediaComposerItems.splice(index, 1);
+    revokeChannelMediaComposerUrl(item.previewUrl);
+    renderChannelMediaComposer();
+    if (!channelMediaComposerItems.length) closeChannelMediaComposer(true);
+}
+window.removeChannelMediaItem = removeChannelMediaItem;
+
+async function editChannelMediaItem(id, mode = 'crop') {
+    const item = channelMediaComposerItems.find(x => x.id === id);
+    if (!item) return;
+
+    channelMediaComposerEditingId = id;
+    const source = item.editedBlob || item.file;
+    await openPhotoEditor(source);
+
+    const editorSendBtn = document.getElementById('photoEditorSendBtn');
+    if (editorSendBtn) editorSendBtn.textContent = 'Готово';
+
+    if (mode === 'draw') {
+        setTimeout(() => {
+            if (channelMediaComposerEditingId === id) setPhotoTool('draw');
+        }, 260);
+    }
+}
+window.editChannelMediaItem = editChannelMediaItem;
+
+async function sendChannelMediaComposer() {
+    if (!currentChatId || !currentChatIsChannel || !channelMediaComposerItems.length) return;
+    if (!(await canSendToCurrentChat())) {
+        toast('Нет права публиковать в канал');
+        return;
+    }
+
+    const sendBtn = document.getElementById('channelMediaComposerSend');
     const uploadBtn = document.getElementById('imageUploadBtn');
     if (sendBtn) sendBtn.disabled = true;
     if (uploadBtn) uploadBtn.disabled = true;
 
     try {
         const uploaded = [];
-        for (const file of chosen) {
-            const blob = await imageFileToJpegBlob(file);
+        for (const item of channelMediaComposerItems) {
+            const blob = item.editedBlob || await imageFileToJpegBlob(item.file);
             const url = await uploadImageBlobToStorage(blob);
             uploaded.push(url);
         }
 
-        const input = document.getElementById('chatInput');
-        const caption = input?.value?.trim() || '';
-        if (input) {
-            input.value = '';
-            input.style.height = 'auto';
-        }
+        const captionInput = document.getElementById('channelMediaComposerCaption');
+        const caption = captionInput?.value?.trim() || '';
 
         await db.collection('chats').doc(currentChatId).collection('messages').add({
             text: caption,
@@ -3699,7 +3889,8 @@ async function sendChannelPhotoAlbum(files) {
             read: false,
             type: uploaded.length > 1 ? 'image_album' : 'image',
             commentsCount: 0,
-            viewsCount: 0
+            viewsCount: 0,
+            storageProvider: 'supabase'
         });
 
         await db.collection('chats').doc(currentChatId).update({
@@ -3708,35 +3899,46 @@ async function sendChannelPhotoAlbum(files) {
             lastMessageTime: firebase.firestore.FieldValue.serverTimestamp()
         });
 
+        const chatInput = document.getElementById('chatInput');
+        if (chatInput && chatInput.value === (captionInput?.value || '')) {
+            chatInput.value = '';
+            chatInput.style.height = 'auto';
+        }
+
         toast(uploaded.length > 1 ? `Опубликовано фото: ${uploaded.length}` : 'Фото опубликовано');
+        closeChannelMediaComposer(true);
         settleChatAfterInputChange({ smooth: false });
-        return true;
     } catch (e) {
-        console.error('sendChannelPhotoAlbum error:', e);
-        console.error('Supabase album upload failed:', e);
+        console.error('sendChannelMediaComposer error:', e);
         toast('Ошибка загрузки фото в Supabase');
-        return true;
     } finally {
-        if (sendBtn) sendBtn.disabled = false;
+        if (sendBtn) sendBtn.disabled = channelMediaComposerItems.length === 0;
         if (uploadBtn) uploadBtn.disabled = false;
     }
+}
+window.sendChannelMediaComposer = sendChannelMediaComposer;
+
+// Backward-compatible name used by older handlers.
+async function sendChannelPhotoAlbum(files) {
+    await openChannelMediaComposer(files);
+    return true;
 }
 
 async function sendEditedPhoto() {
     if (!currentChatId || !photoEditFile) return;
 
     const sendBtn = document.getElementById('photoEditorSendBtn');
+    const savingToComposer = Boolean(channelMediaComposerEditingId);
 
     if (sendBtn) {
         sendBtn.disabled = true;
-        sendBtn.textContent = 'Отправка...';
+        sendBtn.textContent = savingToComposer ? 'Сохранение...' : 'Отправка...';
     }
 
     try {
         applyPhotoCropToCanvas();
 
         const canvas = document.getElementById('photoEditCanvas');
-
         if (!canvas || canvas.width === 0 || canvas.height === 0) {
             toast('Фото не готово');
             return;
@@ -3748,6 +3950,27 @@ async function sendEditedPhoto() {
 
         if (!blob) {
             toast('Ошибка подготовки фото');
+            return;
+        }
+
+        if (savingToComposer) {
+            const item = channelMediaComposerItems.find(x => x.id === channelMediaComposerEditingId);
+            if (!item) {
+                toast('Фото уже удалено');
+                return;
+            }
+
+            revokeChannelMediaComposerUrl(item.previewUrl);
+            item.editedBlob = blob;
+            item.previewUrl = createChannelMediaPreviewUrl(blob);
+
+            const modal = document.getElementById('photoEditModal');
+            const active = document.activeElement;
+            if (modal && active && modal.contains(active) && typeof active.blur === 'function') active.blur();
+            modal?.classList.remove('show');
+            cleanupPhotoEditor(true);
+            channelMediaComposerEditingId = null;
+            renderChannelMediaComposer();
             return;
         }
 
@@ -3763,11 +3986,11 @@ async function sendEditedPhoto() {
 
     } catch (e) {
         console.error('sendEditedPhoto error:', e);
-        toast('Ошибка отправки фото');
+        toast(savingToComposer ? 'Ошибка сохранения фото' : 'Ошибка отправки фото');
     } finally {
         if (sendBtn) {
             sendBtn.disabled = false;
-            sendBtn.textContent = 'Отправить';
+            sendBtn.textContent = channelMediaComposerEditingId ? 'Готово' : 'Отправить';
         }
     }
 }
@@ -6592,7 +6815,8 @@ function seekAudio(event, msgId, duration) {
     card.style.width = w + 'px';
     card.style.height = h + 'px';
 
-    if (isNearChatBottom(messages, 160)) {
+    const messages = document.getElementById('chatMessages');
+    if (messages && isNearChatBottom(messages, 160)) {
         requestAnimationFrame(() => settleChatAfterInputChange({ smooth: false }));
     }
 }
@@ -10210,7 +10434,7 @@ document.getElementById('imageInput').addEventListener('change', async function(
     }
 
     if (currentChatIsChannel) {
-        await sendChannelPhotoAlbum(photos);
+        await openChannelMediaComposer(photos);
         this.value = '';
         return;
     }
@@ -10218,6 +10442,27 @@ document.getElementById('imageInput').addEventListener('change', async function(
     photoEditQueue = photos.slice(1);
     await openPhotoEditor(photos[0]);
     this.value = '';
+});
+
+const channelMediaComposerCaption = document.getElementById('channelMediaComposerCaption');
+if (channelMediaComposerCaption) {
+    channelMediaComposerCaption.addEventListener('input', function() {
+        this.style.height = 'auto';
+        const max = 120;
+        const h = Math.min(this.scrollHeight, max);
+        this.style.height = h + 'px';
+        this.classList.toggle('is-scrollable', this.scrollHeight > max + 1);
+    });
+    channelMediaComposerCaption.addEventListener('keydown', function(e) {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault();
+            sendChannelMediaComposer();
+        }
+    });
+}
+
+document.getElementById('channelMediaComposerModal')?.addEventListener('click', function(e) {
+    if (e.target === this) closeChannelMediaComposer();
 });
 
 document.getElementById('videoInput').addEventListener('change', function(e) {
@@ -11010,6 +11255,280 @@ body.contegg-discussion-open #conteggDiscussionPane {
 }
         
 </style>
+    <style id="CONTEGG-CHANNEL-MEDIA-COMPOSER-STYLES">
+.channel-media-composer-overlay {
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 18px !important;
+    z-index: 100060 !important;
+}
+
+.channel-media-composer-sheet {
+    width: min(92vw, 650px) !important;
+    height: min(88vh, 760px) !important;
+    max-width: 650px !important;
+    max-height: 760px !important;
+    border-radius: 30px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    transform: translateY(18px) scale(.985) !important;
+    background: rgba(38,38,40,.97) !important;
+    border: .5px solid rgba(255,255,255,.11) !important;
+    box-shadow: 0 24px 80px rgba(0,0,0,.55) !important;
+    backdrop-filter: blur(32px) saturate(170%) !important;
+    -webkit-backdrop-filter: blur(32px) saturate(170%) !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+.channel-media-composer-overlay.show .channel-media-composer-sheet {
+    transform: translateY(0) scale(1) !important;
+}
+
+.channel-media-composer-header {
+    flex: 0 0 72px;
+    min-height: 72px;
+    display: grid;
+    grid-template-columns: 44px 1fr 44px;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+}
+
+.channel-media-composer-title {
+    text-align: center;
+    color: rgba(245,245,247,.94);
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.channel-media-composer-close,
+.channel-media-composer-more,
+.channel-media-composer-emoji {
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: rgba(235,235,245,.62);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease, transform .15s ease;
+}
+
+.channel-media-composer-close {
+    border: 2px solid rgba(235,235,245,.46);
+}
+
+.channel-media-composer-close:hover,
+.channel-media-composer-more:hover,
+.channel-media-composer-emoji:hover {
+    color: #fff;
+    background: rgba(255,255,255,.07);
+}
+
+.channel-media-composer-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0 22px 18px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(235,235,245,.20) transparent;
+}
+.channel-media-composer-body::-webkit-scrollbar { width: 7px; }
+.channel-media-composer-body::-webkit-scrollbar-track { background: transparent; }
+.channel-media-composer-body::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background: rgba(235,235,245,.18);
+    background-clip: padding-box;
+}
+
+.channel-media-composer-grid {
+    width: 100%;
+    display: grid;
+    gap: 4px;
+    border-radius: 18px;
+    overflow: hidden;
+    background: rgba(0,0,0,.18);
+}
+
+.channel-media-composer-grid.count-1 { grid-template-columns: 1fr; }
+.channel-media-composer-grid.count-2 { grid-template-columns: repeat(2, 1fr); }
+.channel-media-composer-grid.count-3 {
+    grid-template-columns: 2fr 1fr;
+    grid-template-rows: repeat(2, minmax(150px, 1fr));
+}
+.channel-media-composer-grid.count-3 .channel-media-item:first-child { grid-row: 1 / 3; }
+.channel-media-composer-grid.count-4 { grid-template-columns: repeat(2, 1fr); }
+.channel-media-composer-grid.count-5 {
+    grid-template-columns: 2fr 1fr 1fr;
+    grid-template-rows: repeat(2, minmax(145px, 1fr));
+}
+.channel-media-composer-grid.count-5 .channel-media-item:first-child { grid-row: 1 / 3; }
+
+.channel-media-item {
+    position: relative;
+    min-height: 180px;
+    overflow: hidden;
+    background: #151517;
+    isolation: isolate;
+}
+.channel-media-composer-grid.count-1 .channel-media-item { min-height: min(52vh, 500px); }
+.channel-media-composer-grid.count-2 .channel-media-item,
+.channel-media-composer-grid.count-4 .channel-media-item { min-height: 260px; }
+.channel-media-composer-grid.count-3 .channel-media-item,
+.channel-media-composer-grid.count-5 .channel-media-item { min-height: 145px; }
+
+.channel-media-item img {
+    width: 100%;
+    height: 100%;
+    min-height: inherit;
+    display: block;
+    object-fit: cover;
+    transition: transform .2s ease, filter .2s ease;
+}
+
+.channel-media-item:hover img {
+    transform: scale(1.015);
+    filter: brightness(.74);
+}
+
+.channel-media-item-tools {
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 999px;
+    background: rgba(10,10,11,.78);
+    border: .5px solid rgba(255,255,255,.13);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    transform: translate(-50%, 8px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .16s ease, transform .16s ease;
+}
+
+.channel-media-item:hover .channel-media-item-tools,
+.channel-media-item:focus-within .channel-media-item-tools {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, 0);
+}
+
+.channel-media-item-tool {
+    width: 38px;
+    height: 38px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: #fff;
+    font-size: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background .14s ease, transform .14s ease;
+}
+.channel-media-item-tool:hover { background: rgba(255,255,255,.14); }
+.channel-media-item-tool:active { transform: scale(.92); }
+.channel-media-item-tool.remove:hover { background: rgba(255,59,48,.24); color: #ff6961; }
+
+.channel-media-composer-footer {
+    flex: 0 0 auto;
+    min-height: 76px;
+    border-top: .5px solid rgba(255,255,255,.09);
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 12px 18px max(12px, env(safe-area-inset-bottom,0px));
+    background: rgba(38,38,40,.96);
+}
+
+.channel-media-composer-caption {
+    flex: 1;
+    min-width: 0;
+    min-height: 42px;
+    max-height: 120px;
+    resize: none;
+    border: none;
+    outline: none;
+    color: #fff;
+    background: transparent;
+    font-family: inherit;
+    font-size: 16px;
+    line-height: 21px;
+    padding: 10px 8px;
+    overflow-y: hidden;
+}
+.channel-media-composer-caption::placeholder { color: rgba(235,235,245,.44); }
+.channel-media-composer-caption.is-scrollable {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(235,235,245,.2) transparent;
+}
+.channel-media-composer-caption.is-scrollable::-webkit-scrollbar { width: 7px; }
+.channel-media-composer-caption.is-scrollable::-webkit-scrollbar-track { background: transparent; }
+.channel-media-composer-caption.is-scrollable::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: rgba(235,235,245,.18);
+    background-clip: padding-box;
+}
+
+.channel-media-composer-send {
+    width: 46px;
+    height: 46px;
+    flex: 0 0 46px;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    font-size: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform .15s ease, opacity .15s ease;
+}
+.channel-media-composer-send:active { transform: scale(.92); }
+.channel-media-composer-send:disabled { opacity: .45; cursor: default; }
+
+@media (pointer: coarse) {
+    .channel-media-item-tools {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translate(-50%, 0);
+        bottom: 8px;
+    }
+}
+
+@media (max-width: 767px) {
+    .channel-media-composer-overlay { padding: 0 !important; align-items: flex-end !important; }
+    .channel-media-composer-sheet {
+        width: 100% !important;
+        height: min(90dvh, 760px) !important;
+        max-width: none !important;
+        border-radius: 26px 26px 0 0 !important;
+    }
+    .channel-media-composer-header { min-height: 62px; flex-basis: 62px; padding: 8px 14px; }
+    .channel-media-composer-body { padding: 0 12px 12px; }
+    .channel-media-composer-grid.count-2 .channel-media-item,
+    .channel-media-composer-grid.count-4 .channel-media-item { min-height: 180px; }
+    .channel-media-composer-grid.count-3,
+    .channel-media-composer-grid.count-5 { grid-template-rows: repeat(2, minmax(115px, 1fr)); }
+    .channel-media-item { min-height: 115px; }
+}
+</style>
+
     <style id="CONTEGG-PHOTO-EDITOR-STYLES">
 .photo-editor-sheet {
     max-height: 92vh !important;
@@ -12435,7 +12954,7 @@ body.keyboard-no-transition .chat-input-bar {
 })();
 </script>
 
-<div id="conteggAlbumViewer" class="contegg-album-viewer" aria-hidden="true">
+<div id="conteggAlbumViewer" class="contegg-album-viewer" aria-hidden="true" inert>
     <button class="contegg-album-close" type="button" aria-label="Закрыть" onclick="closeImageAlbum()"><i class="fas fa-times"></i></button>
     <button class="contegg-album-nav contegg-album-prev" type="button" aria-label="Предыдущее фото" onclick="stepImageAlbum(-1)"><i class="fas fa-chevron-left"></i></button>
     <div class="contegg-album-stage" id="conteggAlbumStage">
