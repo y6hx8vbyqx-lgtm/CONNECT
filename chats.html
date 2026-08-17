@@ -5817,33 +5817,57 @@ function invalidateUserCaches(uid = '') {
 function scheduleDirectoryUiRefresh() {
     clearTimeout(usersDirectoryRefreshTimer);
 
-    usersDirectoryRefreshTimer = setTimeout(async () => {
+    usersDirectoryRefreshTimer = setTimeout(() => {
         try {
-            // Admin workspace is its own stable central view.
-            // Never rebuild the whole desktop/chat layout while it is open.
-            if (document.body.classList.contains('contegg-admin-workspace-open')) {
-                if (isConteggSuperAdmin()) {
-                    await Promise.allSettled([
-                        loadAdminRegisteredUsers(),
-                        loadAdminOneTimeCodes()
-                    ]);
-                }
-                return;
-            }
-
-            await loadChats();
-
-            if (currentChatId && document.body.classList.contains('chat-open')) {
-                await loadMessages();
-            }
-
+            /*
+             * IMPORTANT:
+             * usersDirectoryListener is only a user metadata/cache listener.
+             * Rebuilding the entire chat list/message feed from here caused
+             * flicker, random scroll jumps and central-pane remounts.
+             *
+             * Chat data already has its own listeners, so do NOT call
+             * loadChats() or loadMessages() here.
+             */
             if (document.getElementById('pageProfile')?.classList.contains('active')) {
                 renderProfile();
             }
+
+            // Refresh only the visible DM header, without touching the feed.
+            if (
+                currentChatUser?.uid &&
+                currentChatId &&
+                document.body.classList.contains('chat-open') &&
+                !document.body.classList.contains('contegg-admin-workspace-open')
+            ) {
+                const cached = usersCache[currentChatUser.uid];
+
+                if (cached) {
+                    const nameEl = document.getElementById('chatName');
+                    const avatarEl = document.getElementById('chatAvatar');
+
+                    if (nameEl) {
+                        nameEl.innerHTML =
+                            `${esc(cached.displayName || cached.username || 'Пользователь')} ` +
+                            `${renderVerificationBadge(cached, 13)} ` +
+                            `${renderBlockedAccountMark(cached)}`;
+                    }
+
+                    if (avatarEl) {
+                        const src = getAvatarSrc(cached);
+
+                        if (src) {
+                            avatarEl.innerHTML = `<img src="${src}" alt="">`;
+                        } else {
+                            avatarEl.textContent =
+                                (cached.displayName || cached.username || 'U')[0].toUpperCase();
+                        }
+                    }
+                }
+            }
         } catch (e) {
-            console.warn('directory UI refresh:', e);
+            console.warn('directory lightweight refresh:', e);
         }
-    }, 180);
+    }, 320);
 }
 
 function startUsersDirectoryListener() {
@@ -9633,8 +9657,9 @@ function refreshProfileQr() {
     renderProfileQrCode(currentProfileQrLink);
 
     const stage = document.querySelector('.contegg-qr-stage');
-    stage?.classList.remove('contegg-qr-refreshing');
-    requestAnimationFrame(() => stage?.classList.add('contegg-qr-refreshing'));
+    if (stage) {
+        stage.classList.remove('contegg-qr-refreshing');
+    }
 }
 
 async function copyProfileQrLink() {
@@ -12249,7 +12274,11 @@ async function loadAdminRegisteredUsers() {
 
     if (!list) return;
 
-    list.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка пользователей...</span></div>';
+    const hadRows = !!list.querySelector('.contegg-admin-user-row');
+
+    if (!hadRows) {
+        list.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка пользователей...</span></div>';
+    }
 
     try {
         const snap = await db.collection('users').get();
@@ -12846,10 +12875,9 @@ function openAdminPanel() {
             content.dataset.adminMounted = '1';
             bindAdminPanelInputs();
         } else {
-            // Reuse the mounted workspace: no disappearing sections / scroll jumps.
+            // Keep existing DOM exactly as-is. Replacing list innerHTML on every
+            // open/live event was one of the causes of visible blinking.
             bindAdminPanelInputs();
-            loadAdminRegisteredUsers().catch(console.error);
-            loadAdminOneTimeCodes().catch(console.error);
         }
 
         return;
@@ -18157,6 +18185,275 @@ Do not override that display state or two QR codes appear.
 
 #profileQrCode > * {
     margin:0 !important;
+}
+</style>
+
+
+<style id="CONTEGG-V5-OPTIMIZATION-STABILITY">
+
+/* =========================================================
+   GLOBAL STABILITY
+   ========================================================= */
+
+/* Old experimental containment/scroll anchoring created extra repaint and
+   clipping problems in long chat feeds. Explicit scroll preservation in JS
+   is enough; keep this container simple. */
+#chatMessages.chat-messages {
+    contain: none !important;
+    overflow-anchor: none !important;
+    will-change: auto !important;
+}
+
+#chatMessages.chat-messages *,
+#chatMessages .msg,
+#chatMessages .date-divider,
+#chatMessages .media-card {
+    overflow-anchor: none !important;
+}
+
+/* Avoid GPU layers for every card. */
+.chat-cell,
+.msg,
+.media-card,
+.admin-panel,
+.contegg-admin-user-row {
+    will-change: auto !important;
+}
+
+/* =========================================================
+   ADMIN WORKSPACE — ONE FIXED CENTRAL VIEW
+   ========================================================= */
+@media (min-width:768px) {
+    body.contegg-admin-workspace-open #conteggDesktopChatPane {
+        position: relative !important;
+        overflow: hidden !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+    }
+
+    body.contegg-admin-workspace-open #conteggAdminWorkspace {
+        position: absolute !important;
+        inset: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        transform: none !important;
+        transition: none !important;
+        animation: none !important;
+        contain: none !important;
+        isolation: isolate;
+    }
+
+    .contegg-admin-workspace-header {
+        position: relative !important;
+        z-index: 2;
+        flex: 0 0 52px !important;
+        height: 52px !important;
+        min-height: 52px !important;
+        transform: none !important;
+        transition: none !important;
+        animation: none !important;
+    }
+
+    .contegg-admin-workspace-content {
+        position: relative !important;
+        height: auto !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        overscroll-behavior: contain !important;
+        contain: none !important;
+        transform: none !important;
+        transition: none !important;
+        animation: none !important;
+        padding-bottom: 34px !important;
+    }
+
+    .contegg-admin-workspace-content > .admin-panel,
+    .contegg-admin-users-list,
+    .contegg-admin-one-time-codes,
+    .contegg-admin-user-row {
+        contain: none !important;
+        transform: none !important;
+        animation: none !important;
+    }
+
+    /* Lists have their own scroll area but never collapse while loading. */
+    .contegg-admin-users-list {
+        min-height: 90px !important;
+        max-height: 300px !important;
+        overflow-y: auto !important;
+    }
+
+    .contegg-admin-one-time-codes {
+        min-height: 54px !important;
+        max-height: 210px !important;
+        overflow-y: auto !important;
+    }
+}
+
+/* =========================================================
+   QR MODAL — ALWAYS FITS THE VIEWPORT
+   ========================================================= */
+
+#profileQrModal.modal-overlay {
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+    padding:
+        max(14px, env(safe-area-inset-top, 0px))
+        max(14px, env(safe-area-inset-right, 0px))
+        max(14px, env(safe-area-inset-bottom, 0px))
+        max(14px, env(safe-area-inset-left, 0px)) !important;
+}
+
+#profileQrModal .contegg-qr-sheet {
+    width: min(390px, calc(100vw - 28px)) !important;
+    max-width: 390px !important;
+    height: auto !important;
+    max-height: calc(100dvh - 28px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    border-radius: 24px !important;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
+    transform: translateY(10px) scale(.99) !important;
+    scrollbar-width: none;
+}
+
+#profileQrModal .contegg-qr-sheet::-webkit-scrollbar {
+    display: none;
+}
+
+#profileQrModal.show .contegg-qr-sheet {
+    transform: translateY(0) scale(1) !important;
+}
+
+#profileQrModal .contegg-qr-content {
+    padding: 0 18px 18px !important;
+}
+
+/*
+   QR size adapts to BOTH viewport width and height.
+   On a normal desktop it remains 240px.
+   On short windows it shrinks instead of being clipped.
+*/
+#profileQrModal .contegg-qr-stage {
+    --contegg-qr-visible-size: clamp(170px, 30dvh, 240px);
+
+    width: calc(var(--contegg-qr-visible-size) + 28px) !important;
+    height: calc(var(--contegg-qr-visible-size) + 28px) !important;
+    max-width: calc(100vw - 74px) !important;
+    max-height: calc(100dvh - 300px) !important;
+    min-width: 198px;
+    min-height: 198px;
+    padding: 14px !important;
+    margin: 14px auto 12px !important;
+    border-radius: 24px !important;
+    overflow: hidden !important;
+    flex: 0 0 auto !important;
+}
+
+#profileQrModal #profileQrCode {
+    width: var(--contegg-qr-visible-size) !important;
+    height: var(--contegg-qr-visible-size) !important;
+    max-width: calc(100vw - 102px) !important;
+    max-height: calc(100dvh - 328px) !important;
+    overflow: hidden !important;
+    flex: 0 0 auto !important;
+}
+
+#profileQrModal #profileQrCode img,
+#profileQrModal #profileQrCode canvas {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    object-fit: contain !important;
+}
+
+#profileQrModal #profileQrCode canvas {
+    display: none !important;
+}
+
+#profileQrModal .contegg-qr-avatar {
+    width: 42px !important;
+    height: 42px !important;
+    border-width: 4px !important;
+}
+
+#profileQrModal .contegg-qr-description {
+    margin-bottom: 11px !important;
+}
+
+#profileQrModal .contegg-qr-actions {
+    gap: 7px !important;
+}
+
+#profileQrModal .contegg-qr-refreshing {
+    animation: none !important;
+}
+
+@media (max-height:650px) and (min-width:481px) {
+    #profileQrModal .contegg-qr-name {
+        font-size: 16px !important;
+    }
+
+    #profileQrModal .contegg-qr-stage {
+        --contegg-qr-visible-size: clamp(160px, 26dvh, 205px);
+        margin-top: 9px !important;
+        margin-bottom: 8px !important;
+    }
+
+    #profileQrModal .contegg-qr-description {
+        font-size: 10px !important;
+        margin-bottom: 8px !important;
+    }
+}
+
+@media (max-width:480px) {
+    #profileQrModal.modal-overlay {
+        align-items: center !important;
+    }
+
+    #profileQrModal .contegg-qr-sheet {
+        width: calc(100vw - 20px) !important;
+        max-height: calc(100dvh - 20px) !important;
+        border-radius: 22px !important;
+    }
+
+    #profileQrModal .contegg-qr-stage {
+        --contegg-qr-visible-size: min(220px, calc(100vw - 76px));
+        width: calc(var(--contegg-qr-visible-size) + 24px) !important;
+        height: calc(var(--contegg-qr-visible-size) + 24px) !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+        padding: 12px !important;
+    }
+
+    #profileQrModal #profileQrCode {
+        width: var(--contegg-qr-visible-size) !important;
+        height: var(--contegg-qr-visible-size) !important;
+        max-width: none !important;
+        max-height: none !important;
+    }
+
+    #profileQrModal .contegg-qr-actions {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* Reduced-motion also helps old/iPad Safari during heavy DOM updates. */
+@media (prefers-reduced-motion: reduce) {
+    #conteggAdminWorkspace *,
+    #profileQrModal * {
+        animation-duration: 0.001ms !important;
+        transition-duration: 0.001ms !important;
+    }
 }
 </style>
 
