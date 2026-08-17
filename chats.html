@@ -5472,8 +5472,7 @@ function hideChatOverlay() {
     );
 
     const root = document.documentElement;
-    root.style.setProperty('--contegg-vv-top', '0px');
-    root.style.setProperty('--contegg-vv-height', '100dvh');
+    root.style.setProperty('--contegg-keyboard-inset', '0px');
     root.style.setProperty('--contegg-input-bottom', 'max(14px, env(safe-area-inset-bottom, 0px))');
 }
 
@@ -9734,17 +9733,33 @@ function isChatOverlayOpen() {
 
 function getMobileViewportMetrics() {
     const vv = window.visualViewport;
+    const layoutHeight = Math.max(
+        window.innerHeight || 0,
+        document.documentElement.clientHeight || 0
+    );
 
     if (!isMobileLike || !vv) {
         return {
             top: 0,
-            height: window.innerHeight || document.documentElement.clientHeight || 0
+            height: layoutHeight,
+            keyboardInset: 0
         };
     }
 
+    const visualTop = Math.max(0, Math.round(vv.offsetTop || 0));
+    const visualHeight = Math.max(1, Math.round(vv.height || layoutHeight));
+
+    // Не двигаем сам chat-overlay.
+    // Считаем только сколько пространства снизу заняла клавиатура.
+    const keyboardInset = Math.max(
+        0,
+        Math.round(layoutHeight - visualHeight - visualTop)
+    );
+
     return {
-        top: Math.max(0, Math.round(vv.offsetTop || 0)),
-        height: Math.max(1, Math.round(vv.height || window.innerHeight || 1))
+        top: visualTop,
+        height: visualHeight,
+        keyboardInset
     };
 }
 
@@ -9769,8 +9784,10 @@ function syncMobileChatViewport(options = {}) {
         __conteggLastVVTop = metrics.top;
         __conteggLastVVHeight = metrics.height;
 
-        root.style.setProperty('--contegg-vv-top', `${metrics.top}px`);
-        root.style.setProperty('--contegg-vv-height', `${metrics.height}px`);
+        // ВАЖНО:
+        // overlay всегда остаётся top:0 и закрывает весь экран.
+        // Меняем только нижний inset под клавиатуру.
+        root.style.setProperty('--contegg-keyboard-inset', `${metrics.keyboardInset}px`);
 
         const fullHeight = Math.max(
             window.innerHeight || 0,
@@ -9779,7 +9796,7 @@ function syncMobileChatViewport(options = {}) {
 
         const keyboardOpen =
             document.activeElement === input &&
-            (fullHeight - metrics.height > 80 || metrics.top > 0);
+            (metrics.keyboardInset > 80 || fullHeight - metrics.height > 80);
 
         document.body.classList.toggle('keyboard-open', keyboardOpen);
 
@@ -9819,11 +9836,6 @@ if (isMobileLike && window.visualViewport) {
         });
     }, { passive: true });
 
-    window.visualViewport.addEventListener('scroll', () => {
-        scheduleMobileChatViewportSync(0, {
-            keepBottom: false
-        });
-    }, { passive: true });
 }
 
 if (isMobileLike) {
@@ -10188,8 +10200,7 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
 /* ===== CLEAN / STABLE MOBILE CHAT LAYOUT ===== */
 
 :root {
-    --contegg-vv-top: 0px;
-    --contegg-vv-height: 100dvh;
+    --contegg-keyboard-inset: 0px;
     --contegg-input-bar-height: 58px;
     --contegg-input-bottom: max(14px, env(safe-area-inset-bottom, 0px));
 }
@@ -10240,8 +10251,9 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
 /* На мобильном весь экран чата следует за visualViewport целиком. */
 @media (max-width: 900px), (pointer: coarse) {
     .chat-overlay {
-        top: var(--contegg-vv-top) !important;
-        height: var(--contegg-vv-height) !important;
+        top: 0 !important;
+        bottom: var(--contegg-keyboard-inset) !important;
+        height: 100dvh !important;
         min-height: 0 !important;
     }
 }
@@ -10292,7 +10304,7 @@ body.chat-open .chat-navbar {
     top: var(--navbar-height) !important;
     left: 0 !important;
     right: 0 !important;
-    bottom: var(--contegg-input-bar-height) !important;
+    bottom: calc(var(--contegg-input-bar-height) + var(--contegg-keyboard-inset)) !important;
 
     min-height: 0 !important;
     overflow-y: auto !important;
@@ -10389,6 +10401,17 @@ body.keyboard-open .chat-input-bar {
     .chat-overlay.chat-content-enter .chat-messages,
     .chat-overlay.chat-content-enter .chat-input-bar {
         animation: none !important;
+    }
+}
+
+/* На мобильном никакая часть интерфейса чата не переигрывает enter-анимацию
+   при изменениях visualViewport/клавиатуры. */
+@media (max-width: 900px), (pointer: coarse) {
+    .chat-overlay.chat-content-enter .chat-messages,
+    .chat-overlay.chat-content-enter .chat-input-bar {
+        animation: none !important;
+        transform: none !important;
+        opacity: 1 !important;
     }
 }
 
