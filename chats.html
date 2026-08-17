@@ -2085,8 +2085,162 @@ body {
 }
 </style>
 
+
+<style id="CONTEGG-STARTUP-LOADER-V6">
+html,
+body {
+    background:#09090b;
+}
+
+body.contegg-starting-up {
+    overflow:hidden !important;
+}
+
+body.contegg-starting-up > *:not(#conteggStartupLoader) {
+    visibility:hidden !important;
+}
+
+.contegg-startup-loader {
+    position:fixed;
+    inset:0;
+    z-index:2147483647;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+    background:
+        radial-gradient(circle at 50% 38%, rgba(20,90,180,.12), transparent 34%),
+        #09090b;
+    opacity:1;
+    visibility:visible;
+    transition:
+        opacity .32s ease,
+        visibility .32s ease;
+}
+
+.contegg-startup-loader.is-hiding {
+    opacity:0;
+    visibility:hidden;
+    pointer-events:none;
+}
+
+.contegg-startup-card {
+    width:min(330px, calc(100vw - 44px));
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    text-align:center;
+    transform:translateY(-2vh);
+}
+
+.contegg-startup-logo {
+    width:64px;
+    height:64px;
+    border-radius:19px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin-bottom:15px;
+    background:linear-gradient(145deg,#2b7ef5,#145dcc);
+    box-shadow:
+        0 14px 36px rgba(43,126,245,.20),
+        inset 0 1px 0 rgba(255,255,255,.18);
+}
+
+.contegg-startup-logo-mark {
+    color:#fff;
+    font-size:30px;
+    line-height:1;
+    font-weight:750;
+    letter-spacing:-1px;
+}
+
+.contegg-startup-title {
+    color:#fff;
+    font-size:25px;
+    font-weight:720;
+    letter-spacing:-.45px;
+}
+
+.contegg-startup-status {
+    min-height:19px;
+    margin-top:6px;
+    color:rgba(235,235,245,.56);
+    font-size:12px;
+    line-height:1.45;
+}
+
+.contegg-startup-progress-track {
+    width:100%;
+    height:5px;
+    margin-top:20px;
+    overflow:hidden;
+    border-radius:999px;
+    background:rgba(118,118,128,.18);
+    box-shadow:inset 0 0 0 .5px rgba(255,255,255,.04);
+}
+
+.contegg-startup-progress-fill {
+    width:0%;
+    height:100%;
+    border-radius:inherit;
+    background:linear-gradient(90deg,#0a84ff,#4da3ff);
+    box-shadow:0 0 16px rgba(10,132,255,.32);
+    transition:width .16s cubic-bezier(.2,.7,.2,1);
+}
+
+.contegg-startup-progress-text {
+    margin-top:8px;
+    color:rgba(235,235,245,.34);
+    font-size:10px;
+    font-variant-numeric:tabular-nums;
+}
+
+@media (max-width:767px) {
+    .contegg-startup-card {
+        width:min(300px, calc(100vw - 38px));
+        transform:translateY(-5vh);
+    }
+
+    .contegg-startup-logo {
+        width:58px;
+        height:58px;
+        border-radius:17px;
+    }
+
+    .contegg-startup-title {
+        font-size:23px;
+    }
+}
+
+@media (prefers-reduced-motion:reduce) {
+    .contegg-startup-loader,
+    .contegg-startup-progress-fill {
+        transition-duration:.01ms !important;
+    }
+}
+</style>
+
 </head>
-<body>
+
+<body class="contegg-starting-up">
+<div id="conteggStartupLoader" class="contegg-startup-loader" aria-live="polite">
+    <div class="contegg-startup-card">
+        <div class="contegg-startup-logo">
+            <span class="contegg-startup-logo-mark">C</span>
+        </div>
+
+        <div class="contegg-startup-title">Contegg</div>
+        <div class="contegg-startup-status" id="conteggStartupStatus">Загрузка интерфейса…</div>
+
+        <div class="contegg-startup-progress-track">
+            <div class="contegg-startup-progress-fill" id="conteggStartupProgress"></div>
+        </div>
+
+        <div class="contegg-startup-progress-text" id="conteggStartupProgressText">0%</div>
+    </div>
+</div>
+
 
 <div class="app-container">
     <div class="navbar">
@@ -18036,6 +18190,548 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
     font-size:18px;
     font-weight:650;
 }
+
+.contegg-qr-username {
+    margin-top:3px;
+    color:var(--text-secondary);
+    font-size:13px;
+}
+
+.contegg-qr-stage {
+    position:relative;
+    width:272px;
+    height:272px;
+    margin:18px auto 14px;
+    padding:16px;
+    border-radius:26px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#fff;
+    box-shadow:0 16px 42px rgba(0,0,0,.36);
+}
+
+.contegg-qr-code {
+    position:relative;
+    width:240px;
+    height:240px;
+    overflow:hidden;
+    flex:0 0 240px;
+}
+
+/*
+QRCode.js internally creates BOTH canvas + img.
+The library hides the canvas after converting it to the final image.
+Do not override that display state or two QR codes appear.
+*/
+.contegg-qr-code img {
+    display:block;
+    width:240px !important;
+    height:240px !important;
+    max-width:240px !important;
+    max-height:240px !important;
+    object-fit:contain;
+}
+
+.contegg-qr-code canvas {
+    width:240px !important;
+    height:240px !important;
+    max-width:240px !important;
+    max-height:240px !important;
+}
+
+/* Once QRCode.js has produced its img, only that visible result is needed. */
+.contegg-qr-code img[style*="display: block"] ~ canvas {
+    display:none !important;
+}
+
+.contegg-qr-avatar {
+    position:absolute;
+    left:50%;
+    top:50%;
+    width:46px;
+    height:46px;
+    transform:translate(-50%,-50%);
+    border:5px solid #fff;
+    border-radius:50%;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:linear-gradient(135deg,#0a84ff,#5e5ce6);
+    color:#fff;
+    font-size:17px;
+    font-weight:700;
+    box-shadow:0 2px 10px rgba(0,0,0,.24);
+    z-index:3;
+}
+
+.contegg-qr-avatar img {
+    width:100%;
+    height:100%;
+    object-fit:cover;
+}
+
+.contegg-qr-description {
+    max-width:310px;
+    margin:0 auto 14px;
+    color:var(--text-secondary);
+    font-size:12px;
+    line-height:1.4;
+}
+
+.contegg-qr-actions {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+}
+
+.contegg-qr-refreshing {
+    animation:conteggQrRefresh .24s ease;
+}
+
+@keyframes conteggQrRefresh {
+    0% { transform:scale(.96); opacity:.55; }
+    100% { transform:scale(1); opacity:1; }
+}
+
+.contegg-qr-error {
+    color:#111;
+    font-size:12px;
+}
+
+@media (max-width:480px) {
+    .contegg-qr-stage {
+        width:248px;
+        height:248px;
+        padding:14px;
+    }
+
+    .contegg-qr-code {
+        width:220px !important;
+        height:220px !important;
+        flex-basis:220px !important;
+    }
+
+    .contegg-qr-code img,
+    .contegg-qr-code canvas {
+        width:220px !important;
+        height:220px !important;
+        max-width:220px !important;
+        max-height:220px !important;
+    }
+
+    .contegg-qr-actions {
+        grid-template-columns:1fr;
+    }
+}
+</style>
+
+
+<style id="CONTEGG-QR-V4-HARD-CONTAINMENT">
+#profileQrModal .contegg-qr-stage {
+    overflow:hidden !important;
+}
+
+#profileQrCode {
+    overflow:hidden !important;
+}
+
+#profileQrCode > * {
+    margin:0 !important;
+}
+</style>
+
+
+<style id="CONTEGG-V5-OPTIMIZATION-STABILITY">
+
+/* =========================================================
+   GLOBAL STABILITY
+   ========================================================= */
+
+/* Old experimental containment/scroll anchoring created extra repaint and
+   clipping problems in long chat feeds. Explicit scroll preservation in JS
+   is enough; keep this container simple. */
+#chatMessages.chat-messages {
+    contain: none !important;
+    overflow-anchor: none !important;
+    will-change: auto !important;
+}
+
+#chatMessages.chat-messages *,
+#chatMessages .msg,
+#chatMessages .date-divider,
+#chatMessages .media-card {
+    overflow-anchor: none !important;
+}
+
+/* Avoid GPU layers for every card. */
+.chat-cell,
+.msg,
+.media-card,
+.admin-panel,
+.contegg-admin-user-row {
+    will-change: auto !important;
+}
+
+/* =========================================================
+   ADMIN WORKSPACE — ONE FIXED CENTRAL VIEW
+   ========================================================= */
+@media (min-width:768px) {
+    body.contegg-admin-workspace-open #conteggDesktopChatPane {
+        position: relative !important;
+        overflow: hidden !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+    }
+
+    body.contegg-admin-workspace-open #conteggAdminWorkspace {
+        position: absolute !important;
+        inset: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        transform: none !important;
+        transition: none !important;
+        animation: none !important;
+        contain: none !important;
+        isolation: isolate;
+    }
+
+    .contegg-admin-workspace-header {
+        position: relative !important;
+        z-index: 2;
+        flex: 0 0 52px !important;
+        height: 52px !important;
+        min-height: 52px !important;
+        transform: none !important;
+        transition: none !important;
+        animation: none !important;
+    }
+
+    .contegg-admin-workspace-content {
+        position: relative !important;
+        height: auto !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        overscroll-behavior: contain !important;
+        contain: none !important;
+        transform: none !important;
+        transition: none !important;
+        animation: none !important;
+        padding-bottom: 34px !important;
+    }
+
+    .contegg-admin-workspace-content > .admin-panel,
+    .contegg-admin-users-list,
+    .contegg-admin-one-time-codes,
+    .contegg-admin-user-row {
+        contain: none !important;
+        transform: none !important;
+        animation: none !important;
+    }
+
+    /* Lists have their own scroll area but never collapse while loading. */
+    .contegg-admin-users-list {
+        min-height: 90px !important;
+        max-height: 300px !important;
+        overflow-y: auto !important;
+    }
+
+    .contegg-admin-one-time-codes {
+        min-height: 54px !important;
+        max-height: 210px !important;
+        overflow-y: auto !important;
+    }
+}
+
+/* =========================================================
+   QR MODAL — ALWAYS FITS THE VIEWPORT
+   ========================================================= */
+
+#profileQrModal.modal-overlay {
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+    padding:
+        max(14px, env(safe-area-inset-top, 0px))
+        max(14px, env(safe-area-inset-right, 0px))
+        max(14px, env(safe-area-inset-bottom, 0px))
+        max(14px, env(safe-area-inset-left, 0px)) !important;
+}
+
+#profileQrModal .contegg-qr-sheet {
+    width: min(390px, calc(100vw - 28px)) !important;
+    max-width: 390px !important;
+    height: auto !important;
+    max-height: calc(100dvh - 28px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    border-radius: 24px !important;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
+    transform: translateY(10px) scale(.99) !important;
+    scrollbar-width: none;
+}
+
+#profileQrModal .contegg-qr-sheet::-webkit-scrollbar {
+    display: none;
+}
+
+#profileQrModal.show .contegg-qr-sheet {
+    transform: translateY(0) scale(1) !important;
+}
+
+#profileQrModal .contegg-qr-content {
+    padding: 0 18px 18px !important;
+}
+
+/*
+   QR size adapts to BOTH viewport width and height.
+   On a normal desktop it remains 240px.
+   On short windows it shrinks instead of being clipped.
+*/
+#profileQrModal .contegg-qr-stage {
+    --contegg-qr-visible-size: clamp(170px, 30dvh, 240px);
+
+    width: calc(var(--contegg-qr-visible-size) + 28px) !important;
+    height: calc(var(--contegg-qr-visible-size) + 28px) !important;
+    max-width: calc(100vw - 74px) !important;
+    max-height: calc(100dvh - 300px) !important;
+    min-width: 198px;
+    min-height: 198px;
+    padding: 14px !important;
+    margin: 14px auto 12px !important;
+    border-radius: 24px !important;
+    overflow: hidden !important;
+    flex: 0 0 auto !important;
+}
+
+#profileQrModal #profileQrCode {
+    width: var(--contegg-qr-visible-size) !important;
+    height: var(--contegg-qr-visible-size) !important;
+    max-width: calc(100vw - 102px) !important;
+    max-height: calc(100dvh - 328px) !important;
+    overflow: hidden !important;
+    flex: 0 0 auto !important;
+}
+
+#profileQrModal #profileQrCode img,
+#profileQrModal #profileQrCode canvas {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    object-fit: contain !important;
+}
+
+#profileQrModal #profileQrCode canvas {
+    display: none !important;
+}
+
+#profileQrModal .contegg-qr-avatar {
+    width: 42px !important;
+    height: 42px !important;
+    border-width: 4px !important;
+}
+
+#profileQrModal .contegg-qr-description {
+    margin-bottom: 11px !important;
+}
+
+#profileQrModal .contegg-qr-actions {
+    gap: 7px !important;
+}
+
+#profileQrModal .contegg-qr-refreshing {
+    animation: none !important;
+}
+
+@media (max-height:650px) and (min-width:481px) {
+    #profileQrModal .contegg-qr-name {
+        font-size: 16px !important;
+    }
+
+    #profileQrModal .contegg-qr-stage {
+        --contegg-qr-visible-size: clamp(160px, 26dvh, 205px);
+        margin-top: 9px !important;
+        margin-bottom: 8px !important;
+    }
+
+    #profileQrModal .contegg-qr-description {
+        font-size: 10px !important;
+        margin-bottom: 8px !important;
+    }
+}
+
+@media (max-width:480px) {
+    #profileQrModal.modal-overlay {
+        align-items: center !important;
+    }
+
+    #profileQrModal .contegg-qr-sheet {
+        width: calc(100vw - 20px) !important;
+        max-height: calc(100dvh - 20px) !important;
+        border-radius: 22px !important;
+    }
+
+    #profileQrModal .contegg-qr-stage {
+        --contegg-qr-visible-size: min(220px, calc(100vw - 76px));
+        width: calc(var(--contegg-qr-visible-size) + 24px) !important;
+        height: calc(var(--contegg-qr-visible-size) + 24px) !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+        padding: 12px !important;
+    }
+
+    #profileQrModal #profileQrCode {
+        width: var(--contegg-qr-visible-size) !important;
+        height: var(--contegg-qr-visible-size) !important;
+        max-width: none !important;
+        max-height: none !important;
+    }
+
+    #profileQrModal .contegg-qr-actions {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* Reduced-motion also helps old/iPad Safari during heavy DOM updates. */
+@media (prefers-reduced-motion: reduce) {
+    #conteggAdminWorkspace *,
+    #profileQrModal * {
+        animation-duration: 0.001ms !important;
+        transition-duration: 0.001ms !important;
+    }
+}
+</style>
+
+
+<script id="CONTEGG-STARTUP-LOADER-SCRIPT">
+(() => {
+    const loader = document.getElementById('conteggStartupLoader');
+    const fill = document.getElementById('conteggStartupProgress');
+    const label = document.getElementById('conteggStartupProgressText');
+    const status = document.getElementById('conteggStartupStatus');
+
+    if (!loader || !fill || !label) return;
+
+    const startedAt = performance.now();
+
+    /*
+     * Keep the loading screen long enough to hide initial DOM/auth/listener
+     * mounting, but never make startup feel frozen.
+     */
+    const minDuration = 2200;
+    const maxDuration = 2900;
+
+    let progress = 4;
+    let finished = false;
+
+    const stages = [
+        [18, 'Подключаем аккаунт…'],
+        [38, 'Загружаем чаты…'],
+        [61, 'Собираем интерфейс…'],
+        [82, 'Синхронизируем данные…'],
+        [94, 'Почти готово…']
+    ];
+
+    let stageIndex = 0;
+
+    function paint(value) {
+        progress = Math.max(progress, Math.min(100, value));
+        fill.style.width = progress + '%';
+        label.textContent = Math.round(progress) + '%';
+
+        while (
+            stageIndex < stages.length &&
+            progress >= stages[stageIndex][0]
+        ) {
+            if (status) status.textContent = stages[stageIndex][1];
+            stageIndex++;
+        }
+    }
+
+    const timer = setInterval(() => {
+        if (finished) return;
+
+        const elapsed = performance.now() - startedAt;
+        const ratio = Math.min(1, elapsed / minDuration);
+
+        /*
+         * Ease quickly at the beginning and intentionally slow down near 94%.
+         * This looks much smoother than a linear timer.
+         */
+        const target =
+            5 +
+            89 * (1 - Math.pow(1 - ratio, 2.25));
+
+        paint(Math.min(94, target));
+    }, 70);
+
+    async function finishStartup() {
+        if (finished) return;
+        finished = true;
+
+        clearInterval(timer);
+
+        const elapsed = performance.now() - startedAt;
+        const remaining = Math.max(0, minDuration - elapsed);
+
+        if (remaining > 0) {
+            await new Promise(resolve => setTimeout(resolve, remaining));
+        }
+
+        paint(100);
+
+        if (status) {
+            status.textContent = 'Готово';
+        }
+
+        /*
+         * Let browser complete one final layout frame while the overlay
+         * still hides the application.
+         */
+        await new Promise(resolve => requestAnimationFrame(() => {
+            requestAnimationFrame(resolve);
+        }));
+
+        document.body.classList.remove('contegg-starting-up');
+
+        loader.classList.add('is-hiding');
+
+        setTimeout(() => {
+            loader.remove();
+        }, 360);
+    }
+
+    /*
+     * window.load means HTML/CSS/fonts/images requested during startup have
+     * been given a chance to settle. We still respect minDuration above.
+     */
+    if (document.readyState === 'complete') {
+        setTimeout(finishStartup, 120);
+    } else {
+        window.addEventListener('load', () => {
+            setTimeout(finishStartup, 120);
+        }, { once:true });
+    }
+
+    /*
+     * Absolute safety net: even if some resource never settles correctly,
+     * the loader must never trap the user.
+     */
+    setTimeout(finishStartup, maxDuration);
+})();
+</script>
+
+</body>
+</html>}
 
 .contegg-qr-username {
     margin-top:3px;
