@@ -10224,6 +10224,42 @@ body.chat-open .chat-navbar {
     transform: none !important;
 }
 
+/* ===== iOS / MOBILE: KEEP CHAT HEADER FIXED ABOVE KEYBOARD =====
+   Safari двигает visual viewport при открытии клавиатуры.
+   Поэтому верхнюю панель на мобильных закрепляем прямо к viewport,
+   а не оставляем absolute внутри chat-overlay. */
+@media (max-width: 900px), (pointer: coarse) {
+    body.chat-open .chat-navbar {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+
+        z-index: 1200 !important;
+
+        transform: translate3d(0, 0, 0) !important;
+        -webkit-transform: translate3d(0, 0, 0) !important;
+
+        will-change: auto !important;
+        transition: none !important;
+        animation: none !important;
+
+        /* отдельный compositing layer уменьшает прыжки Safari */
+        backface-visibility: hidden !important;
+        -webkit-backface-visibility: hidden !important;
+    }
+
+    body.keyboard-open .chat-navbar,
+    body.keyboard-settling-in .chat-navbar,
+    body.keyboard-settling-out .chat-navbar {
+        position: fixed !important;
+        top: 0 !important;
+        transform: translate3d(0, 0, 0) !important;
+        -webkit-transform: translate3d(0, 0, 0) !important;
+    }
+}
+
 .chat-messages {
     position: absolute !important;
     top: var(--navbar-height) !important;
