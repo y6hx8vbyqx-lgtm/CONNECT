@@ -13589,5 +13589,99 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
 }
 </style>
 
+
+<style id="CONTEGG-V8-SMALLER-MESSAGES-UI">
+/* V8 — messages themselves slightly more compact, desktop/tablet only */
+@media (min-width: 768px) {
+    /* Regular chat bubbles */
+    .message-bubble,
+    .message-content,
+    .bubble {
+        font-size: 12.5px !important;
+        line-height: 1.32 !important;
+    }
+
+    .message {
+        margin-top: 2px !important;
+        margin-bottom: 2px !important;
+    }
+
+    .message-bubble {
+        padding: 6px 9px !important;
+        border-radius: 11px !important;
+    }
+
+    /* Sender/avatar/meta around messages */
+    .message .avatar,
+    .message-avatar {
+        transform: scale(.90);
+        transform-origin: center bottom;
+    }
+
+    .message-time,
+    .message-meta,
+    .message-status {
+        font-size: 9.5px !important;
+    }
+
+    /* Channel/post cards */
+    .channel-post,
+    .post-card,
+    .channel-message {
+        font-size: 12.5px !important;
+    }
+
+    .channel-post .post-content,
+    .post-card .post-content,
+    .channel-message .message-content {
+        line-height: 1.32 !important;
+    }
+
+    /* Media inside messages: a touch smaller so posts don't dominate */
+    .message-media,
+    .post-media,
+    .channel-post img,
+    .channel-post video {
+        max-width: 96% !important;
+    }
+
+    /* Comments strip below channel posts */
+    .post-comments-row,
+    .comments-row,
+    .post-comment-button {
+        min-height: 34px !important;
+        font-size: 11px !important;
+    }
+
+    /* Reaction chips attached to messages */
+    .message-reactions,
+    .post-reactions {
+        gap: 3px !important;
+        margin-top: 3px !important;
+    }
+
+    .reaction-chip,
+    .message-reaction,
+    .post-reaction {
+        min-height: 23px !important;
+        padding: 2px 6px !important;
+        font-size: 11px !important;
+        border-radius: 12px !important;
+    }
+}
+
+/* Desktop can be a hair tighter than tablet. */
+@media (min-width: 1200px) {
+    #chatMessages.chat-messages {
+        padding: 7px 9px !important;
+    }
+
+    .message-bubble {
+        font-size: 12px !important;
+        padding: 5px 8px !important;
+    }
+}
+</style>
+
 </body>
 </html>
