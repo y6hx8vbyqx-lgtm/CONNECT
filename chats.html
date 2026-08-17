@@ -5450,6 +5450,29 @@ function ensureChatNavbarInOverlay() {
 
     if (!overlay || !navbar) return;
 
+    const mobileHeaderMode =
+        window.matchMedia('(max-width: 900px), (pointer: coarse)').matches ||
+        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    if (mobileHeaderMode) {
+        // IMPORTANT: keep the header OUTSIDE chatOverlay.
+        // chatOverlay is the layer that resizes/moves for the keyboard.
+        // A direct body child cannot inherit that geometry/transform.
+        let layer = document.getElementById('conteggChatHeaderLayer');
+        if (!layer) {
+            layer = document.createElement('div');
+            layer.id = 'conteggChatHeaderLayer';
+            layer.setAttribute('aria-hidden', 'false');
+            document.body.appendChild(layer);
+        }
+
+        if (navbar.parentElement !== layer) {
+            layer.appendChild(navbar);
+        }
+        return;
+    }
+
+    // Desktop keeps the original structure.
     if (navbar.parentElement !== overlay) {
         overlay.insertBefore(navbar, messages || overlay.firstChild);
     }
@@ -10481,67 +10504,7 @@ body.keyboard-no-transition .chat-input-bar {
 }
 </style>
     
-
-
-<style id="CONTEGG-LOCKED-CHAT-HEADER">
-/* ===== CHAT HEADER: LOCKED VERTICALLY, PART OF THE SWIPE LAYER ===== */
-
-/*
-   ВАЖНО:
-   Шапка НЕ fixed относительно окна. Она остаётся внутри chat-overlay,
-   поэтому горизонтальный свайп двигает весь чат единым GPU-слоем.
-   При этом по вертикали она жёстко стоит в top:0 и клавиатура её не трогает.
-*/
-.chat-overlay .chat-navbar,
-.chat-overlay.show .chat-navbar,
-body.chat-open .chat-navbar,
-body.chat-open.keyboard-open .chat-navbar,
-body.chat-open.keyboard-settling-in .chat-navbar,
-body.chat-open.keyboard-settling-out .chat-navbar,
-body.chat-open.keyboard-no-transition .chat-navbar {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: auto !important;
-    width: 100% !important;
-    min-height: var(--navbar-height) !important;
-    height: var(--navbar-height) !important;
-    margin: 0 !important;
-    transform: none !important;
-    translate: none !important;
-    scale: 1 !important;
-    z-index: 20 !important;
-    transition: none !important;
-    animation: none !important;
-    will-change: auto !important;
-    backface-visibility: hidden !important;
-    -webkit-backface-visibility: hidden !important;
-}
-
-/* Клавиатура меняет только сообщения/инпут, но никогда координаты шапки. */
-body.keyboard-open .chat-navbar,
-body.keyboard-settling-in .chat-navbar,
-body.keyboard-settling-out .chat-navbar,
-body.keyboard-no-transition .chat-navbar {
-    top: 0 !important;
-    bottom: auto !important;
-    transform: none !important;
-    transition: none !important;
-    animation: none !important;
-}
-
-body.chat-open .chat-messages {
-    top: var(--navbar-height) !important;
-}
-
-/* Safari уже сам анимирует edge-back. В момент popstate второй CSS-выезд запрещён. */
-.chat-overlay.contegg-instant-back-close {
-    transition: none !important;
-}
-</style>
-
-    <script id="CONTEGG-PC-AUTO-FULLSCREEN">
+<script id="CONTEGG-PC-AUTO-FULLSCREEN">
 (function () {
     let tried = false;
 
@@ -10598,86 +10561,128 @@ body.chat-open .chat-messages {
 })();
 </script>
 
+<style id="CONTEGG-SEPARATE-HEADER-LAYER-FINAL">
+/* ============================================================
+   MOBILE CHAT HEADER — SEPARATE COMPOSITOR / DOM LAYER
 
-<style id="CONTEGG-ABSOLUTELY-STATIC-MOBILE-CHAT-HEADER">
-/* ===== MOBILE CHAT HEADER: VISUALLY STATIC EVEN WHILE KEYBOARD ANIMATES ===== */
+   The header is a direct child of BODY while chat is open.
+   It is NOT inside #chatOverlay, so keyboard viewport changes,
+   chat overlay height changes and overlay transforms cannot move it.
+   ============================================================ */
+
 @media (max-width: 900px), (pointer: coarse) {
-    /*
-       Шапка полностью исключена из анимации клавиатуры.
-       Никаких visualViewport offset, translateY или JS-компенсаций.
-       Её координата всегда top: 0.
-    */
-    #chatNavbar.chat-navbar {
+    #conteggChatHeaderLayer {
         position: fixed !important;
         top: 0 !important;
         left: 0 !important;
         right: 0 !important;
         bottom: auto !important;
-        width: 100vw !important;
-        min-height: var(--navbar-height) !important;
+        width: 100% !important;
         height: var(--navbar-height) !important;
+        min-height: var(--navbar-height) !important;
+        max-height: var(--navbar-height) !important;
         margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        z-index: 100002 !important;
+        pointer-events: none !important;
         translate: none !important;
         transform: none !important;
         scale: 1 !important;
         transition: none !important;
         animation: none !important;
         will-change: auto !important;
-        contain: layout paint style !important;
-        z-index: 100002 !important;
-        backface-visibility: hidden !important;
-        -webkit-backface-visibility: hidden !important;
     }
 
-    body.chat-open #chatNavbar.chat-navbar,
-    body.chat-open.keyboard-open #chatNavbar.chat-navbar,
-    body.chat-open.keyboard-settling-in #chatNavbar.chat-navbar,
-    body.chat-open.keyboard-settling-out #chatNavbar.chat-navbar,
-    body.chat-open.keyboard-no-transition #chatNavbar.chat-navbar {
-        display: flex !important;
+    #conteggChatHeaderLayer > #chatNavbar.chat-navbar,
+    body.chat-open #conteggChatHeaderLayer > #chatNavbar.chat-navbar,
+    body.chat-open.keyboard-open #conteggChatHeaderLayer > #chatNavbar.chat-navbar,
+    body.chat-open.keyboard-settling-in #conteggChatHeaderLayer > #chatNavbar.chat-navbar,
+    body.chat-open.keyboard-settling-out #conteggChatHeaderLayer > #chatNavbar.chat-navbar,
+    body.chat-open.keyboard-no-transition #conteggChatHeaderLayer > #chatNavbar.chat-navbar {
+        position: relative !important;
         top: 0 !important;
+        left: 0 !important;
+        right: auto !important;
         bottom: auto !important;
+        width: 100% !important;
+        height: var(--navbar-height) !important;
+        min-height: var(--navbar-height) !important;
+        max-height: var(--navbar-height) !important;
+        margin: 0 !important;
+        display: flex !important;
+        pointer-events: auto !important;
+        translate: none !important;
         transform: none !important;
+        scale: 1 !important;
         transition: none !important;
         animation: none !important;
+        will-change: auto !important;
+        z-index: 1 !important;
     }
 
-    body:not(.chat-open) #chatNavbar.chat-navbar {
+    body:not(.chat-open) #conteggChatHeaderLayer {
         display: none !important;
     }
 
-    /* Всегда резервируем одно и то же место под статичную шапку. */
+    body.chat-open #conteggChatHeaderLayer {
+        display: block !important;
+    }
+
+    /* The messages keep a permanent header-sized reserved area. */
     body.chat-open #chatMessages.chat-messages {
         top: var(--navbar-height) !important;
     }
 }
 </style>
 
-
-
-
-<style id="CONTEGG-HEADER-HARD-TOP-LOCK">
-/* ===== FINAL HARD LOCK: HEADER NEVER MOVES WITH MOBILE KEYBOARD ===== */
-@media (max-width: 900px), (pointer: coarse) {
-    html body.chat-open #chatNavbar.chat-navbar,
-    html body.chat-open.keyboard-open #chatNavbar.chat-navbar,
-    html body.chat-open.keyboard-settling-in #chatNavbar.chat-navbar,
-    html body.chat-open.keyboard-settling-out #chatNavbar.chat-navbar,
-    html body.chat-open.keyboard-no-transition #chatNavbar.chat-navbar {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        bottom: auto !important;
-        margin: 0 !important;
-        translate: none !important;
-        transform: none !important;
-        scale: 1 !important;
-        transition: none !important;
-        animation: none !important;
-        will-change: auto !important;
+<script id="CONTEGG-SEPARATE-HEADER-LAYER-FINAL-JS">
+(() => {
+    function mobileHeaderMode() {
+        return window.matchMedia('(max-width: 900px), (pointer: coarse)').matches ||
+               /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     }
-}
-</style>
+
+    function hardPinHeader() {
+        if (!mobileHeaderMode()) return;
+
+        const navbar = document.getElementById('chatNavbar');
+        if (!navbar) return;
+
+        let layer = document.getElementById('conteggChatHeaderLayer');
+        if (!layer) {
+            layer = document.createElement('div');
+            layer.id = 'conteggChatHeaderLayer';
+            document.body.appendChild(layer);
+        }
+
+        if (navbar.parentElement !== layer) {
+            layer.appendChild(navbar);
+        }
+
+        // Clear any inline geometry left by old code/debugging.
+        for (const prop of ['top','bottom','left','right','transform','translate','position']) {
+            navbar.style.removeProperty(prop);
+        }
+    }
+
+    // Pin once after parsing.
+    hardPinHeader();
+
+    // Repin when chat state changes. This also defeats any old helper that
+    // accidentally tries to put the navbar back inside #chatOverlay later.
+    new MutationObserver(() => {
+        if (document.body.classList.contains('chat-open')) {
+            hardPinHeader();
+        }
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+    // Keyboard events are intentionally NOT used to position the header.
+    // We only assert the parent layer, never calculate top/offset/transform.
+    document.getElementById('chatInput')?.addEventListener('focus', hardPinHeader, true);
+    document.getElementById('chatInput')?.addEventListener('blur', hardPinHeader, true);
+})();
+</script>
+
 </body>
 </html>
