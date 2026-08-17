@@ -2614,6 +2614,28 @@ body {
     </div>
 </div>
 
+
+<div class="modal-overlay contegg-forward-overlay" id="forwardMessageModal">
+    <div class="contegg-forward-sheet">
+        <div class="contegg-forward-header">
+            <button type="button" class="contegg-forward-close" onclick="closeForwardMessageModal()" aria-label="Закрыть">
+                <i class="fas fa-times"></i>
+            </button>
+            <div class="contegg-forward-title">Переслать</div>
+            <div class="contegg-forward-header-spacer"></div>
+        </div>
+
+        <div class="contegg-forward-search-wrap">
+            <i class="fas fa-search"></i>
+            <input id="forwardChatSearch" type="search" placeholder="Поиск чатов" autocomplete="off">
+        </div>
+
+        <div class="contegg-forward-list" id="forwardChatList">
+            <div class="loader"><div class="spinner"></div><span>Загрузка...</span></div>
+        </div>
+    </div>
+</div>
+
 <div class="context-menu contegg-message-menu" id="msgContextMenu">
     <div class="context-item" onclick="ctxReply()" id="ctxReplyItem">
         <i class="fas fa-reply"></i><span>Ответить</span>
@@ -6898,7 +6920,25 @@ const hasCaption = !!(msg.text && msg.text.trim());
     div.setAttribute('data-sender-id', msg.senderId || '');
     
     let html = '';
-    
+
+if (msg.forwardedFromName || msg.forwardedFromChatId || msg.forwardedFromUserId) {
+    const forwardedName = msg.forwardedFromName || 'Пользователь';
+    const sourceChatId = msg.forwardedFromChatId || '';
+    const sourceUserId = msg.forwardedFromUserId || '';
+
+    html += `
+        <button
+            type="button"
+            class="contegg-forwarded-from"
+            onclick="event.stopPropagation(); openForwardSource(${jsString(sourceChatId)}, ${jsString(sourceUserId)})"
+            title="Открыть исходный чат"
+        >
+            <span class="contegg-forwarded-label">Переслано от:</span>
+            <span class="contegg-forwarded-name">${esc(forwardedName)}</span>
+        </button>
+    `;
+}
+
 if (msg.replyTo) {
     const replyName = msg.replyTo.senderName || (
         msg.replyTo.senderId === currentUser.uid ? 'Вы' : 'Пользователь'
@@ -7760,7 +7800,14 @@ async function openCommentUserProfile(userId) {
                 ID: ${(user.uid || userId).slice(-8)}
             </div>
 
-            <button class="btn btn-secondary" onclick="closeUserProfile()" style="margin-top:20px;">
+            ${userId !== currentUser.uid ? `
+                <button class="btn btn-primary" onclick="openChatFromCommentProfile(${jsString(userId)}, ${jsString(user.username || '')})" style="margin-top:20px;">
+                    <i class="fas fa-comment" style="margin-right:7px;"></i>
+                    Открыть чат
+                </button>
+            ` : ''}
+
+            <button class="btn btn-secondary" onclick="closeUserProfile()" style="margin-top:8px;">
                 Закрыть
             </button>
         </div>
@@ -7768,6 +7815,20 @@ async function openCommentUserProfile(userId) {
 
     document.getElementById('userProfileModal').classList.add('show');
 }
+
+
+async function openChatFromCommentProfile(userId, username = '') {
+    if (!userId || userId === currentUser.uid || userId === 'system') return;
+
+    try {
+        closeUserProfile();
+        await openDirectChat(userId, username || '');
+    } catch (e) {
+        console.error('openChatFromCommentProfile error:', e);
+        toast('Не удалось открыть чат');
+    }
+}
+window.openChatFromCommentProfile = openChatFromCommentProfile;
 
 async function sendMessage() {
     const input = document.getElementById('chatInput');
@@ -8079,10 +8140,378 @@ function ctxEditMessage() {
     document.getElementById('replyText').textContent = selectedMsgData.text.substring(0, 60);
 }
 
-function ctxForwardMessage() {
-    document.getElementById('msgContextMenu').style.display = 'none';
-    toast('Пересылку добавим позже');
+let forwardSourceMessage = null;
+let forwardSourceMessageId = null;
+let forwardSourceChatId = null;
+let forwardDestinationChats = [];
+
+function getForwardChatDisplay(chat) {
+    if (!chat) return { name: 'Чат', avatar: '', subtitle: '' };
+
+    if (chat.isSaved || chat.type === 'saved') {
+        return {
+            name: 'Избранное',
+            avatar: '',
+            subtitle: 'Сохранённые сообщения',
+            icon: '<i class="fas fa-bookmark"></i>'
+        };
+    }
+
+    if (chat.isChannel || chat.type === 'channel') {
+        return {
+            name: chat.name || 'Канал',
+            avatar: chat.avatarBase64 || chat.avatarUrl || '',
+            subtitle: 'Канал',
+            icon: '<i class="fas fa-bullhorn"></i>'
+        };
+    }
+
+    if (chat.isGroup) {
+        return {
+            name: chat.name || 'Группа',
+            avatar: chat.avatarBase64 || chat.avatarUrl || '',
+            subtitle: 'Группа',
+            icon: '<i class="fas fa-users"></i>'
+        };
+    }
+
+    if (chat.isSystem) {
+        return {
+            name: chat.name || 'Contegg',
+            avatar: chat.avatarBase64 || chat.avatarUrl || '',
+            subtitle: 'Системный чат',
+            icon: '<i class="fas fa-shield-alt"></i>'
+        };
+    }
+
+    const u = chat.otherUser || {};
+    return {
+        name: u.displayName || u.username || chat.name || 'Пользователь',
+        avatar: getAvatarSrc(u) || '',
+        subtitle: u.username ? `@${u.username}` : 'Личный чат',
+        icon: '<i class="fas fa-user"></i>'
+    };
 }
+
+function canForwardToChat(chat) {
+    if (!chat || !currentUser) return false;
+    if (chat.isSaved) return true;
+    if (chat.isSystem) return false;
+
+    if (chat.isChannel || chat.type === 'channel') {
+        return canCurrentUserPostInChannel(chat);
+    }
+
+    return Array.isArray(chat.participants) && chat.participants.includes(currentUser.uid);
+}
+
+async function loadForwardDestinations() {
+    const list = document.getElementById('forwardChatList');
+    if (!list || !currentUser) return;
+
+    list.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка...</span></div>';
+
+    try {
+        const savedId = await getOrCreateSavedChat();
+        const snap = await db.collection('chats')
+            .where('participants', 'array-contains', currentUser.uid)
+            .get();
+
+        const raw = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        let saved = raw.find(c => c.id === savedId || c.isSaved);
+        if (!saved) {
+            const savedDoc = await db.collection('chats').doc(savedId).get();
+            if (savedDoc.exists) saved = { id: savedDoc.id, ...savedDoc.data() };
+        }
+
+        const dmIds = [...new Set(raw
+            .filter(c => !c.isSaved && !c.isChannel && c.type !== 'channel' && !c.isGroup && !c.isSystem)
+            .map(c => c.participants?.find(uid => uid !== currentUser.uid))
+            .filter(Boolean))];
+
+        await Promise.all(dmIds.map(uid => getUserInfo(uid)));
+
+        const normalized = [];
+        for (const chat of raw) {
+            if (chat.id === savedId || chat.isSaved) continue;
+            if (!canForwardToChat(chat)) continue;
+
+            if (!chat.isChannel && chat.type !== 'channel' && !chat.isGroup && !chat.isSystem) {
+                const otherId = chat.participants?.find(uid => uid !== currentUser.uid);
+                if (!otherId) continue;
+                const otherUser = usersCache[otherId] || await getUserInfo(otherId);
+                normalized.push({ ...chat, type: 'dm', otherId, otherUser });
+            } else {
+                normalized.push(chat);
+            }
+        }
+
+        normalized.sort((a, b) => {
+            const ta = a.lastMessageTime?.toDate?.()?.getTime?.() || 0;
+            const tb = b.lastMessageTime?.toDate?.()?.getTime?.() || 0;
+            return tb - ta;
+        });
+
+        forwardDestinationChats = [
+            ...(saved ? [{ ...saved, id: savedId, type: 'saved', isSaved: true }] : []),
+            ...normalized
+        ];
+
+        renderForwardDestinationList();
+    } catch (e) {
+        console.error('loadForwardDestinations error:', e);
+        list.innerHTML = '<div class="empty-state"><div class="empty-state-title">Не удалось загрузить чаты</div></div>';
+    }
+}
+
+function renderForwardDestinationList(query = '') {
+    const list = document.getElementById('forwardChatList');
+    if (!list) return;
+
+    const q = String(query || '').trim().toLowerCase();
+    const chats = forwardDestinationChats.filter(chat => {
+        const d = getForwardChatDisplay(chat);
+        return !q || `${d.name} ${d.subtitle}`.toLowerCase().includes(q);
+    });
+
+    if (!chats.length) {
+        list.innerHTML = `
+            <div class="empty-state contegg-forward-empty">
+                <div class="empty-state-icon">💬</div>
+                <div class="empty-state-title">Ничего не найдено</div>
+            </div>
+        `;
+        return;
+    }
+
+    list.innerHTML = chats.map((chat, index) => {
+        const d = getForwardChatDisplay(chat);
+        const avatar = d.avatar
+            ? `<img src="${d.avatar}" alt="">`
+            : `<span>${d.icon || esc((d.name || '?')[0].toUpperCase())}</span>`;
+
+        return `
+            <button
+                type="button"
+                class="contegg-forward-chat ${index === 0 && chat.isSaved ? 'is-saved' : ''}"
+                onclick="forwardSelectedMessageToChat(${jsString(chat.id)})"
+            >
+                <span class="contegg-forward-avatar">${avatar}</span>
+                <span class="contegg-forward-chat-text">
+                    <span class="contegg-forward-chat-name">${esc(d.name)}</span>
+                    <span class="contegg-forward-chat-subtitle">${esc(d.subtitle)}</span>
+                </span>
+                <i class="fas fa-chevron-right contegg-forward-chat-chevron"></i>
+            </button>
+        `;
+    }).join('');
+}
+
+async function ctxForwardMessage() {
+    document.getElementById('msgContextMenu').style.display = 'none';
+
+    if (!selectedMsgId || !selectedMsgData || !currentChatId) {
+        toast('Сообщение не выбрано');
+        return;
+    }
+
+    forwardSourceMessage = { ...selectedMsgData };
+    forwardSourceMessageId = selectedMsgId;
+    forwardSourceChatId = currentChatId;
+
+    const modal = document.getElementById('forwardMessageModal');
+    if (!modal) return;
+
+    const search = document.getElementById('forwardChatSearch');
+    if (search) search.value = '';
+
+    modal.classList.add('show');
+    await loadForwardDestinations();
+
+    setTimeout(() => {
+        try { search?.focus({ preventScroll: true }); } catch (_) {}
+    }, 120);
+}
+
+function closeForwardMessageModal() {
+    const modal = document.getElementById('forwardMessageModal');
+    const active = document.activeElement;
+    if (modal && active && modal.contains(active) && typeof active.blur === 'function') active.blur();
+    modal?.classList.remove('show');
+
+    forwardSourceMessage = null;
+    forwardSourceMessageId = null;
+    forwardSourceChatId = null;
+}
+
+async function resolveForwardOrigin(msg) {
+    if (msg.forwardedFromName || msg.forwardedFromChatId || msg.forwardedFromUserId) {
+        return {
+            name: msg.forwardedFromName || 'Пользователь',
+            chatId: msg.forwardedFromChatId || forwardSourceChatId || '',
+            userId: msg.forwardedFromUserId || msg.senderId || ''
+        };
+    }
+
+    if (currentChatIsChannel && forwardSourceChatId === currentChatId) {
+        const name = document.getElementById('chatName')?.textContent?.trim() || 'Канал';
+        return { name, chatId: forwardSourceChatId, userId: msg.senderId || '' };
+    }
+
+    if (msg.senderId && msg.senderId !== 'system') {
+        const u = await getUserInfo(msg.senderId);
+        return {
+            name: u.displayName || u.username || 'Пользователь',
+            chatId: forwardSourceChatId || '',
+            userId: msg.senderId
+        };
+    }
+
+    return {
+        name: msg.senderName || 'Contegg',
+        chatId: forwardSourceChatId || '',
+        userId: msg.senderId || ''
+    };
+}
+
+function buildForwardedMessagePayload(msg, origin) {
+    const out = {
+        senderId: currentUser.uid,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        forwarded: true,
+        forwardedFromName: origin.name,
+        forwardedFromChatId: origin.chatId || '',
+        forwardedFromUserId: origin.userId || ''
+    };
+
+    const copyFields = [
+        'text',
+        'imageUrl',
+        'imagePath',
+        'images',
+        'channelImages',
+        'videoUrl',
+        'videoPath',
+        'audioUrl',
+        'audioPath',
+        'audioDuration',
+        'storageProvider',
+        'mediaType',
+        'caption'
+    ];
+
+    for (const key of copyFields) {
+        if (msg[key] !== undefined && msg[key] !== null) out[key] = msg[key];
+    }
+
+    return out;
+}
+
+async function forwardSelectedMessageToChat(targetChatId) {
+    if (!forwardSourceMessage || !targetChatId) return;
+
+    const target = forwardDestinationChats.find(c => c.id === targetChatId);
+    if (!target || !canForwardToChat(target)) {
+        toast('В этот чат нельзя отправлять сообщения');
+        return;
+    }
+
+    const row = document.querySelector(`.contegg-forward-chat[onclick*="${targetChatId}"]`);
+    row?.classList.add('is-sending');
+
+    try {
+        const origin = await resolveForwardOrigin(forwardSourceMessage);
+        const payload = buildForwardedMessagePayload(forwardSourceMessage, origin);
+
+        await db.collection('chats')
+            .doc(targetChatId)
+            .collection('messages')
+            .add(payload);
+
+        const participants = Array.isArray(target.participants) ? target.participants : [];
+        const unreadFor = participants.filter(uid => uid !== currentUser.uid);
+
+        let preview = payload.text || payload.caption || '';
+        if (!preview) {
+            if (payload.imageUrl || payload.images || payload.channelImages) preview = '📷 Фото';
+            else if (payload.videoUrl) preview = '🎥 Видео';
+            else if (payload.audioUrl) preview = '🎤 Голосовое сообщение';
+            else preview = 'Пересланное сообщение';
+        }
+
+        const update = {
+            lastMessage: preview.substring(0, 120),
+            lastMessageTime: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        if (unreadFor.length) {
+            update.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
+        }
+
+        await db.collection('chats').doc(targetChatId).update(update).catch(console.error);
+
+        const display = getForwardChatDisplay(target);
+        closeForwardMessageModal();
+        toast(`Переслано: ${display.name}`);
+        loadChats();
+    } catch (e) {
+        console.error('forwardSelectedMessageToChat error:', e);
+        toast('Ошибка пересылки');
+        row?.classList.remove('is-sending');
+    }
+}
+
+async function openForwardSource(chatId, userId) {
+    try {
+        closeForwardMessageModal();
+
+        if (chatId) {
+            const doc = await db.collection('chats').doc(chatId).get();
+            if (doc.exists) {
+                const chat = doc.data();
+
+                if (chat.isSaved) {
+                    await openSavedChat();
+                    return;
+                }
+                if (chat.isChannel || chat.type === 'channel') {
+                    await openChannel(chatId);
+                    return;
+                }
+                if (chat.isGroup) {
+                    await openGroupChat(chatId);
+                    return;
+                }
+                if (chat.isSystem) {
+                    await openSystemChat(chatId);
+                    return;
+                }
+
+                const otherId = chat.participants?.find(uid => uid !== currentUser.uid);
+                if (otherId) {
+                    const u = await getUserInfo(otherId);
+                    await openDirectChat(otherId, u.username || '', chatId);
+                    return;
+                }
+            }
+        }
+
+        if (userId && userId !== currentUser.uid && userId !== 'system') {
+            const u = await getUserInfo(userId);
+            await openDirectChat(userId, u.username || '');
+            return;
+        }
+
+        toast('Исходный чат недоступен');
+    } catch (e) {
+        console.error('openForwardSource error:', e);
+        toast('Не удалось открыть исходный чат');
+    }
+}
+
+window.closeForwardMessageModal = closeForwardMessageModal;
+window.forwardSelectedMessageToChat = forwardSelectedMessageToChat;
+window.openForwardSource = openForwardSource;
 
 function cancelEditMessage() {
     editingMessage = null;
@@ -10873,6 +11302,15 @@ document.getElementById('chatInput')?.addEventListener('blur', () => {
     requestAnimationFrame(() => {
         document.body.classList.remove('keyboard-no-transition');
     });
+});
+
+
+document.getElementById('forwardChatSearch')?.addEventListener('input', function() {
+    renderForwardDestinationList(this.value);
+});
+
+document.getElementById('forwardMessageModal')?.addEventListener('click', function(e) {
+    if (e.target === this) closeForwardMessageModal();
 });
 
 console.log('✅ Contegg Messenger · Полная версия с фото, видео и голосовыми');
@@ -13751,6 +14189,238 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
     #chatMessages .media-grid,
     #chatMessages .message-album {
         max-width: 390px !important;
+    }
+}
+</style>
+
+
+<style id="CONTEGG-V10-FORWARDING-UI">
+/* Forwarded-message source header */
+.contegg-forwarded-from {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    max-width: 100%;
+    margin: 0 0 5px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.contegg-forwarded-label {
+    font-size: 11px;
+    color: rgba(235,235,245,.56);
+    white-space: nowrap;
+}
+
+.contegg-forwarded-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 650;
+    color: var(--accent);
+}
+
+.msg-out .contegg-forwarded-label {
+    color: rgba(255,255,255,.66);
+}
+.msg-out .contegg-forwarded-name {
+    color: rgba(255,255,255,.95);
+}
+
+.contegg-forwarded-from:hover .contegg-forwarded-name {
+    text-decoration: underline;
+}
+
+/* Forward destination picker */
+.contegg-forward-overlay {
+    z-index: 2147482500 !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 18px !important;
+    background: rgba(0,0,0,.50) !important;
+}
+
+.contegg-forward-sheet {
+    width: min(430px, calc(100vw - 28px));
+    max-height: min(670px, calc(100dvh - 36px));
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border-radius: 24px;
+    background: rgba(35,35,37,.97);
+    border: .5px solid rgba(255,255,255,.12);
+    box-shadow: 0 24px 70px rgba(0,0,0,.54);
+    backdrop-filter: blur(30px) saturate(160%);
+    -webkit-backdrop-filter: blur(30px) saturate(160%);
+    transform: translateY(8px) scale(.985);
+    opacity: 0;
+    transition: transform .16s cubic-bezier(.2,.8,.2,1), opacity .13s ease;
+}
+
+#forwardMessageModal.show .contegg-forward-sheet {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+}
+
+.contegg-forward-header {
+    height: 52px;
+    flex: 0 0 52px;
+    display: grid;
+    grid-template-columns: 38px 1fr 38px;
+    align-items: center;
+    padding: 0 12px;
+    border-bottom: .5px solid rgba(255,255,255,.08);
+}
+
+.contegg-forward-title {
+    text-align: center;
+    font-size: 16px;
+    font-weight: 650;
+}
+
+.contegg-forward-close {
+    width: 32px;
+    height: 32px;
+    border: 0;
+    border-radius: 50%;
+    color: rgba(245,245,247,.82);
+    background: rgba(255,255,255,.07);
+    cursor: pointer;
+}
+.contegg-forward-close:hover { background: rgba(255,255,255,.12); }
+
+.contegg-forward-search-wrap {
+    margin: 10px 12px 7px;
+    height: 38px;
+    flex: 0 0 38px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 11px;
+    border-radius: 12px;
+    background: rgba(118,118,128,.20);
+    color: rgba(235,235,245,.38);
+}
+
+.contegg-forward-search-wrap input {
+    min-width: 0;
+    flex: 1;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: #fff;
+    font: inherit;
+    font-size: 14px;
+}
+
+.contegg-forward-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 3px 7px 10px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(235,235,245,.18) transparent;
+}
+.contegg-forward-list::-webkit-scrollbar { width: 6px; }
+.contegg-forward-list::-webkit-scrollbar-track { background: transparent; }
+.contegg-forward-list::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(235,235,245,.18);
+}
+
+.contegg-forward-chat {
+    width: 100%;
+    min-height: 58px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 9px;
+    border: 0;
+    border-radius: 13px;
+    background: transparent;
+    color: #fff;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background .12s ease, transform .12s ease, opacity .12s ease;
+}
+.contegg-forward-chat:hover { background: rgba(255,255,255,.065); }
+.contegg-forward-chat:active { transform: scale(.985); }
+.contegg-forward-chat.is-sending { opacity: .48; pointer-events: none; }
+
+.contegg-forward-chat.is-saved {
+    background: rgba(255,159,10,.07);
+}
+
+.contegg-forward-avatar {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    overflow: hidden;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg,#0a84ff,#5e5ce6);
+    font-size: 17px;
+    color: #fff;
+}
+.contegg-forward-chat.is-saved .contegg-forward-avatar {
+    background: linear-gradient(135deg,#ff9f0a,#ff453a);
+}
+.contegg-forward-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.contegg-forward-chat-text {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.contegg-forward-chat-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 600;
+}
+.contegg-forward-chat-subtitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    color: rgba(235,235,245,.48);
+}
+.contegg-forward-chat-chevron {
+    color: rgba(235,235,245,.28);
+    font-size: 11px;
+}
+
+@media (max-width: 767px) {
+    .contegg-forward-overlay {
+        align-items: flex-end !important;
+        padding: 0 !important;
+    }
+    .contegg-forward-sheet {
+        width: 100%;
+        max-height: min(78dvh, 680px);
+        border-radius: 22px 22px 0 0;
+        padding-bottom: env(safe-area-inset-bottom,0px);
+        transform: translateY(18px);
+    }
+    #forwardMessageModal.show .contegg-forward-sheet {
+        transform: translateY(0);
     }
 }
 </style>
