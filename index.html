@@ -806,8 +806,30 @@
             autoLoginBadge.style.opacity = '1';
         }
 
+        function getRequestedNextUrl() {
+            const params = new URLSearchParams(location.search);
+            const next = params.get('next');
+
+            if (!next) return 'chats.html';
+
+            try {
+                const decoded = decodeURIComponent(next);
+
+                // Only allow local Contegg paths.
+                if (
+                    decoded.startsWith('/') ||
+                    decoded.startsWith('chats.html') ||
+                    decoded.startsWith('./chats.html')
+                ) {
+                    return decoded;
+                }
+            } catch (_) {}
+
+            return 'chats.html';
+        }
+
         function redirectToChats() {
-            window.location.href = 'chats.html';
+            window.location.href = getRequestedNextUrl();
         }
 
         function showError(element, message) {
