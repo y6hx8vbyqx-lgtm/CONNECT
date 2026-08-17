@@ -10597,5 +10597,101 @@ body.chat-open .chat-messages {
     document.addEventListener('keydown', onFirstUserAction, true);
 })();
 </script>
+
+
+<style id="CONTEGG-ABSOLUTELY-STATIC-MOBILE-CHAT-HEADER">
+/* ===== MOBILE CHAT HEADER: VISUALLY STATIC EVEN WHILE KEYBOARD ANIMATES ===== */
+@media (max-width: 900px), (pointer: coarse) {
+    :root {
+        --contegg-header-vv-y: 0px;
+    }
+
+    /*
+       Шапка больше не участвует в вертикальной геометрии chat-overlay.
+       visualViewport offset компенсирует системный pan Safari мгновенно,
+       поэтому клавиатура может двигать только сообщения и input.
+    */
+    #chatNavbar.chat-navbar {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: auto !important;
+        width: 100vw !important;
+        min-height: var(--navbar-height) !important;
+        height: var(--navbar-height) !important;
+        margin: 0 !important;
+        translate: 0 var(--contegg-header-vv-y) !important;
+        transform: none !important;
+        scale: 1 !important;
+        transition: none !important;
+        animation: none !important;
+        will-change: auto !important;
+        contain: layout paint style !important;
+        z-index: 100002 !important;
+        backface-visibility: hidden !important;
+        -webkit-backface-visibility: hidden !important;
+    }
+
+    body.chat-open #chatNavbar.chat-navbar,
+    body.chat-open.keyboard-open #chatNavbar.chat-navbar,
+    body.chat-open.keyboard-settling-in #chatNavbar.chat-navbar,
+    body.chat-open.keyboard-settling-out #chatNavbar.chat-navbar,
+    body.chat-open.keyboard-no-transition #chatNavbar.chat-navbar {
+        display: flex !important;
+        top: 0 !important;
+        bottom: auto !important;
+        transform: none !important;
+        transition: none !important;
+        animation: none !important;
+    }
+
+    body:not(.chat-open) #chatNavbar.chat-navbar {
+        display: none !important;
+    }
+
+    /* Всегда резервируем одно и то же место под статичную шапку. */
+    body.chat-open #chatMessages.chat-messages {
+        top: var(--navbar-height) !important;
+    }
+}
+</style>
+
+<script id="CONTEGG-STATIC-MOBILE-HEADER-VISUAL-VIEWPORT">
+(function () {
+    const root = document.documentElement;
+
+    function isMobileHeaderMode() {
+        return window.matchMedia('(max-width: 900px), (pointer: coarse)').matches;
+    }
+
+    function lockChatHeaderToVisibleTop() {
+        if (!isMobileHeaderMode()) {
+            root.style.setProperty('--contegg-header-vv-y', '0px');
+            return;
+        }
+
+        const vv = window.visualViewport;
+        const y = vv ? Math.max(0, Math.round(vv.offsetTop || 0)) : 0;
+        root.style.setProperty('--contegg-header-vv-y', y + 'px');
+    }
+
+    /* Никаких debounce/transition: компенсация идёт в тот же кадр. */
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', lockChatHeaderToVisibleTop, { passive: true });
+        window.visualViewport.addEventListener('scroll', lockChatHeaderToVisibleTop, { passive: true });
+    }
+
+    window.addEventListener('resize', lockChatHeaderToVisibleTop, { passive: true });
+    window.addEventListener('orientationchange', lockChatHeaderToVisibleTop, { passive: true });
+    document.getElementById('chatInput')?.addEventListener('focus', lockChatHeaderToVisibleTop, { passive: true });
+    document.getElementById('chatInput')?.addEventListener('blur', () => {
+        requestAnimationFrame(lockChatHeaderToVisibleTop);
+    }, { passive: true });
+
+    lockChatHeaderToVisibleTop();
+})();
+</script>
+
 </body>
 </html>
