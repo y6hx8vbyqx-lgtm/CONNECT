@@ -2460,6 +2460,60 @@ body {
     </div>
 </div>
 
+
+<div class="modal-overlay" id="deleteAccountModal">
+    <div class="modal-sheet contegg-delete-account-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title" style="color:var(--danger);">Удалить аккаунт</div>
+        <div class="modal-content">
+            <div class="contegg-delete-warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                <div>
+                    <b>Это действие необратимо.</b>
+                    <span>Профиль, сообщения, посты, комментарии и данные аккаунта будут удалены.</span>
+                </div>
+            </div>
+
+            <div class="input-row">
+                <label>Текущий пароль</label>
+                <input
+                    type="password"
+                    id="deleteAccountPassword"
+                    placeholder="Введите текущий пароль"
+                    autocomplete="current-password"
+                >
+                <button class="password-toggle" onclick="togglePasswordVisibility('deleteAccountPassword', this)">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </div>
+
+            <div class="input-row">
+                <label>Для подтверждения введите УДАЛИТЬ</label>
+                <input
+                    type="text"
+                    id="deleteAccountConfirmText"
+                    placeholder="УДАЛИТЬ"
+                    autocomplete="off"
+                >
+            </div>
+
+            <div id="deleteAccountProgress" class="contegg-delete-progress"></div>
+            <div id="deleteAccountError" style="display:none;color:var(--danger);font-size:13px;margin:4px 2px 12px;"></div>
+
+            <button
+                class="btn btn-danger contegg-delete-account-confirm"
+                id="deleteAccountConfirmButton"
+                onclick="deleteCurrentConteggAccount()"
+            >
+                <i class="fas fa-trash-alt"></i>
+                Удалить аккаунт навсегда
+            </button>
+
+            <button class="btn btn-secondary" onclick="closeDeleteAccountModal()">Отмена</button>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="changePasswordModal">
     <div class="modal-sheet">
         <div class="modal-handle"></div>
@@ -5599,6 +5653,22 @@ function normalizePublicUserData(data, uid = '') {
         ...(data || {})
     };
 
+    if (raw.deletedAccount === true) {
+        return {
+            ...raw,
+            uid: raw.uid || uid,
+            username: 'deleted_account',
+            displayName: 'Удалённый аккаунт',
+            bio: '(аккаунт удалён)',
+            avatarBase64: null,
+            avatarUrl: null,
+            verified: false,
+            verificationBadgeUrl: '',
+            accountBlocked: false,
+            deletedAccount: true
+        };
+    }
+
     if (raw.isBlocked === true) {
         return {
             ...raw,
@@ -5644,6 +5714,10 @@ function renderVerificationBadge(user, size = 12) {
 }
 
 function renderBlockedAccountMark(user) {
+    if (user?.deletedAccount) {
+        return '<span class="contegg-deleted-account-mark">удалённый аккаунт</span>';
+    }
+
     return user?.accountBlocked || user?.isBlocked
         ? '<span class="contegg-deleted-account-mark">аккаунт заблокирован</span>'
         : '';
@@ -5750,13 +5824,14 @@ const data = snap.exists ? {
     ...snap.data()
 } : {
     uid,
-    username: 'user',
-    displayName: 'Пользователь',
+    username: 'deleted_account',
+    displayName: 'Удалённый аккаунт',
     avatarBase64: null,
     avatarUrl: null,
-    bio: '',
+    bio: '(аккаунт удалён)',
     email: '',
-    isAdmin: false
+    isAdmin: false,
+    deletedAccount: true
 };
 
             const normalized = normalizePublicUserData(data, uid);
@@ -5772,12 +5847,14 @@ const data = snap.exists ? {
 
             return {
                 uid,
-                username: 'user',
-                displayName: 'Пользователь',
+                username: 'deleted_account',
+                displayName: 'Удалённый аккаунт',
                 avatarBase64: null,
-                bio: '',
+                avatarUrl: null,
+                bio: '(аккаунт удалён)',
                 email: '',
-                isAdmin: false
+                isAdmin: false,
+                deletedAccount: true
             };
         });
 
@@ -9469,6 +9546,18 @@ const avHTML = myAvatarSrc
             </div>
         </div>
         
+        <div class="profile-section" style="margin-top:16px;">
+            <div class="profile-cell contegg-delete-account-cell" onclick="openDeleteAccountModal()">
+                <div class="profile-cell-icon" style="background:rgba(255,59,48,0.14);color:var(--danger);">
+                    <i class="fas fa-trash-alt"></i>
+                </div>
+                <div class="profile-cell-content">
+                    <span class="profile-cell-title" style="color:var(--danger);">Удалить аккаунт</span>
+                    <i class="fas fa-chevron-right profile-cell-arrow" style="color:var(--danger);opacity:.65;"></i>
+                </div>
+            </div>
+        </div>
+
         <button class="btn btn-danger" onclick="logout()" style="margin-top:12px;">Выйти из аккаунта</button>
     `;
 }
@@ -9851,13 +9940,403 @@ async function changeAccountEmail() {
             'auth/invalid-credential': 'Неверный текущий пароль',
             'auth/email-already-in-use': 'Эта почта уже используется',
             'auth/invalid-email': 'Некорректная почта',
-            'auth/requires-recent-login': 'Нужно заново подтвердить вход'
+            'auth/requires-recent-login': 'Нужно заново подтвердить вход',
+            'auth/operation-not-allowed': 'В Firebase отключён вход Email/Password. Включите Authentication → Sign-in method → Email/Password.'
         };
 
         errorEl.textContent = map[error.code] || ('Ошибка: ' + error.message);
         errorEl.style.display = 'block';
     }
 }
+
+
+function openDeleteAccountModal() {
+    const password = document.getElementById('deleteAccountPassword');
+    const confirmText = document.getElementById('deleteAccountConfirmText');
+    const error = document.getElementById('deleteAccountError');
+    const progress = document.getElementById('deleteAccountProgress');
+    const button = document.getElementById('deleteAccountConfirmButton');
+
+    if (password) password.value = '';
+    if (confirmText) confirmText.value = '';
+    if (error) {
+        error.style.display = 'none';
+        error.textContent = '';
+    }
+    if (progress) progress.textContent = '';
+    if (button) button.disabled = false;
+
+    document.getElementById('deleteAccountModal')?.classList.add('show');
+}
+
+function closeDeleteAccountModal() {
+    document.getElementById('deleteAccountModal')?.classList.remove('show');
+}
+
+function setDeleteAccountProgress(text) {
+    const el = document.getElementById('deleteAccountProgress');
+    if (el) el.textContent = text || '';
+}
+
+function setDeleteAccountError(text) {
+    const el = document.getElementById('deleteAccountError');
+    if (!el) return;
+    el.textContent = text || '';
+    el.style.display = text ? 'block' : 'none';
+}
+
+async function deleteRefsInChunks(refs, chunkSize = 350) {
+    const list = Array.from(new Map(
+        (refs || [])
+            .filter(Boolean)
+            .map(ref => [ref.path, ref])
+    ).values());
+
+    for (let i = 0; i < list.length; i += chunkSize) {
+        const batch = db.batch();
+        list.slice(i, i + chunkSize).forEach(ref => batch.delete(ref));
+        await batch.commit();
+    }
+}
+
+function collectSupabaseMediaPaths(value, out = new Set()) {
+    if (!value) return out;
+
+    if (typeof value === 'string') {
+        const raw = value.trim();
+
+        const publicMarker = '/storage/v1/object/public/contegg-media/';
+        const publicIndex = raw.indexOf(publicMarker);
+
+        if (publicIndex >= 0) {
+            const path = decodeURIComponent(raw.slice(publicIndex + publicMarker.length).split('?')[0]);
+            if (path) out.add(path);
+        } else if (/^(images|videos|audio|avatars|channels|badges)\//.test(raw)) {
+            out.add(raw);
+        }
+
+        return out;
+    }
+
+    if (Array.isArray(value)) {
+        value.forEach(item => collectSupabaseMediaPaths(item, out));
+        return out;
+    }
+
+    if (typeof value === 'object') {
+        Object.values(value).forEach(item => collectSupabaseMediaPaths(item, out));
+    }
+
+    return out;
+}
+
+async function tryDeleteSupabaseMedia(paths) {
+    const list = [...new Set(paths || [])].filter(Boolean);
+    if (!list.length) return { deleted: 0, skipped: false };
+
+    let deleted = 0;
+
+    for (let i = 0; i < list.length; i += 80) {
+        const chunk = list.slice(i, i + 80);
+
+        const { error } = await supabaseStorage.storage
+            .from(SUPABASE_BUCKET)
+            .remove(chunk);
+
+        if (error) {
+            console.warn('Supabase media cleanup unavailable:', error);
+            return {
+                deleted,
+                skipped: true,
+                error
+            };
+        }
+
+        deleted += chunk.length;
+    }
+
+    return { deleted, skipped: false };
+}
+
+function removeUidFromReactionValue(value, uid) {
+    if (Array.isArray(value)) {
+        return value.filter(item => {
+            if (typeof item === 'string') return item !== uid;
+            if (item && typeof item === 'object') {
+                return item.uid !== uid && item.userId !== uid && item.senderId !== uid;
+            }
+            return true;
+        });
+    }
+
+    if (value && typeof value === 'object') {
+        const copy = { ...value };
+        delete copy[uid];
+
+        for (const key of Object.keys(copy)) {
+            copy[key] = removeUidFromReactionValue(copy[key], uid);
+        }
+
+        return copy;
+    }
+
+    return value;
+}
+
+async function eraseConteggUserFirestoreData(uid) {
+    const mediaPaths = new Set();
+    const deleteRefs = [];
+    const chatUpdates = [];
+
+    setDeleteAccountProgress('Собираем данные аккаунта…');
+
+    const userRef = db.collection('users').doc(uid);
+    const userSnap = await userRef.get();
+
+    if (userSnap.exists) {
+        collectSupabaseMediaPaths(userSnap.data(), mediaPaths);
+
+        const devicesSnap = await userRef.collection('devices').get().catch(() => null);
+        devicesSnap?.docs?.forEach(doc => deleteRefs.push(doc.ref));
+    }
+
+    const chatsSnap = await db.collection('chats').get();
+
+    for (const chatDoc of chatsSnap.docs) {
+        const chat = chatDoc.data() || {};
+        const chatRef = chatDoc.ref;
+
+        const isParticipant =
+            Array.isArray(chat.participants) &&
+            chat.participants.includes(uid);
+
+        const isSubscriber =
+            Array.isArray(chat.subscribers) &&
+            chat.subscribers.includes(uid);
+
+        const owned =
+            chat.ownerId === uid ||
+            chat.creatorId === uid ||
+            chat.createdBy === uid;
+
+        // Saved/system chats belonging only to this account may be removed entirely.
+        const isPersonalOnly =
+            chat.isSaved === true ||
+            chat.savedFor === uid ||
+            (
+                Array.isArray(chat.participants) &&
+                chat.participants.length === 1 &&
+                chat.participants[0] === uid
+            );
+
+        const messagesSnap = await chatRef.collection('messages').get();
+
+        for (const msgDoc of messagesSnap.docs) {
+            const msg = msgDoc.data() || {};
+            const msgRef = msgDoc.ref;
+
+            // Delete comments authored by the account in any post.
+            const commentsSnap = await msgRef.collection('comments').get().catch(() => null);
+            if (commentsSnap) {
+                for (const commentDoc of commentsSnap.docs) {
+                    const comment = commentDoc.data() || {};
+
+                    if (comment.senderId === uid) {
+                        collectSupabaseMediaPaths(comment, mediaPaths);
+                        deleteRefs.push(commentDoc.ref);
+                    }
+                }
+            }
+
+            // Remove this account's unique view record if present.
+            const viewRef = msgRef.collection('views').doc(uid);
+            const viewSnap = await viewRef.get().catch(() => null);
+            if (viewSnap?.exists) {
+                deleteRefs.push(viewRef);
+            }
+
+            if (msg.senderId === uid) {
+                collectSupabaseMediaPaths(msg, mediaPaths);
+
+                // Deleting a parent document does not delete its subcollections.
+                // Remove all comment/view docs below the account's own message/post too.
+                if (commentsSnap) {
+                    commentsSnap.docs.forEach(doc => deleteRefs.push(doc.ref));
+                }
+
+                const allViews = await msgRef.collection('views').get().catch(() => null);
+                allViews?.docs?.forEach(doc => deleteRefs.push(doc.ref));
+
+                deleteRefs.push(msgRef);
+                continue;
+            }
+
+            // Scrub the deleted uid from reactions on messages that remain.
+            if (msg.reactions && typeof msg.reactions === 'object') {
+                const nextReactions = removeUidFromReactionValue(msg.reactions, uid);
+
+                if (JSON.stringify(nextReactions) !== JSON.stringify(msg.reactions)) {
+                    chatUpdates.push(
+                        msgRef.update({ reactions: nextReactions }).catch(console.warn)
+                    );
+                }
+            }
+        }
+
+        if (isPersonalOnly) {
+            // Delete remaining messages before the chat document.
+            messagesSnap.docs.forEach(doc => deleteRefs.push(doc.ref));
+            deleteRefs.push(chatRef);
+            continue;
+        }
+
+        const update = {};
+
+        // Keep direct chat history visible to the other person as "Удалённый аккаунт".
+        // For groups/channels, remove membership/admin permissions.
+        if ((chat.isGroup || chat.isChannel || chat.type === 'channel') && isParticipant) {
+            update.participants = (chat.participants || []).filter(id => id !== uid);
+        }
+
+        if ((chat.isChannel || chat.type === 'channel') && isSubscriber) {
+            update.subscribers = (chat.subscribers || []).filter(id => id !== uid);
+        }
+
+        for (const field of ['admins', 'moderators']) {
+            if (Array.isArray(chat[field]) && chat[field].includes(uid)) {
+                update[field] = chat[field].filter(id => id !== uid);
+            }
+        }
+
+        if (owned) {
+            if ('ownerId' in chat) update.ownerId = null;
+            if ('creatorId' in chat) update.creatorId = null;
+            if ('createdBy' in chat) update.createdBy = null;
+        }
+
+        if (Object.keys(update).length) {
+            chatUpdates.push(chatRef.update(update).catch(console.warn));
+        }
+    }
+
+    setDeleteAccountProgress('Удаляем сообщения и комментарии…');
+    await Promise.all(chatUpdates);
+    await deleteRefsInChunks(deleteRefs);
+
+    // Remove public profile last, so existing chats fall back to "Удалённый аккаунт".
+    await userRef.delete().catch(error => {
+        console.warn('User document delete failed:', error);
+        throw error;
+    });
+
+    return {
+        mediaPaths: [...mediaPaths],
+        deletedDocuments: deleteRefs.length + 1
+    };
+}
+
+async function deleteCurrentConteggAccount() {
+    const user = auth.currentUser;
+    const password = document.getElementById('deleteAccountPassword')?.value || '';
+    const confirmText = document.getElementById('deleteAccountConfirmText')?.value.trim() || '';
+    const button = document.getElementById('deleteAccountConfirmButton');
+
+    setDeleteAccountError('');
+
+    if (!user || !currentUser) {
+        setDeleteAccountError('Пользователь не авторизован');
+        return;
+    }
+
+    if (confirmText !== 'УДАЛИТЬ') {
+        setDeleteAccountError('Введите слово УДАЛИТЬ для подтверждения');
+        return;
+    }
+
+    if (!password) {
+        setDeleteAccountError('Введите текущий пароль');
+        return;
+    }
+
+    if (!confirm('Удалить аккаунт Contegg навсегда? Это действие нельзя отменить.')) {
+        return;
+    }
+
+    button.disabled = true;
+
+    try {
+        setDeleteAccountProgress('Подтверждаем пароль…');
+
+        const credential = firebase.auth.EmailAuthProvider.credential(
+            user.email,
+            password
+        );
+
+        await user.reauthenticateWithCredential(credential);
+
+        const uid = user.uid;
+
+        // Stop listeners before destructive cleanup.
+        [
+            chatsGlobalListener,
+            chatMessagesListener,
+            usersDirectoryListener,
+            deviceControlListener,
+            chatUserPresenceListener
+        ].forEach(listener => {
+            if (typeof listener === 'function') {
+                try { listener(); } catch (_) {}
+            }
+        });
+
+        setDeleteAccountProgress('Удаляем данные Contegg…');
+        const cleanup = await eraseConteggUserFirestoreData(uid);
+
+        setDeleteAccountProgress('Удаляем медиа…');
+        const mediaResult = await tryDeleteSupabaseMedia(cleanup.mediaPaths);
+
+        if (mediaResult.skipped) {
+            console.warn(
+                'Some Supabase media could not be physically removed. ' +
+                'A secure Storage DELETE backend/policy is required.',
+                mediaResult.error
+            );
+        }
+
+        setDeleteAccountProgress('Удаляем учётную запись…');
+        await user.delete();
+
+        // Local credentials/account switcher traces.
+        removeAccountCredentials(uid);
+
+        linkedAccounts = linkedAccounts.filter(account => account.uid !== uid);
+        saveLinkedAccounts();
+
+        localStorage.removeItem('contegg_current_user');
+        sessionStorage.setItem('contegg_manual_logout', 'true');
+
+        // No authenticated user remains.
+        location.href = 'index.html?account_deleted=1';
+    } catch (error) {
+        console.error('deleteCurrentConteggAccount error:', error);
+
+        const map = {
+            'auth/wrong-password': 'Неверный текущий пароль',
+            'auth/invalid-credential': 'Неверный текущий пароль',
+            'auth/requires-recent-login': 'Требуется повторный вход в аккаунт',
+            'auth/operation-not-allowed':
+                'В Firebase отключён Email/Password. Включите Authentication → Sign-in method → Email/Password.'
+        };
+
+        setDeleteAccountError(map[error.code] || ('Ошибка удаления: ' + error.message));
+        setDeleteAccountProgress('');
+        button.disabled = false;
+    }
+}
+
+window.openDeleteAccountModal = openDeleteAccountModal;
+window.closeDeleteAccountModal = closeDeleteAccountModal;
+window.deleteCurrentConteggAccount = deleteCurrentConteggAccount;
 
 function openChangePasswordModal() {
     document.getElementById('oldPassword').value = '';
@@ -12153,6 +12632,7 @@ document.getElementById('channelCropSettingsModal')?.classList.remove('show');
         document.getElementById('profileEditModal').classList.remove('show');
         document.getElementById('changePasswordModal').classList.remove('show');
         document.getElementById('changeEmailModal')?.classList.remove('show');
+        document.getElementById('deleteAccountModal')?.classList.remove('show');
         document.getElementById('userProfileModal').classList.remove('show');
         document.getElementById('cropModal').classList.remove('show');
         document.getElementById('groupCropModal').classList.remove('show');
@@ -16160,6 +16640,61 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
     #conteggDesktopChatPane #chatMessages.chat-messages > :last-child {
         margin-bottom: 4px !important;
     }
+}
+</style>
+
+
+<style id="CONTEGG-V19-DELETE-ACCOUNT">
+.contegg-delete-warning {
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    margin-bottom:14px;
+    padding:12px;
+    border-radius:13px;
+    background:rgba(255,59,48,.10);
+    border:.5px solid rgba(255,59,48,.22);
+    color:#ff6961;
+}
+
+.contegg-delete-warning > i {
+    margin-top:2px;
+    font-size:17px;
+}
+
+.contegg-delete-warning div {
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+    font-size:12px;
+    line-height:1.4;
+}
+
+.contegg-delete-warning b {
+    font-size:13px;
+}
+
+.contegg-delete-progress {
+    min-height:18px;
+    margin:4px 2px 10px;
+    color:var(--text-secondary);
+    font-size:12px;
+}
+
+.contegg-delete-account-confirm {
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:7px;
+}
+
+.contegg-delete-account-confirm:disabled {
+    opacity:.48;
+    pointer-events:none;
+}
+
+.contegg-delete-account-cell:active {
+    background:rgba(255,59,48,.08) !important;
 }
 </style>
 
