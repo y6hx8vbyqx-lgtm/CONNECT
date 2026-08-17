@@ -2614,25 +2614,29 @@ body {
     </div>
 </div>
 
-<div class="context-menu" id="msgContextMenu">
+<div class="context-menu contegg-message-menu" id="msgContextMenu">
     <div class="context-item" onclick="ctxReply()" id="ctxReplyItem">
-        <i class="fas fa-reply"></i> Ответить
+        <i class="fas fa-reply"></i><span>Ответить</span>
+    </div>
+
+    <div class="context-item" onclick="ctxCopyMessageText()" id="ctxCopyItem">
+        <i class="far fa-copy"></i><span>Копировать текст</span>
     </div>
 
     <div class="context-item" onclick="ctxEditMessage()" id="ctxEditItem">
-        <i class="fas fa-pen"></i> Редактировать
-    </div>
-
-    <div class="context-item" onclick="ctxDeleteForMe()">
-        <i class="fas fa-trash"></i> Удалить у себя
-    </div>
-
-    <div class="context-item danger" onclick="ctxDeleteForBoth()" id="ctxDeleteForBothItem">
-        <i class="fas fa-trash-alt"></i> Удалить у обоих
+        <i class="fas fa-pen"></i><span>Редактировать</span>
     </div>
 
     <div class="context-item" onclick="ctxForwardMessage()">
-        <i class="fas fa-share"></i> Переслать
+        <i class="fas fa-share"></i><span>Переслать</span><i class="fas fa-chevron-right context-chevron"></i>
+    </div>
+
+    <div class="context-item" onclick="ctxDeleteForMe()" id="ctxDeleteForMeItem">
+        <i class="far fa-circle-check"></i><span>Удалить у себя</span>
+    </div>
+
+    <div class="context-item danger" onclick="ctxDeleteForBoth()" id="ctxDeleteForBothItem">
+        <i class="far fa-trash-alt"></i><span>Удалить у обоих</span>
     </div>
 </div>
 
@@ -2642,16 +2646,27 @@ body {
 </div>
 
 <div class="reactions-panel" id="reactionsPanel">
-    <span onclick="addReaction('❤️')">❤️</span>
-    <span onclick="addReaction('👍')">👍</span>
-    <span onclick="addReaction('👎')">👎</span>
-    <span onclick="addReaction('😂')">😂</span>
-    <span onclick="addReaction('😮')">😮</span>
-    <span onclick="addReaction('😢')">😢</span>
-    <span onclick="addReaction('😡')">😡</span>
-    <span onclick="addReaction('🔥')">🔥</span>
-    <span onclick="addReaction('🎉')">🎉</span>
-    <span onclick="addReaction('💩')">💩</span>
+    <div class="contegg-reaction-main">
+        <span onclick="addReaction('❤️')">❤️</span>
+        <span onclick="addReaction('👌')">👌</span>
+        <span onclick="addReaction('🔥')">🔥</span>
+        <span onclick="addReaction('🤯')">🤯</span>
+        <span onclick="addReaction('⚡')">⚡</span>
+        <span onclick="addReaction('💯')">💯</span>
+        <span onclick="addReaction('😂')">😂</span>
+    </div>
+    <div class="contegg-reaction-more">
+        <span onclick="addReaction('👍')">👍</span>
+        <span onclick="addReaction('👎')">👎</span>
+        <span onclick="addReaction('😮')">😮</span>
+        <span onclick="addReaction('😢')">😢</span>
+        <span onclick="addReaction('😡')">😡</span>
+        <span onclick="addReaction('🎉')">🎉</span>
+        <span onclick="addReaction('💩')">💩</span>
+    </div>
+    <button class="contegg-reaction-expand" type="button" onclick="toggleReactionPanelExpanded(event)" aria-label="Ещё реакции">
+        <i class="fas fa-chevron-down"></i>
+    </button>
 </div>
 
 <div class="image-preview-overlay" id="imagePreviewOverlay" onclick="closeImagePreview()">
@@ -7855,8 +7870,10 @@ async function showMsgActionsAt(x, y, id, msg) {
     const deleteBothItem = document.getElementById('ctxDeleteForBothItem');
 
     const isMyMessage = msg.senderId === currentUser.uid;
+    const copyItem = document.getElementById('ctxCopyItem');
+    if (copyItem) copyItem.style.display = (msg.text || msg.caption) ? 'flex' : 'none';
 
-const deleteForMeItem = document.querySelector('#msgContextMenu .context-item[onclick="ctxDeleteForMe()"]');
+const deleteForMeItem = document.getElementById('ctxDeleteForMeItem');
 
 let canDeleteForAll = false;
 
@@ -7900,8 +7917,10 @@ if (currentChatIsChannel) {
     editItem.style.display = isMyMessage && msg.text ? 'flex' : 'none';
 }
     
-    menu.style.left = Math.min(x, window.innerWidth - 210) + 'px';
-    menu.style.top = Math.min(y, window.innerHeight - 210) + 'px';
+    const menuW = Math.min(340, window.innerWidth - 20);
+    const menuH = 390;
+    menu.style.left = Math.max(10, Math.min(x, window.innerWidth - menuW - 10)) + 'px';
+    menu.style.top = Math.max(10, Math.min(y, window.innerHeight - menuH - 10)) + 'px';
     menu.style.display = 'block';
 
     document.getElementById('reactionsPanel').style.display = 'none';
@@ -7913,6 +7932,44 @@ function showMsgActions(e, id, msg) {
 
     const p = getPointerPosition(e);
     showMsgActionsAt(p.x, p.y, id, msg);
+}
+
+async function ctxCopyMessageText() {
+    const menu = document.getElementById('msgContextMenu');
+    if (menu) menu.style.display = 'none';
+
+    const text = selectedMsgData?.text || selectedMsgData?.caption || '';
+    if (!text) {
+        toast('В сообщении нет текста');
+        return;
+    }
+
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            const temp = document.createElement('textarea');
+            temp.value = text;
+            temp.style.position = 'fixed';
+            temp.style.opacity = '0';
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            temp.remove();
+        }
+        toast('Текст скопирован');
+    } catch (e) {
+        console.error('copy message error:', e);
+        toast('Не удалось скопировать');
+    }
+}
+
+function toggleReactionPanelExpanded(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const panel = document.getElementById('reactionsPanel');
+    if (!panel) return;
+    panel.classList.toggle('expanded');
 }
 
 async function ctxDeleteForMe() {
@@ -8140,23 +8197,26 @@ function showReactionsPanelForMsg(id, msg, e) {
 
 function showReactionsPanel(x, y, msgId) {
     window.__justOpenedPanel = true;
-setTimeout(() => window.__justOpenedPanel = false, 250);
+    setTimeout(() => window.__justOpenedPanel = false, 250);
     const panel = document.getElementById('reactionsPanel');
     panel.setAttribute('data-msg-id', msgId || '');
-    
-    let left = x - 150;
-    let top = y - 30;
-    
+    panel.classList.remove('expanded');
+
+    const panelWidth = Math.min(620, window.innerWidth - 20);
+    let left = x - panelWidth / 2;
+    let top = y - 44;
+
     if (left < 10) left = 10;
-    if (left + 300 > window.innerWidth) left = window.innerWidth - 310;
+    if (left + panelWidth > window.innerWidth - 10) left = window.innerWidth - panelWidth - 10;
     if (top < 10) top = 10;
-    if (top + 70 > window.innerHeight) top = window.innerHeight - 80;
-    
+    if (top + 100 > window.innerHeight) top = window.innerHeight - 110;
+
+    panel.style.width = panelWidth + 'px';
     panel.style.left = left + 'px';
     panel.style.top = top + 'px';
     panel.style.display = 'flex';
     document.getElementById('msgContextMenu').style.display = 'none';
-    
+
     const closeHandler = (e) => {
         if (!panel.contains(e.target) && !e.target.closest('.reaction-badge')) {
             panel.style.display = 'none';
@@ -10842,6 +10902,206 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
 
 #toast {
     z-index: 100030 !important;
+}
+
+
+/* ===== CONTEGG MESSAGE ACTIONS · TELEGRAM-LIKE ===== */
+#msgContextMenu.contegg-message-menu {
+    min-width: 300px !important;
+    width: min(340px, calc(100vw - 20px)) !important;
+    padding: 8px !important;
+    border-radius: 22px !important;
+    overflow: hidden !important;
+    background: rgba(37, 37, 39, 0.94) !important;
+    border: 0.5px solid rgba(255,255,255,.10) !important;
+    box-shadow: 0 18px 55px rgba(0,0,0,.48), inset 0 1px 0 rgba(255,255,255,.05) !important;
+    backdrop-filter: blur(28px) saturate(165%) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(165%) !important;
+    transform-origin: 50% 30% !important;
+    animation: conteggContextPop .145s cubic-bezier(.2,.85,.25,1) both !important;
+}
+
+#msgContextMenu .context-item {
+    position: relative !important;
+    min-height: 54px !important;
+    padding: 0 12px !important;
+    border-radius: 12px !important;
+    gap: 14px !important;
+    font-size: 18px !important;
+    font-weight: 450 !important;
+    letter-spacing: -.2px !important;
+    color: rgba(245,245,247,.92) !important;
+    transition: background .10s ease, transform .10s ease !important;
+}
+
+#msgContextMenu .context-item:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 52px;
+    right: 8px;
+    bottom: 0;
+    height: .5px;
+    background: rgba(255,255,255,.10);
+    pointer-events: none;
+}
+
+#msgContextMenu .context-item > i:first-child {
+    width: 26px !important;
+    flex: 0 0 26px !important;
+    text-align: center !important;
+    font-size: 21px !important;
+    color: rgba(245,245,247,.90) !important;
+}
+
+#msgContextMenu .context-item > span {
+    flex: 1;
+    min-width: 0;
+}
+
+#msgContextMenu .context-chevron {
+    margin-left: auto;
+    width: auto !important;
+    font-size: 14px !important;
+    color: rgba(235,235,245,.55) !important;
+}
+
+#msgContextMenu .context-item:hover {
+    background: rgba(255,255,255,.065) !important;
+}
+
+#msgContextMenu .context-item:active {
+    transform: scale(.985) !important;
+    background: rgba(255,255,255,.10) !important;
+}
+
+#msgContextMenu .context-item.danger,
+#msgContextMenu .context-item.danger > i:first-child {
+    color: #ff453a !important;
+}
+
+#reactionsPanel.reactions-panel {
+    max-width: calc(100vw - 20px) !important;
+    min-height: 72px !important;
+    padding: 7px 70px 7px 12px !important;
+    border-radius: 38px !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    background: rgba(37,37,39,.94) !important;
+    border: .5px solid rgba(255,255,255,.10) !important;
+    box-shadow: 0 16px 48px rgba(0,0,0,.44), inset 0 1px 0 rgba(255,255,255,.06) !important;
+    backdrop-filter: blur(30px) saturate(170%) !important;
+    -webkit-backdrop-filter: blur(30px) saturate(170%) !important;
+    overflow: hidden !important;
+    transform-origin: 50% 50% !important;
+    animation: conteggReactionPop .135s cubic-bezier(.2,.9,.25,1) both !important;
+}
+
+.contegg-reaction-main,
+.contegg-reaction-more {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: nowrap;
+}
+
+.contegg-reaction-more {
+    display: none;
+}
+
+#reactionsPanel.expanded {
+    border-radius: 28px !important;
+    padding-bottom: 12px !important;
+    flex-wrap: wrap !important;
+    min-height: 128px !important;
+}
+
+#reactionsPanel.expanded .contegg-reaction-more {
+    display: flex;
+    width: 100%;
+    padding-top: 4px;
+}
+
+#reactionsPanel span {
+    width: 58px !important;
+    height: 58px !important;
+    flex: 0 0 58px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    font-size: 36px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: transform .10s cubic-bezier(.2,.9,.25,1), background .10s ease !important;
+}
+
+#reactionsPanel span:hover {
+    background: rgba(255,255,255,.07) !important;
+    transform: translateY(-2px) scale(1.08) !important;
+}
+
+#reactionsPanel span:active {
+    transform: scale(.93) !important;
+}
+
+.contegg-reaction-expand {
+    position: absolute;
+    right: 7px;
+    top: 7px;
+    width: 58px;
+    height: 58px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255,255,255,.08);
+    color: rgba(245,245,247,.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    cursor: pointer;
+    transition: transform .14s ease, background .12s ease;
+}
+
+#reactionsPanel.expanded .contegg-reaction-expand {
+    transform: rotate(180deg);
+}
+
+.contegg-reaction-expand:hover {
+    background: rgba(255,255,255,.13);
+}
+
+@keyframes conteggContextPop {
+    from { opacity: 0; transform: translateY(7px) scale(.965); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes conteggReactionPop {
+    from { opacity: 0; transform: translateY(5px) scale(.955); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 620px) {
+    #msgContextMenu.contegg-message-menu {
+        width: min(320px, calc(100vw - 20px)) !important;
+    }
+    #msgContextMenu .context-item {
+        min-height: 50px !important;
+        font-size: 17px !important;
+    }
+    #reactionsPanel.reactions-panel {
+        padding-right: 60px !important;
+        min-height: 64px !important;
+    }
+    #reactionsPanel span {
+        width: 48px !important;
+        height: 48px !important;
+        flex-basis: 48px !important;
+        font-size: 31px !important;
+    }
+    .contegg-reaction-expand {
+        width: 48px;
+        height: 48px;
+    }
 }
 
 /* ===== CHANNEL / COMMENTS UI ===== */
