@@ -1,3 +1,4 @@
+```
 <head>
     <meta charset="UTF-8">
 
@@ -5425,12 +5426,22 @@ function showChatOverlay() {
     ensureChatNavbarInOverlay();
 
     document.body.classList.add('chat-open');
+    window.__conteggBaseViewportHeight = Math.max(
+        window.innerHeight || 0,
+        window.visualViewport?.height || 0
+    );
+    document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
+
     overlay.classList.add('show');
 
-    // На мобильном открытый чат получает отдельный history-step.
+    // На мобильном добавляем отдельный шаг истории для открытого чата.
     pushChatHistoryEntry();
 
-    updateChatInputBarHeight();
+    if (typeof updateMobileKeyboardViewport === 'function') {
+        updateMobileKeyboardViewport();
+        setTimeout(updateMobileKeyboardViewport, 80);
+        setTimeout(updateMobileKeyboardViewport, 250);
+    }
 }
 
 function ensureChatNavbarInOverlay() {
@@ -5452,10 +5463,14 @@ function hideChatOverlay() {
     overlay.classList.remove('show');
 
     document.body.classList.remove('chat-open');
+    document.body.classList.remove('keyboard-open');
     document.body.classList.remove('keyboard-closing');
     document.body.classList.remove('keyboard-settling-in');
     document.body.classList.remove('keyboard-settling-out');
 
+    document.documentElement.style.setProperty('--contegg-chat-vh', '100dvh');
+    document.documentElement.style.setProperty('--contegg-chat-top', '0px');
+    document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
 }
 
   function getChannelRights(chat) {
@@ -9696,18 +9711,125 @@ if (postCommentInput) {
     });
 }
 
-/* ===== MOBILE KEYBOARD: CLEAN NATIVE LAYOUT =====
-   Никаких JS-сдвигов chat-overlay / navbar / input.
-   interactive-widget=resizes-content уже есть в meta viewport.
-*/
+/* ===== MOBILE KEYBOARD VIEWPORT FIX ===== */
 
 function updateMobileKeyboardViewport() {
-    updateChatInputBarHeight();
+    if (!isMobileLike) {
+        document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
+        document.body.classList.remove('keyboard-open');
+        return;
+    }
+
+    if (updateMobileKeyboardViewport.raf) {
+        cancelAnimationFrame(updateMobileKeyboardViewport.raf);
+    }
+
+    updateMobileKeyboardViewport.raf = requestAnimationFrame(() => {
+        const root = document.documentElement;
+        const overlay = document.getElementById('chatOverlay');
+        const input = document.getElementById('chatInput');
+        const inputBar = document.getElementById('chatInputBar');
+        const chatIsOpen = overlay?.classList.contains('show');
+
+        if (!chatIsOpen || !window.visualViewport) {
+            root.style.setProperty('--contegg-chat-vh', '100dvh');
+            root.style.setProperty('--contegg-chat-top', '0px');
+            root.style.setProperty('--contegg-keyboard-height', '0px');
+        document.body.classList.remove('keyboard-open');
+        return;
+        }
+
+        const vv = window.visualViewport;
+        const keyboardOpen = document.activeElement === input || window.innerHeight - vv.height > 80;
+        const currentFullHeight = Math.max(window.innerHeight || 0, vv.height || 0);
+
+        if (!window.__conteggBaseViewportHeight || !keyboardOpen) {
+            window.__conteggBaseViewportHeight = currentFullHeight;
+        }
+
+        const baseHeight = Math.max(window.__conteggBaseViewportHeight || 0, currentFullHeight);
+        const keyboardHeight = keyboardOpen
+            ? Math.max(0, Math.round(baseHeight - vv.height - (vv.offsetTop || 0)))
+            : 0;
+
+        root.style.setProperty('--contegg-chat-vh', '100dvh');
+        root.style.setProperty('--contegg-chat-top', '0px');
+        root.style.setProperty('--contegg-keyboard-height', `${keyboardHeight}px`);
+        document.body.classList.toggle('keyboard-open', keyboardOpen);
+
+        updateChatInputBarHeight();
+
+        const messages = document.getElementById('chatMessages');
+
+        if (messages && keyboardOpen) {
+            const scrollToBottom = () => {
+                scrollMessagesToBottom({ smooth: false });
+            };
+
+            if (document.body.classList.contains('keyboard-settling-in')) {
+                setTimeout(scrollToBottom, 180);
+            } else {
+                requestAnimationFrame(scrollToBottom);
+            }
+        }
+    });
 }
 
-function scheduleMobileKeyboardViewportUpdate() {
-    updateMobileKeyboardViewport();
+function scheduleMobileKeyboardViewportUpdate(delay = 180) {
+    if (scheduleMobileKeyboardViewportUpdate.timer) {
+        clearTimeout(scheduleMobileKeyboardViewportUpdate.timer);
+    }
+
+    scheduleMobileKeyboardViewportUpdate.timer = setTimeout(() => {
+        updateMobileKeyboardViewport();
+    }, delay);
 }
+
+if (isMobileLike && window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => scheduleMobileKeyboardViewportUpdate(160));
+}
+
+if (isMobileLike) {
+    window.addEventListener('resize', () => scheduleMobileKeyboardViewportUpdate(160));
+}
+
+window.addEventListener('orientationchange', () => {
+    if (!isMobileLike) return;
+    scheduleMobileKeyboardViewportUpdate(300);
+});
+
+document.getElementById('chatInput')?.addEventListener('focus', () => {
+    if (!isMobileLike) return;
+
+    document.body.classList.add('keyboard-open');
+    document.body.classList.remove('keyboard-settling-out');
+    document.body.classList.add('keyboard-settling-in');
+
+    document.documentElement.style.setProperty('--contegg-chat-vh', '100dvh');
+    document.documentElement.style.setProperty('--contegg-chat-top', '0px');
+    document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
+
+    setTimeout(updateMobileKeyboardViewport, 80);
+    setTimeout(updateMobileKeyboardViewport, 220);
+    setTimeout(() => {
+        document.body.classList.remove('keyboard-settling-in');
+        scheduleMobileKeyboardViewportUpdate(40);
+    }, 340);
+});
+
+document.getElementById('chatInput')?.addEventListener('blur', () => {
+    if (!isMobileLike) return;
+
+    document.body.classList.add('keyboard-no-transition');
+    document.body.classList.remove('keyboard-settling-in');
+    document.body.classList.remove('keyboard-settling-out');
+    document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
+    document.body.classList.remove('keyboard-open');
+
+    requestAnimationFrame(() => {
+        document.body.classList.remove('keyboard-no-transition');
+    });
+});
 
 console.log('✅ Contegg Messenger · Полная версия с фото, видео и голосовыми');
     
@@ -10024,51 +10146,74 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
 </style>
 
     <style id="CONTEGG-FINAL-MOBILE-KEYBOARD-FIX">
-/* ===== STATIC CHAT UI / NATIVE KEYBOARD RESIZE ===== */
+/* ===== CONTEGG FINAL MOBILE KEYBOARD FIX ===== */
 
+:root {
+    --contegg-chat-vh: 100dvh;
+    --contegg-chat-top: 0px;
+    --contegg-keyboard-height: 0px;
+    --contegg-input-bar-height: 58px;
+
+    /* Когда клавиатура закрыта — нормальный нижний отступ */
+    --contegg-input-bottom: max(14px, env(safe-area-inset-bottom, 0px));
+}
+
+/* Когда чат открыт, основной список чатов не должен мелькать под ним */
+body.chat-open .app-container {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+/* Основной экран чата */
 .chat-overlay {
     position: fixed !important;
-    inset: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+
     width: 100% !important;
     height: 100dvh !important;
-    min-height: 0 !important;
     max-height: 100dvh !important;
-    display: block !important;
-    overflow: hidden !important;
+
     background: var(--bg-primary) !important;
     z-index: 900 !important;
 
-    transform: translate3d(100%, 0, 0) !important;
-    transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1) !important;
+    display: block !important;
+    overflow: hidden !important;
+
+    transform: translateX(100%) !important;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+
+    will-change: transform, height, top !important;
     backface-visibility: hidden !important;
     -webkit-backface-visibility: hidden !important;
 }
 
 .chat-overlay.show {
-    transform: translate3d(0, 0, 0) !important;
+    transform: none !important;
+    top: 0 !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
 }
 
-/* Шапка всегда на одном месте */
 .chat-navbar {
     position: absolute !important;
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
-    bottom: auto !important;
-    width: 100% !important;
-    height: var(--navbar-height) !important;
-    min-height: var(--navbar-height) !important;
-    display: flex !important;
     z-index: 20 !important;
-
+    min-height: var(--navbar-height) !important;
+    height: var(--navbar-height) !important;
+    background: rgba(0,0,0,0.92) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
     transform: none !important;
+    will-change: auto !important;
+    contain: layout paint !important;
     transition: none !important;
     animation: none !important;
-    will-change: auto !important;
-
-    background: rgba(0,0,0,0.92) !important;
-    backdrop-filter: blur(20px) saturate(150%) !important;
-    -webkit-backdrop-filter: blur(20px) saturate(150%) !important;
 }
 
 body:not(.chat-open) .chat-navbar {
@@ -10077,114 +10222,136 @@ body:not(.chat-open) .chat-navbar {
 
 body.chat-open .chat-navbar {
     display: flex !important;
-}
-
-/* Нижняя панель всегда на одном месте */
-.chat-input-bar {
-    position: absolute !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    top: auto !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-    z-index: 21 !important;
-
-    margin: 0 !important;
     transform: none !important;
-    transition: none !important;
-    animation: none !important;
-    will-change: auto !important;
-
-    padding-top: 8px !important;
-    padding-left: max(10px, env(safe-area-inset-left, 0px)) !important;
-    padding-right: max(10px, env(safe-area-inset-right, 0px)) !important;
-    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px)) !important;
-
-    background: rgba(0,0,0,0.90) !important;
-    backdrop-filter: blur(20px) saturate(150%) !important;
-    -webkit-backdrop-filter: blur(20px) saturate(150%) !important;
-    border-top: 0.5px solid var(--separator) !important;
 }
 
-/* Только сообщения занимают пространство между шапкой и input */
 .chat-messages {
     position: absolute !important;
     top: var(--navbar-height) !important;
     left: 0 !important;
     right: 0 !important;
-    bottom: var(--contegg-input-bar-height) !important;
-
-    min-height: 0 !important;
+    bottom: calc(var(--contegg-input-bar-height) + var(--contegg-keyboard-height)) !important;
     overflow-y: auto !important;
-    overflow-x: hidden !important;
     padding: 12px !important;
-
+    padding-bottom: 12px !important;
     -webkit-overflow-scrolling: touch !important;
-    overscroll-behavior-y: contain !important;
     overflow-anchor: none !important;
+    transition: bottom 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+}
 
+/* Строка ввода */
+.chat-input-bar {
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 7 !important;
+
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+
+    background: rgba(0,0,0,0.88) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+
+    border-top: 0.5px solid var(--separator) !important;
+
+    padding-top: 8px !important;
+    padding-left: max(10px, env(safe-area-inset-left, 0px)) !important;
+    padding-right: max(10px, env(safe-area-inset-right, 0px)) !important;
+    padding-bottom: calc(8px + var(--contegg-input-bottom)) !important;
+
+    margin: 0 !important;
     transform: none !important;
+    transition: padding-bottom 0.18s ease !important;
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+    .chat-input-bar {
+        transform: translate3d(0, calc(-1 * var(--contegg-keyboard-height)), 0) !important;
+        transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), padding-bottom 0.18s ease !important;
+        will-change: transform !important;
+    }
+}
+
+@media (min-width: 901px) and (pointer: fine) {
+    .chat-messages {
+        bottom: var(--contegg-input-bar-height) !important;
+        transition: none !important;
+    }
+
+    .chat-input-bar {
+        transform: none !important;
+    }
+}
+
+/* Когда клавиатура открыта — убираем нижний подбородок */
+body.keyboard-open {
+    --contegg-input-bottom: 0px;
+}
+
+body.keyboard-settling-out {
+    --contegg-input-bottom: 0px;
+}
+
+body.keyboard-open .chat-input-bar {
+    padding-bottom: 0 !important;
+    margin-bottom: 0 !important;
+    border-bottom: 0 !important;
+}
+
+body.keyboard-settling-out .chat-input-bar {
+    padding-bottom: 0 !important;
+    margin-bottom: 0 !important;
+    border-bottom: 0 !important;
+}
+
+body.keyboard-open .chat-messages {
+    padding-bottom: 0 !important;
+}
+
+body.keyboard-settling-in .chat-navbar,
+body.keyboard-settling-out .chat-navbar {
     transition: none !important;
     animation: none !important;
-    will-change: auto !important;
 }
 
-/* Никакие старые keyboard-классы не имеют права двигать каркас */
-@media (max-width: 900px), (pointer: coarse) {
-    body.keyboard-open .chat-overlay,
-    body.keyboard-settling-in .chat-overlay,
-    body.keyboard-settling-out .chat-overlay,
-    body.keyboard-no-transition .chat-overlay {
-        top: 0 !important;
-    }
-
-    body.keyboard-open .chat-navbar,
-    body.keyboard-settling-in .chat-navbar,
-    body.keyboard-settling-out .chat-navbar,
-    body.keyboard-no-transition .chat-navbar {
-        top: 0 !important;
-        bottom: auto !important;
-        transform: none !important;
-        transition: none !important;
-        animation: none !important;
-    }
-
-    body.keyboard-open .chat-input-bar,
-    body.keyboard-settling-in .chat-input-bar,
-    body.keyboard-settling-out .chat-input-bar,
-    body.keyboard-no-transition .chat-input-bar {
-        bottom: 0 !important;
-        transform: none !important;
-        transition: none !important;
-        animation: none !important;
-    }
-
-    body.keyboard-open .chat-messages,
-    body.keyboard-settling-in .chat-messages,
-    body.keyboard-settling-out .chat-messages,
-    body.keyboard-no-transition .chat-messages {
-        top: var(--navbar-height) !important;
-        bottom: var(--contegg-input-bar-height) !important;
-        transform: none !important;
-        transition: none !important;
-        animation: none !important;
-    }
-
-    #conteggPcFullscreenBtn,
-    #enterFullscreenBtn {
-        display: none !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
-    }
+body.keyboard-settling-in .chat-messages {
+    animation: none !important;
 }
 
+body.keyboard-settling-in .chat-input-bar {
+    animation: none !important;
+}
+
+body.keyboard-settling-out .chat-messages,
+body.keyboard-settling-out .chat-input-bar {
+    transition: bottom 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+}
+
+body.keyboard-no-transition .chat-messages,
+body.keyboard-no-transition .chat-input-bar {
+    transition: none !important;
+    animation: none !important;
+}
+
+/* Fullscreen-кнопка на ПК НЕ скрывается */
 @media (min-width: 901px) and (pointer: fine) {
     #conteggPcFullscreenBtn {
         display: block !important;
         opacity: 1 !important;
         pointer-events: auto !important;
+    }
+}
+
+/* На телефоне fullscreen-кнопку не показываем */
+@media (max-width: 900px), (pointer: coarse) {
+    #conteggPcFullscreenBtn,
+    #enterFullscreenBtn {
+        display: none !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
     }
 }
 </style>
@@ -10296,6 +10463,55 @@ body.chat-open .chat-navbar {
 }
 </style>
     
+
+
+<style id="CONTEGG-LOCKED-CHAT-HEADER">
+/* ===== HARD LOCK: CHAT HEADER NEVER MOVES WITH KEYBOARD ===== */
+
+/* Шапка открытого чата всегда привязана именно к экрану. */
+.chat-overlay.show .chat-navbar,
+body.chat-open .chat-navbar,
+body.chat-open.keyboard-open .chat-navbar,
+body.chat-open.keyboard-settling-in .chat-navbar,
+body.chat-open.keyboard-settling-out .chat-navbar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: auto !important;
+    width: 100% !important;
+    min-height: var(--navbar-height) !important;
+    height: var(--navbar-height) !important;
+    margin: 0 !important;
+    transform: translate3d(0, 0, 0) !important;
+    translate: none !important;
+    scale: 1 !important;
+    z-index: 100001 !important;
+    transition: none !important;
+    animation: none !important;
+    will-change: auto !important;
+    backface-visibility: hidden !important;
+    -webkit-backface-visibility: hidden !important;
+}
+
+/* Никакая фаза открытия/закрытия клавиатуры не имеет права двигать шапку. */
+body.keyboard-open .chat-navbar,
+body.keyboard-settling-in .chat-navbar,
+body.keyboard-settling-out .chat-navbar,
+body.keyboard-no-transition .chat-navbar {
+    top: 0 !important;
+    bottom: auto !important;
+    transform: translate3d(0, 0, 0) !important;
+    transition: none !important;
+    animation: none !important;
+}
+
+/* Сообщения начинаются строго под неподвижной шапкой. */
+body.chat-open .chat-messages {
+    top: var(--navbar-height) !important;
+}
+</style>
+
     <script id="CONTEGG-PC-AUTO-FULLSCREEN">
 (function () {
     let tried = false;
@@ -10354,3 +10570,4 @@ body.chat-open .chat-navbar {
 </script>
 </body>
 </html>
+```
