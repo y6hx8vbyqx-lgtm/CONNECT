@@ -6873,7 +6873,11 @@ function settleChatAfterInputChange(options = {}) {
 
     const chatId = currentChatId;
 
-    container.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка...</span></div>';
+    // Do not replace an already visible feed with a loader while listeners switch.
+    // That replacement caused a black/empty flash and random-looking disappearing.
+    if (!container.children.length) {
+        container.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка...</span></div>';
+    }
     container.dataset.lastDateKey = '';
 
     if (chatMessagesListener) {
@@ -7134,10 +7138,8 @@ function seekAudio(event, msgId, duration) {
     card.style.width = w + 'px';
     card.style.height = h + 'px';
 
-    const messages = document.getElementById('chatMessages');
-    if (messages && isNearChatBottom(messages, 160)) {
-        requestAnimationFrame(() => settleChatAfterInputChange({ smooth: false }));
-    }
+    // IMPORTANT: loading an image/video must never move the whole chat feed.
+    // The browser keeps the user's scroll anchor; no forced scroll-to-bottom here.
 }
     
 /* Legacy Firebase Storage recovery disabled.
@@ -8160,7 +8162,7 @@ async function openCommentUserProfile(userId) {
                 ${renderVerificationBadge(user, 16)}
             </div>
 
-            <div style="font-size:15px;color:var(--text-secondary);">@${esc(user.username || '')}</div>
+            <div style="font-size:15px;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;gap:5px;">@${esc(user.username || '')} ${renderVerificationBadge(user, 13)}</div>
 
             <div style="font-size:14px;color:var(--text-secondary);margin-top:8px;line-height:1.4;">
                 ${esc(user.bio || 'Нет описания')}
@@ -10948,7 +10950,7 @@ async function viewChatUserProfile() {
                 ${esc(user.displayName || 'Пользователь')}
                 ${renderVerificationBadge(user, 16)}
             </div>
-            <div style="font-size:15px;color:var(--text-secondary);">@${esc(user.username || '')}</div>
+            <div style="font-size:15px;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;gap:5px;">@${esc(user.username || '')} ${renderVerificationBadge(user, 13)}</div>
             <div style="font-size:14px;color:var(--text-secondary);margin-top:8px;line-height:1.4;">${esc(user.bio || 'Нет описания')}</div>
             <div style="font-size:13px;color:var(--text-tertiary);margin-top:8px;">ID: ${(user.uid || currentChatUser.uid).slice(-8)}</div>
 
@@ -16020,6 +16022,21 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
 .profile-username .contegg-verification-badge-image {
     flex:0 0 auto;
 }
+
+/* V17 — chat feed stability */
+#chatMessages {
+    overflow-anchor: auto;
+    contain: layout style;
+}
+#chatMessages .msg,
+#chatMessages .date-divider,
+#chatMessages .media-card {
+    overflow-anchor: none;
+}
+#chatMessages .msg:last-of-type {
+    overflow-anchor: auto;
+}
+
 </style>
 
 </body>
