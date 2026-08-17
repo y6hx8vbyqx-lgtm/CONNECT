@@ -12434,8 +12434,139 @@ if (chat.isSaved) {
 }
     
 
+
+function isCurrentAccountTemporary() {
+    const email = String(auth.currentUser?.email || userData?.email || '').toLowerCase();
+
+    return (
+        userData?.temporaryAccount === true ||
+        email === 'test@test.contegg'
+    );
+}
+
+async function stopConteggAccountListenersForLogout() {
+    const listeners = [
+        ['chatsGlobalListener', chatsGlobalListener],
+        ['chatMessagesListener', chatMessagesListener],
+        ['chatUserPresenceListener', chatUserPresenceListener],
+        ['deviceControlListener', deviceControlListener],
+        ['usersDirectoryListener', usersDirectoryListener]
+    ];
+
+    for (const [, listener] of listeners) {
+        if (typeof listener === 'function') {
+            try { listener(); } catch (_) {}
+        }
+    }
+
+    chatsGlobalListener = null;
+    chatMessagesListener = null;
+    chatUserPresenceListener = null;
+    deviceControlListener = null;
+
+    if (typeof usersDirectoryListener !== 'undefined') {
+        usersDirectoryListener = null;
+    }
+}
+
+async function deleteTemporaryAccountOnLogout() {
+    const user = auth.currentUser;
+
+    if (!user || !currentUser) {
+        throw new Error('Временный аккаунт не авторизован');
+    }
+
+    const uid = user.uid;
+
+    // Capture credentials BEFORE removing them so Firebase can reauthenticate
+    // if the current session is no longer recent enough for user.delete().
+    const creds =
+        typeof getAccountCredentials === 'function'
+            ? getAccountCredentials(uid)
+            : null;
+
+    await setMyPresence(false).catch(() => {});
+    await stopConteggAccountListenersForLogout();
+
+    const cleanup = await eraseConteggUserFirestoreData(uid);
+
+    // Best-effort Supabase physical media cleanup.
+    // If Storage DELETE isn't allowed, Firestore/Auth deletion still proceeds.
+    try {
+        const mediaResult = await tryDeleteSupabaseMedia(cleanup.mediaPaths || []);
+        if (mediaResult?.skipped) {
+            console.warn('Temporary account media cleanup was partially skipped:', mediaResult.error);
+        }
+    } catch (mediaError) {
+        console.warn('Temporary account Supabase cleanup warning:', mediaError);
+    }
+
+    // Firebase may demand a recent login before deleting Auth.
+    try {
+        await user.delete();
+    } catch (error) {
+        if (
+            error?.code === 'auth/requires-recent-login' &&
+            creds?.email &&
+            creds?.password
+        ) {
+            const credential = firebase.auth.EmailAuthProvider.credential(
+                creds.email,
+                creds.password
+            );
+
+            await user.reauthenticateWithCredential(credential);
+            await user.delete();
+        } else {
+            throw error;
+        }
+    }
+
+    if (typeof removeAccountCredentials === 'function') {
+        removeAccountCredentials(uid);
+    }
+
+    linkedAccounts = (linkedAccounts || []).filter(account => account.uid !== uid);
+    saveLinkedAccounts();
+
+    localStorage.removeItem('contegg_current_user');
+    sessionStorage.setItem('contegg_manual_logout', 'true');
+
+    return true;
+}
+
 async function logout() {
-    if (!confirm('Выйти из аккаунта?')) return;
+    const temporary = isCurrentAccountTemporary();
+
+    const confirmText = temporary
+        ? 'Выйти из временного аккаунта?\n\nПосле выхода аккаунт test@test.contegg и все его данные будут удалены навсегда.'
+        : 'Выйти из аккаунта?';
+
+    if (!confirm(confirmText)) return;
+
+    if (temporary) {
+        try {
+            toast('Удаляем временный аккаунт…');
+
+            await deleteTemporaryAccountOnLogout();
+
+            // Auth user has already been deleted.
+            location.href = 'index.html?temporary_account_deleted=1';
+        } catch (e) {
+            console.error('Temporary account logout/delete error:', e);
+
+            const errors = {
+                'auth/requires-recent-login':
+                    'Не удалось подтвердить удаление аккаунта. Войдите заново и повторите выход.',
+                'auth/operation-not-allowed':
+                    'В Firebase должен быть включён Email/Password provider.'
+            };
+
+            toast(errors[e?.code] || ('Ошибка удаления временного аккаунта: ' + (e?.message || e)));
+        }
+
+        return;
+    }
 
     try {
         await setMyPresence(false);
@@ -16695,6 +16826,24 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
 
 .contegg-delete-account-cell:active {
     background:rgba(255,59,48,.08) !important;
+}
+</style>
+
+
+<style id="CONTEGG-TEMPORARY-ACCOUNT-STYLES">
+.contegg-temporary-account-badge {
+    display:inline-flex;
+    align-items:center;
+    min-height:18px;
+    padding:1px 7px;
+    border-radius:999px;
+    background:rgba(255,159,10,.14);
+    border:.5px solid rgba(255,159,10,.28);
+    color:#ff9f0a;
+    font-size:9px;
+    font-weight:700;
+    letter-spacing:.1px;
+    text-transform:uppercase;
 }
 </style>
 
