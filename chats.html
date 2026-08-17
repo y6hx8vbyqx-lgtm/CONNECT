@@ -3106,7 +3106,6 @@ let currentChatIsChannel = false;
 let currentChatUser = null;
 let currentChatParticipants = [];
 let chatMessagesListener = null;
-let chatMessagesGeneration = 0;
 let chatsGlobalListener = null;
 let chatUserPresenceListener = null;
 let deviceControlListener = null;
@@ -5562,24 +5561,7 @@ async function getOrCreateSavedChat() {
     const query = await savedChatsRef.where('isSaved', '==', true).where('ownerId', '==', currentUser.uid).get();
     
     if (!query.empty) {
-        const existing = query.docs[0];
-        savedChatId = existing.id;
-
-        const existingData = existing.data() || {};
-        const participants = Array.isArray(existingData.participants)
-            ? existingData.participants
-            : [];
-
-        if (!participants.includes(currentUser.uid)) {
-            await db.collection('chats').doc(savedChatId).set({
-                participants: [currentUser.uid],
-                ownerId: currentUser.uid,
-                isSaved: true,
-                isGroup: false,
-                name: 'Избранное'
-            }, { merge: true });
-        }
-
+        savedChatId = query.docs[0].id;
         return savedChatId;
     }
     
@@ -6291,31 +6273,9 @@ const snap = await db.collection('chats')
     .where('participants', 'array-contains', currentUser.uid)
     .get();
 
-let rawChats = snap.docs
+const rawChats = snap.docs
     .map(doc => ({ id: doc.id, ...doc.data() }))
     .filter(chat => chat.participants?.includes(currentUser.uid));
-
-// Legacy-safe Favorites: older saved chats may not have participants.
-// Repair them and merge them explicitly so "Избранное" can never disappear.
-try {
-    const ensuredSavedId = await getOrCreateSavedChat();
-
-    if (!rawChats.some(chat => chat.id === ensuredSavedId)) {
-        const savedSnap = await db.collection('chats').doc(ensuredSavedId).get();
-
-        if (savedSnap.exists) {
-            rawChats.push({
-                id: savedSnap.id,
-                ...savedSnap.data(),
-                participants: [currentUser.uid],
-                isSaved: true,
-                ownerId: currentUser.uid
-            });
-        }
-    }
-} catch (savedRepairError) {
-    console.warn('Favorites repair warning:', savedRepairError);
-}
 
 const dmUserIds = [
     ...new Set(
@@ -7173,8 +7133,6 @@ function closeChatUIOnly() {
 
     hideChatOverlay();
 
-    chatMessagesGeneration++;
-
     if (chatMessagesListener) {
         chatMessagesListener();
         chatMessagesListener = null;
@@ -7345,27 +7303,6 @@ function settleChatAfterInputChange(options = {}) {
     if (!currentChatId || !container) return;
 
     const chatId = currentChatId;
-    const generation = ++chatMessagesGeneration;
-
-    // This DOM container belongs to exactly one chat generation.
-    container.dataset.activeChatId = chatId;
-    container.dataset.chatGeneration = String(generation);
-    const desktopFeedTransition =
-        window.innerWidth >= 768 &&
-        !document.body.classList.contains('contegg-admin-workspace-open');
-
-    const feedTransitionStartedAt = performance.now();
-
-    if (desktopFeedTransition) {
-        container.classList.remove(
-            'contegg-feed-entering',
-            'contegg-feed-visible'
-        );
-
-        // Force the browser to commit the old state before fading it.
-        void container.offsetWidth;
-        container.classList.add('contegg-feed-switching');
-    }
 
     // Do not replace an already visible feed with a loader while listeners switch.
     // That replacement caused a black/empty flash and random-looking disappearing.
@@ -7387,95 +7324,30 @@ function settleChatAfterInputChange(options = {}) {
             .collection('messages')
             .orderBy('timestamp', 'asc')
             .limitToLast(60)
-            .onSnapshot(async snap => {
-                if (
-                    generation !== chatMessagesGeneration ||
-                    currentChatId !== chatId ||
-                    container.dataset.activeChatId !== chatId ||
-                    container.dataset.chatGeneration !== String(generation)
-                ) {
+            .onSnapshot(snap => {
+                if (currentChatId !== chatId) {
                     resolve();
                     return;
                 }
 
                 if (firstLoad) {
-                    if (desktopFeedTransition) {
-                        const elapsed = performance.now() - feedTransitionStartedAt;
-                        const wait = Math.max(0, 54 - elapsed);
-
-                        if (wait > 0) {
-                            await new Promise(resolve => setTimeout(resolve, wait));
-                        }
-
-                        if (
-                            generation !== chatMessagesGeneration ||
-                            currentChatId !== chatId ||
-                            container.dataset.activeChatId !== chatId
-                        ) {
-                            resolve();
-                            return;
-                        }
-                    }
-
                     container.innerHTML = '';
                     container.dataset.lastDateKey = '';
 
-                    let visibleIndex = 0;
-                    const visibleDocs = snap.docs.filter(doc => {
+                    snap.docs.forEach(doc => {
                         const msg = doc.data();
-                        return !msg.deletedFor?.includes(currentUser.uid);
-                    });
 
-                    const totalVisible = visibleDocs.length;
+                        if (msg.deletedFor?.includes(currentUser.uid)) {
+                            return;
+                        }
 
-                    visibleDocs.forEach(doc => {
-                        const msg = doc.data();
                         const d = msg.timestamp?.toDate?.() || new Date();
 
                         addDateDividerIfNeeded(container, d);
-
-                        renderMessage(doc.id, msg, {
-                            animate: desktopFeedTransition,
-                            initialBatch: desktopFeedTransition,
-                            initialOrder: visibleIndex,
-                            initialTotal: totalVisible
-                        });
-
-                        visibleIndex++;
+                        renderMessage(doc.id, msg, { animate: false });
                     });
-
-                    if (desktopFeedTransition) {
-                        container.classList.remove('contegg-feed-switching');
-
-                        requestAnimationFrame(() => {
-                            container.classList.add(
-                                'contegg-feed-entering',
-                                'contegg-feed-visible'
-                            );
-
-                            setTimeout(() => {
-                                if (
-                                    generation === chatMessagesGeneration &&
-                                    currentChatId === chatId
-                                ) {
-                                    container.classList.remove('contegg-feed-entering');
-                                }
-                            }, 190);
-                        });
-                    }
                 } else {
-                    if (
-                        generation !== chatMessagesGeneration ||
-                        currentChatId !== chatId ||
-                        container.dataset.activeChatId !== chatId
-                    ) return;
-
                     snap.docChanges().forEach(change => {
-                        if (
-                            generation !== chatMessagesGeneration ||
-                            currentChatId !== chatId ||
-                            container.dataset.activeChatId !== chatId
-                        ) return;
                         const msg = change.doc.data();
                         const msgEl = container.querySelector(`[data-msg-id="${change.doc.id}"]`);
 
@@ -7549,12 +7421,7 @@ function settleChatAfterInputChange(options = {}) {
                     });
 
                     setTimeout(() => {
-                        if (
-                            generation === chatMessagesGeneration &&
-                            currentChatId === chatId &&
-                            container.dataset.activeChatId === chatId &&
-                            document.activeElement !== document.getElementById('chatInput')
-                        ) {
+                        if (currentChatId === chatId && document.activeElement !== document.getElementById('chatInput')) {
                             scrollMessagesToBottom({ smooth: false });
                         }
                     }, 70);
@@ -7563,15 +7430,6 @@ function settleChatAfterInputChange(options = {}) {
                     resolve();
                 }
             }, error => {
-                if (
-                    generation !== chatMessagesGeneration ||
-                    currentChatId !== chatId ||
-                    container.dataset.activeChatId !== chatId
-                ) {
-                    resolve();
-                    return;
-                }
-
                 console.error('loadMessages listener error:', error);
 
                 container.innerHTML = `
@@ -7811,20 +7669,7 @@ const hasCaption = !!(msg.text && msg.text.trim());
     if (exists) return;
     
     const div = document.createElement('div');
-  div.className = `msg ${isOut ? 'msg-out' : 'msg-in'} ${options.animate ? 'imessage-new contegg-msg-animate' : ''} ${options.initialBatch ? 'contegg-msg-initial' : ''} ${hasVisualMedia ? 'msg-visual-media' : ''} ${hasAudio ? 'msg-voice-media' : ''}`;
-
-    if (options.initialBatch) {
-        const order = Number(options.initialOrder || 0);
-        const total = Math.max(1, Number(options.initialTotal || 1));
-
-        // Only stagger the newest few messages. A 60-message history should not
-        // take a full second to appear.
-        const fromEnd = Math.max(0, total - 1 - order);
-        const staggerSlot = Math.max(0, 9 - Math.min(9, fromEnd));
-
-        div.style.setProperty('--contegg-msg-delay', `${staggerSlot * 11}ms`);
-    }
-
+  div.className = `msg ${isOut ? 'msg-out' : 'msg-in'} ${options.animate ? 'imessage-new' : ''} ${hasVisualMedia ? 'msg-visual-media' : ''} ${hasAudio ? 'msg-voice-media' : ''}`;
     div.setAttribute('data-msg-id', id);
     div.setAttribute('data-sender-id', msg.senderId || '');
     div.dataset.renderSignature = getMessageRenderSignature(msg);
@@ -8378,16 +8223,6 @@ div.addEventListener('touchend', (e) => {
     }, 350);
 }, { passive: true });
 
-// Final ownership check: never append an element into a feed that has
-// already switched to another chat while this message was being prepared.
-if (
-    container.dataset.activeChatId &&
-    currentChatId &&
-    container.dataset.activeChatId !== currentChatId
-) {
-    return;
-}
-
 container.appendChild(div);
 
 if (currentChatIsChannel && !msg.isSystemMessage) {
@@ -8505,14 +8340,6 @@ function updateRenderedMessageStable(id, msg) {
 
     const newEl = container.querySelector(`[data-msg-id="${id}"]`);
     if (!newEl) return;
-
-    if (window.innerWidth >= 768) {
-        newEl.classList.add('contegg-msg-replaced');
-
-        setTimeout(() => {
-            newEl.classList.remove('contegg-msg-replaced');
-        }, 190);
-    }
 
     if (nextSibling && nextSibling.parentNode === container) {
         container.insertBefore(newEl, nextSibling);
@@ -13279,26 +13106,15 @@ function openAdminPanel() {
         document.body.classList.add('contegg-admin-workspace-open');
         workspace.setAttribute('aria-hidden', 'false');
 
-        const adminMarkupMissing =
-            content.dataset.adminMounted !== '1' ||
-            !content.querySelector('.admin-panel');
-
-        if (adminMarkupMissing) {
+        if (content.dataset.adminMounted !== '1') {
             content.innerHTML = getAdminPanelMarkup();
             content.dataset.adminMounted = '1';
+            bindAdminPanelInputs();
+        } else {
+            // Keep existing DOM exactly as-is. Replacing list innerHTML on every
+            // open/live event was one of the causes of visible blinking.
+            bindAdminPanelInputs();
         }
-
-        bindAdminPanelInputs();
-
-        // Admin workspace must own the center pane while open.
-        workspace.style.display = 'flex';
-        workspace.style.visibility = 'visible';
-        workspace.style.opacity = '1';
-        workspace.style.pointerEvents = 'auto';
-
-        requestAnimationFrame(() => {
-            workspace.classList.add('contegg-admin-visible');
-        });
 
         return;
     }
@@ -13314,22 +13130,7 @@ function closeAdminPanel() {
     document.body.classList.remove('contegg-admin-workspace-open');
 
     const workspace = document.getElementById('conteggAdminWorkspace');
-    if (workspace) {
-        workspace.setAttribute('aria-hidden', 'true');
-        workspace.classList.remove('contegg-admin-visible');
-
-        if (window.innerWidth >= 768) {
-            workspace.style.opacity = '0';
-            workspace.style.pointerEvents = 'none';
-
-            setTimeout(() => {
-                if (!document.body.classList.contains('contegg-admin-workspace-open')) {
-                    workspace.style.display = 'none';
-                    workspace.style.visibility = 'hidden';
-                }
-            }, 170);
-        }
-    }
+    if (workspace) workspace.setAttribute('aria-hidden', 'true');
 
     document.getElementById('adminPanelModal')?.classList.remove('show');
     currentAdminTargetUser = null;
@@ -15738,7 +15539,148 @@ body.keyboard-no-transition .chat-input-bar {
 </style>
     
 <script id="CONTEGG-PC-AUTO-FULLSCREEN">
-/* V9: native fullscreen integration removed completely. */
+(() => {
+    /*
+     * DESKTOP FULLSCREEN CONTROLLER V8
+     *
+     * ESC while NOT fullscreen  -> enter real browser fullscreen.
+     * ESC while fullscreen      -> browser exits fullscreen natively.
+     * Entering fullscreen       -> hard layout rebuild, NO page reload.
+     * Exiting fullscreen        -> full page reload.
+     *
+     * A reload immediately after entering fullscreen would itself terminate
+     * fullscreen, so actual reload is intentionally exit-only.
+     */
+
+    const DESKTOP_MIN_WIDTH = 1200;
+    let fullscreenTransition = false;
+    let reloadScheduled = false;
+
+    function isRealFullscreen() {
+        return !!(
+            document.fullscreenElement ||
+            document.webkitFullscreenElement
+        );
+    }
+
+    async function enterConteggFullscreen() {
+        if (window.innerWidth < DESKTOP_MIN_WIDTH) return;
+        if (isRealFullscreen()) return;
+        if (fullscreenTransition) return;
+
+        fullscreenTransition = true;
+        document.body.classList.add('contegg-layout-settling');
+
+        try {
+            const root = document.documentElement;
+
+            if (root.requestFullscreen) {
+                await root.requestFullscreen({ navigationUI: 'hide' });
+            } else if (root.webkitRequestFullscreen) {
+                root.webkitRequestFullscreen();
+            }
+        } catch (error) {
+            console.warn('Fullscreen request rejected:', error);
+
+            if (typeof toast === 'function') {
+                toast('Браузер не разрешил fullscreen по Esc');
+            }
+        } finally {
+            setTimeout(() => {
+                fullscreenTransition = false;
+            }, 260);
+        }
+    }
+
+    function hardRebuildFullscreenLayout() {
+        document.body.classList.add('contegg-layout-settling');
+
+        // Clear stale inline geometry from previous viewport state.
+        const structural = [
+            document.getElementById('conteggDesktopShell'),
+            document.getElementById('conteggDesktopWorkspace'),
+            document.getElementById('conteggDesktopChatPane'),
+            document.getElementById('conteggDesktopRightPanel'),
+            document.getElementById('conteggAdminWorkspace')
+        ].filter(Boolean);
+
+        structural.forEach(el => {
+            el.style.removeProperty('transform');
+            el.style.removeProperty('width');
+            el.style.removeProperty('height');
+            el.style.removeProperty('top');
+            el.style.removeProperty('left');
+        });
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (typeof window.__conteggRunLayout === 'function') {
+                    window.__conteggRunLayout('force');
+                } else if (typeof window.__conteggScheduleLayout === 'function') {
+                    window.__conteggScheduleLayout('fullscreen-enter');
+                }
+
+                setTimeout(() => {
+                    document.body.classList.remove('contegg-layout-settling');
+                }, 190);
+            });
+        });
+    }
+
+    function handleFullscreenStateChange() {
+        if (isRealFullscreen()) {
+            // Stay fullscreen. Recalculate everything in-place.
+            hardRebuildFullscreenLayout();
+            return;
+        }
+
+        // Fullscreen was exited. A real reload guarantees that Chromium does
+        // not retain stale fullscreen compositing/layout geometry.
+        if (reloadScheduled) return;
+        reloadScheduled = true;
+
+        document.body.classList.add('contegg-layout-settling');
+
+        sessionStorage.setItem('contegg_returned_from_fullscreen', '1');
+
+        setTimeout(() => {
+            location.reload();
+        }, 110);
+    }
+
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        if (window.innerWidth < DESKTOP_MIN_WIDTH) return;
+
+        /*
+         * When already fullscreen, do NOT preventDefault:
+         * the browser owns ESC and exits fullscreen itself.
+         */
+        if (isRealFullscreen()) return;
+
+        // Outside fullscreen ESC becomes the explicit enter shortcut.
+        event.preventDefault();
+        event.stopPropagation();
+
+        enterConteggFullscreen();
+    }, true);
+
+    document.addEventListener('fullscreenchange', handleFullscreenStateChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenStateChange);
+
+    // After exit-triggered reload, force one clean initial layout pass.
+    if (sessionStorage.getItem('contegg_returned_from_fullscreen') === '1') {
+        sessionStorage.removeItem('contegg_returned_from_fullscreen');
+
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                if (typeof window.__conteggRunLayout === 'function') {
+                    window.__conteggRunLayout('force');
+                }
+            }, 80);
+        }, { once: true });
+    }
+})();
 </script>
 
 
@@ -16545,26 +16487,9 @@ body.keyboard-no-transition .chat-input-bar {
         rightPanelInitialized = true;
 
         toggle.addEventListener('click', () => {
-            const willCollapse =
-                !document.body.classList.contains('contegg-right-collapsed');
-
-            document.body.classList.add('contegg-right-panel-moving');
-            document.body.classList.toggle(
-                'contegg-right-collapsed',
-                willCollapse
-            );
-
-            toggle.setAttribute(
-                'aria-label',
-                willCollapse
-                    ? 'Открыть боковую панель'
-                    : 'Скрыть боковую панель'
-            );
-
-            clearTimeout(window.__conteggRightPanelTimer);
-            window.__conteggRightPanelTimer = setTimeout(() => {
-                document.body.classList.remove('contegg-right-panel-moving');
-            }, 300);
+            document.body.classList.toggle('contegg-right-collapsed');
+            const collapsed = document.body.classList.contains('contegg-right-collapsed');
+            toggle.setAttribute('aria-label', collapsed ? 'Открыть боковую панель' : 'Скрыть боковую панель');
         });
 
         tabs.forEach(tab => tab.addEventListener('click', () => {
@@ -16694,58 +16619,6 @@ body.keyboard-no-transition .chat-input-bar {
         });
     }
 
-
-    function repairPhoneChatSurface() {
-        if (!isPhone()) return;
-
-        const overlay = document.getElementById('chatOverlay');
-        const messages = document.getElementById('chatMessages');
-        const inputBar = document.getElementById('chatInputBar');
-        const navbar = document.getElementById('chatNavbar');
-
-        if (!overlay || !messages || !inputBar || !navbar) return;
-
-        ensurePhoneLayers();
-
-        if (!document.body.classList.contains('chat-open')) return;
-
-        const motion = document.getElementById('conteggPhoneChatMotionLayer');
-        const header = document.getElementById('conteggPhoneHeaderLayer');
-
-        overlay.classList.add('show');
-        overlay.style.removeProperty('display');
-        overlay.style.visibility = 'visible';
-        overlay.style.opacity = '1';
-
-        if (motion) {
-            motion.style.visibility = 'visible';
-            motion.style.opacity = '1';
-            motion.style.display = 'block';
-        }
-
-        messages.style.visibility = 'visible';
-        messages.style.opacity = '1';
-        messages.style.display = 'block';
-
-        inputBar.style.visibility = 'visible';
-        inputBar.style.opacity = '1';
-        inputBar.style.display = 'flex';
-
-        if (header) {
-            header.style.visibility = 'visible';
-            header.style.opacity = '1';
-        }
-
-        // Closed keyboard must NEVER leave a stale translated feed.
-        if (document.activeElement !== document.getElementById('chatInput')) {
-            document.documentElement.style.setProperty(
-                '--contegg-phone-keyboard-shift',
-                '0px'
-            );
-            document.body.classList.remove('keyboard-open');
-        }
-    }
-
     function arrangeForViewport() {
         if (isPhone()) {
             if (typeof closeInlinePostComments === 'function') closeInlinePostComments();
@@ -16780,10 +16653,6 @@ body.keyboard-no-transition .chat-input-bar {
             if (isPhone()) {
                 freezePhoneBaseHeight();
                 syncPhoneKeyboard();
-
-                requestAnimationFrame(repairPhoneChatSurface);
-                setTimeout(repairPhoneChatSurface, 90);
-                setTimeout(repairPhoneChatSurface, 260);
             }
 
             return result;
@@ -16831,24 +16700,9 @@ body.keyboard-no-transition .chat-input-bar {
             setTimeout(() => {
                 freezePhoneBaseHeight();
                 syncPhoneKeyboard();
-                repairPhoneChatSurface();
             }, 160);
         }, true);
     }
-
-
-    window.addEventListener('pageshow', () => {
-        if (isPhone()) {
-            requestAnimationFrame(repairPhoneChatSurface);
-        }
-    }, { passive: true });
-
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden && isPhone()) {
-            requestAnimationFrame(repairPhoneChatSurface);
-            setTimeout(repairPhoneChatSurface, 80);
-        }
-    });
 
     /*
      * V7 CENTRAL LAYOUT ENGINE
@@ -16963,6 +16817,8 @@ body.keyboard-no-transition .chat-input-bar {
         }, 140);
     }, { passive: true });
 
+    // Fullscreen lifecycle is owned by CONTEGG-PC-AUTO-FULLSCREEN V8.
+    // Do not attach another competing fullscreen layout handler here.
 
     // Initial state: exactly one initial layout pass.
     runConteggLayout('force');
@@ -19194,11 +19050,22 @@ Do not override that display state or two QR codes appear.
  * performed by the browser. Running UI transitions at the same time forces
  * repeated compositing/layout. Freeze them briefly.
  */
-/* V9: keep resize/layout scheduling, but do NOT globally freeze animations.
-   Only scroll snapping remains disabled while geometry is settling. */
-body.contegg-layout-settling,
-body.contegg-tab-switching {
+body.contegg-layout-settling *,
+body.contegg-tab-switching * {
+    transition-property: none !important;
+    animation-play-state: paused !important;
     scroll-behavior: auto !important;
+}
+
+body.contegg-layout-settling .chat-cell,
+body.contegg-layout-settling #conteggDesktopShell,
+body.contegg-layout-settling #conteggDesktopWorkspace,
+body.contegg-layout-settling #conteggDesktopChatPane,
+body.contegg-layout-settling #conteggDesktopRightPanel,
+body.contegg-layout-settling .app-container,
+body.contegg-layout-settling #chatOverlay,
+body.contegg-layout-settling #conteggAdminWorkspace {
+    transform: none !important;
 }
 
 /* Left pages occupy the exact same box, so Chats/Profile switching cannot
@@ -19250,7 +19117,13 @@ body.contegg-tab-switching {
 
 /* Avoid expensive backdrop blur while the window is physically resizing.
    It is restored after ~180 ms. */
-
+body.contegg-layout-settling .contegg-side-tabs,
+body.contegg-layout-settling .contegg-message-menu,
+body.contegg-layout-settling .contegg-reaction-strip,
+body.contegg-layout-settling .modal-sheet {
+    backdrop-filter:none !important;
+    -webkit-backdrop-filter:none !important;
+}
 
 /* Chromium can keep stale composited textures around after document fullscreen.
    Keep only the few large structural layers composited. */
@@ -19290,1207 +19163,38 @@ body.contegg-tab-switching {
 
 /* No animated page entrance on desktop/tablet. It looks nice on one page but
    is expensive and causes flashing when pages are reactivated. */
-
-</style>
-
-
-
-
-
-<style id="CONTEGG-V9-ANIMATIONS-RESTORED">
-/* Restore lightweight UI animations after the fullscreen experiment. */
-
-.chat-cell {
-    transition:
-        background .14s ease,
-        transform .14s ease,
-        border-color .14s ease !important;
-}
-
-.chat-cell:active {
-    transform: scale(.992);
-}
-
-.tab-item {
-    transition:
-        background .16s ease,
-        color .16s ease,
-        transform .14s ease !important;
-}
-
-.tab-item:active {
-    transform: scale(.97);
-}
-
-.modal-overlay {
-    transition:
-        opacity .18s ease,
-        visibility .18s ease !important;
-}
-
-.modal-sheet,
-.contegg-forward-sheet,
-.contegg-qr-sheet {
-    transition:
-        transform .18s cubic-bezier(.2,.8,.2,1),
-        opacity .16s ease !important;
-}
-
-.contegg-message-menu,
-.contegg-reaction-strip {
-    transition:
-        opacity .14s ease,
-        transform .14s cubic-bezier(.2,.8,.2,1) !important;
-}
-
-#conteggDesktopRightPanel {
-    transition:
-        width .20s cubic-bezier(.2,.8,.2,1),
-        opacity .16s ease,
-        transform .20s cubic-bezier(.2,.8,.2,1) !important;
-}
-
-#conteggDesktopRightToggle {
-    transition:
-        transform .18s ease,
-        background .14s ease !important;
-}
-
-/* Left navigation pages share geometry, but can fade instead of snapping. */
 @media (min-width:768px) {
-    #conteggDesktopLeft .page {
-        transition:
-            opacity .16s ease,
-            visibility .16s ease !important;
-    }
-
-    #conteggAdminWorkspace {
-        transition:
-            opacity .16s ease !important;
-    }
-}
-
-/* Chat overlay animations restored without touching the independent header logic. */
-@media (max-width:767px) {
-    #chatOverlay {
-        transition:
-            opacity .18s ease,
-            visibility .18s ease !important;
-    }
-}
-
-/* Layout engine still exists, but no fullscreen-specific geometry remains. */
-:fullscreen #conteggDesktopShell,
-:-webkit-full-screen #conteggDesktopShell {
-    width:auto !important;
-    height:auto !important;
-}
-</style>
-
-
-<style id="CONTEGG-DESKTOP-SMOOTH-ANIMATIONS-V10">
-
-/* =========================================================
-   CHAT FEED SWITCHING
-   ========================================================= */
-@media (min-width:768px) {
-    #chatMessages.chat-messages {
-        transition:
-            opacity 90ms ease-out,
-            transform 110ms cubic-bezier(.2,.75,.25,1),
-            filter 110ms ease-out !important;
-    }
-
-    #chatMessages.chat-messages.contegg-feed-switching {
-        opacity: .12 !important;
-        transform: translate3d(0, 3px, 0) !important;
-        filter: blur(.45px);
-        pointer-events: none;
-    }
-
-    #chatMessages.chat-messages.contegg-feed-entering {
-        animation: conteggFeedReveal 170ms cubic-bezier(.2,.78,.22,1) both;
-    }
-
-    @keyframes conteggFeedReveal {
-        from {
-            opacity: .12;
-            transform: translate3d(0, 4px, 0);
-            filter: blur(.4px);
-        }
-        to {
-            opacity: 1;
-            transform: translate3d(0, 0, 0);
-            filter: blur(0);
-        }
-    }
-
-    /* First batch when switching chats. */
-    #chatMessages .msg.contegg-msg-initial {
-        animation:
-            conteggMessageEnter 165ms cubic-bezier(.16,.82,.24,1)
-            var(--contegg-msg-delay, 0ms)
-            both !important;
-    }
-
-    /* Newly received/sent message. */
-    #chatMessages .msg.contegg-msg-animate:not(.contegg-msg-initial) {
-        animation:
-            conteggMessageEnter 175ms cubic-bezier(.16,.82,.24,1)
-            both !important;
-    }
-
-    @keyframes conteggMessageEnter {
-        from {
-            opacity: 0;
-            transform: translate3d(0, 6px, 0) scale(.992);
-        }
-        60% {
-            opacity: 1;
-        }
-        to {
-            opacity: 1;
-            transform: translate3d(0, 0, 0) scale(1);
-        }
-    }
-
-    /* Structural message replacement: edited text/media/forwarded state. */
-    #chatMessages .msg.contegg-msg-replaced {
-        animation: conteggMessageReplace 165ms ease-out both !important;
-    }
-
-    @keyframes conteggMessageReplace {
-        from {
-            opacity: .45;
-            transform: translate3d(0, 2px, 0) scale(.997);
-        }
-        to {
-            opacity: 1;
-            transform: none;
-        }
-    }
-}
-
-
-/* =========================================================
-   RIGHT DESKTOP PANEL
-   ========================================================= */
-@media (min-width:1200px) {
-    :root {
-        --contegg-right-motion:
-            360ms cubic-bezier(.22,.80,.20,1);
-    }
-
-    #conteggDesktopChatPane {
-        transition:
-            right var(--contegg-right-motion) !important;
-    }
-
-    #conteggDesktopRightPanel {
-        transform-origin: right center;
-        transition:
-            transform var(--contegg-right-motion),
-            opacity 210ms ease,
-            visibility 0s linear 0s !important;
-        will-change: transform, opacity;
-    }
-
-    #conteggDesktopRightPanel::after {
-        content:"";
-        position:absolute;
-        inset:0;
-        pointer-events:none;
-        background:
-            linear-gradient(
-                90deg,
-                rgba(0,0,0,.09),
-                rgba(0,0,0,0) 20px
-            );
-        opacity:.45;
-        transition: opacity 240ms ease;
-    }
-
-    #conteggSidePanelContent,
-    .contegg-side-tabs {
-        transition:
-            opacity 190ms ease,
-            transform 290ms cubic-bezier(.22,.80,.20,1) !important;
-    }
-
-    body.contegg-right-collapsed #conteggDesktopRightPanel {
-        transform: translate3d(calc(100% + 8px),0,0) scaleX(.985) !important;
-        opacity:0 !important;
-        visibility:hidden;
-        transition:
-            transform var(--contegg-right-motion),
-            opacity 180ms ease,
-            visibility 0s linear 360ms !important;
-    }
-
-    body.contegg-right-collapsed #conteggSidePanelContent,
-    body.contegg-right-collapsed .contegg-side-tabs {
-        opacity:0 !important;
-        transform: translate3d(12px,0,0) !important;
-    }
-
-    body:not(.contegg-right-collapsed) #conteggSidePanelContent,
-    body:not(.contegg-right-collapsed) .contegg-side-tabs {
-        opacity:1;
-        transform:translate3d(0,0,0);
-        transition-delay:70ms !important;
-    }
-
-    #conteggDesktopRightToggle {
-        transition:
-            right var(--contegg-right-motion),
-            transform 220ms cubic-bezier(.2,.8,.2,1),
-            background 160ms ease,
-            border-color 160ms ease,
-            box-shadow 190ms ease !important;
-        will-change:right,transform;
-    }
-
-    #conteggDesktopRightToggle:hover {
-        transform:translate3d(-2px,0,0) scale(1.025);
-        box-shadow:
-            -10px 0 24px rgba(0,0,0,.22),
-            inset 0 1px 0 rgba(255,255,255,.10);
-    }
-
-    #conteggDesktopRightToggle:active {
-        transform:translate3d(0,0,0) scale(.965);
-    }
-
-    body.contegg-right-collapsed #conteggDesktopRightToggle {
-        transform:translate3d(0,0,0);
-    }
-
-    #conteggDesktopRightToggle i {
-        transition:
-            transform 330ms cubic-bezier(.22,.80,.20,1),
-            opacity 170ms ease !important;
-    }
-
-    body.contegg-right-panel-moving #conteggDesktopRightToggle i {
-        opacity:.78;
-    }
-
-    body.contegg-right-collapsed #conteggDesktopRightToggle i {
-        transform:rotate(180deg);
-    }
-
-    /* Emoji cells should not all repaint during panel movement. */
-    body.contegg-right-panel-moving .contegg-emoji-btn {
-        pointer-events:none;
-    }
-}
-
-
-/* =========================================================
-   SMALL DESKTOP INTERACTIONS
-   ========================================================= */
-@media (min-width:768px) {
-    .chat-cell {
-        transition:
-            background 145ms ease,
-            border-color 145ms ease,
-            transform 145ms cubic-bezier(.2,.8,.2,1),
-            box-shadow 145ms ease !important;
-    }
-
-    .chat-cell:hover {
-        transform:translate3d(1px,0,0);
-    }
-
-    .chat-cell:active {
-        transform:scale(.992);
-    }
-
-    .contegg-side-tab,
-    .contegg-emoji-btn {
-        transition:
-            background 130ms ease,
-            transform 130ms cubic-bezier(.2,.8,.2,1),
-            opacity 130ms ease !important;
-    }
-
-    .contegg-emoji-btn:hover {
-        transform:translate3d(0,-1px,0) scale(1.055);
-    }
-
-    .contegg-emoji-btn:active {
-        transform:scale(.92);
-    }
-}
-
-
-/* Respect accessibility preference without changing the ordinary experience. */
-@media (prefers-reduced-motion:reduce) {
-    #chatMessages.chat-messages,
-    #chatMessages .msg,
-    #conteggDesktopRightPanel,
-    #conteggDesktopChatPane,
-    #conteggDesktopRightToggle,
-    #conteggSidePanelContent,
-    .contegg-side-tabs {
-        animation-duration:.01ms !important;
-        transition-duration:.01ms !important;
-    }
-}
-</style>
-
-
-<style id="CONTEGG-DESKTOP-ANIMATIONS-ADMIN-FIX-V11">
-
-/* =========================================================
-   ADMIN WORKSPACE — AUTHORITATIVE STATE
-   ========================================================= */
-@media (min-width:768px) {
-    #conteggAdminWorkspace {
-        position:absolute !important;
-        inset:0 !important;
-        z-index:90 !important;
-
-        display:none;
-        flex-direction:column !important;
-
-        width:100% !important;
-        height:100% !important;
-        min-width:0 !important;
-        min-height:0 !important;
-
-        overflow:hidden !important;
-        background:#0b0b0c !important;
-
-        opacity:0;
-        visibility:hidden;
-        pointer-events:none;
-
-        transform:translate3d(0,4px,0);
-        transition:
-            opacity 150ms ease,
-            transform 170ms cubic-bezier(.2,.8,.2,1),
-            visibility 0s linear 170ms !important;
-
-        contain:none !important;
-        isolation:isolate;
-    }
-
-    body.contegg-admin-workspace-open #conteggAdminWorkspace {
-        display:flex !important;
-        visibility:visible !important;
-        pointer-events:auto !important;
-
-        opacity:1 !important;
-        transform:translate3d(0,0,0) !important;
-
-        transition:
-            opacity 150ms ease,
-            transform 170ms cubic-bezier(.2,.8,.2,1),
-            visibility 0s linear 0s !important;
-    }
-
-    #conteggAdminWorkspace.contegg-admin-visible {
-        opacity:1 !important;
-        transform:translate3d(0,0,0) !important;
-    }
-
-    body.contegg-admin-workspace-open #conteggDesktopEmptyState,
-    body.contegg-admin-workspace-open #chatOverlay,
-    body.contegg-admin-workspace-open #conteggDiscussionPane {
-        opacity:0 !important;
-        visibility:hidden !important;
-        pointer-events:none !important;
-    }
-
-    .contegg-admin-workspace-header {
-        flex:0 0 52px !important;
-        height:52px !important;
-        min-height:52px !important;
-        opacity:1 !important;
-        visibility:visible !important;
-    }
-
-    #conteggAdminWorkspaceContent,
-    .contegg-admin-workspace-content {
-        display:block !important;
-        flex:1 1 auto !important;
-        height:auto !important;
-        min-height:0 !important;
-        overflow-y:auto !important;
-        overflow-x:hidden !important;
-
-        opacity:1 !important;
-        visibility:visible !important;
-        pointer-events:auto !important;
-
-        contain:none !important;
-    }
-
-    #conteggAdminWorkspaceContent > .admin-panel {
-        display:block !important;
-        opacity:1 !important;
-        visibility:visible !important;
-        transform:none !important;
-    }
-}
-
-
-/* =========================================================
-   CHAT SWITCH — FAST + SMOOTH
-   ========================================================= */
-@media (min-width:768px) {
-    #chatMessages.chat-messages {
-        transition:
-            opacity 85ms ease-out,
-            transform 100ms cubic-bezier(.2,.75,.25,1) !important;
-    }
-
-    #chatMessages.chat-messages.contegg-feed-switching {
-        opacity:.20 !important;
-        transform:translate3d(0,3px,0) !important;
-        filter:none !important;
-    }
-
-    #chatMessages.chat-messages.contegg-feed-entering {
-        animation:conteggFeedRevealV11 145ms cubic-bezier(.2,.8,.2,1) both !important;
-    }
-
-    @keyframes conteggFeedRevealV11 {
-        from {
-            opacity:.16;
-            transform:translate3d(0,4px,0);
-        }
-        to {
-            opacity:1;
-            transform:none;
-        }
-    }
-
-    #chatMessages .msg.contegg-msg-initial {
-        animation:
-            conteggMsgEnterV11 145ms cubic-bezier(.16,.82,.24,1)
-            var(--contegg-msg-delay,0ms)
-            both !important;
-    }
-
-    #chatMessages .msg.contegg-msg-animate:not(.contegg-msg-initial) {
-        animation:conteggMsgEnterV11 155ms cubic-bezier(.16,.82,.24,1) both !important;
-    }
-
-    @keyframes conteggMsgEnterV11 {
-        from {
-            opacity:0;
-            transform:translate3d(0,5px,0) scale(.994);
-        }
-        to {
-            opacity:1;
-            transform:none;
-        }
-    }
-}
-
-
-/* =========================================================
-   RIGHT PANEL — SMOOTH BUT NOT SLOW
-   ========================================================= */
-@media (min-width:1200px) {
-    #conteggDesktopRightPanel {
-        transition:
-            transform 300ms cubic-bezier(.22,.82,.22,1),
-            opacity 185ms ease,
-            visibility 0s linear 0s !important;
-    }
-
-    body.contegg-right-collapsed #conteggDesktopRightPanel {
-        transform:translate3d(calc(100% + 8px),0,0) !important;
-        opacity:0 !important;
-        visibility:hidden !important;
-
-        transition:
-            transform 300ms cubic-bezier(.22,.82,.22,1),
-            opacity 170ms ease,
-            visibility 0s linear 300ms !important;
-    }
-
-    #conteggSidePanelContent,
-    .contegg-side-tabs {
-        transition:
-            opacity 165ms ease,
-            transform 235ms cubic-bezier(.22,.82,.22,1) !important;
-    }
-
-    body.contegg-right-collapsed #conteggSidePanelContent,
-    body.contegg-right-collapsed .contegg-side-tabs {
-        opacity:0 !important;
-        transform:translate3d(9px,0,0) !important;
-    }
-
-    body:not(.contegg-right-collapsed) #conteggSidePanelContent,
-    body:not(.contegg-right-collapsed) .contegg-side-tabs {
-        opacity:1 !important;
-        transform:none !important;
-        transition-delay:55ms !important;
-    }
-
-    #conteggDesktopRightToggle {
-        transition:
-            right 300ms cubic-bezier(.22,.82,.22,1),
-            transform 170ms cubic-bezier(.2,.8,.2,1),
-            background 150ms ease,
-            box-shadow 170ms ease !important;
-    }
-
-    #conteggDesktopRightToggle i {
-        transition:transform 285ms cubic-bezier(.22,.82,.22,1) !important;
-    }
-
-    body.contegg-right-collapsed #conteggDesktopRightToggle i {
-        transform:rotate(180deg);
-    }
-}
-
-</style>
-
-
-<style id="CONTEGG-CONTROL-STABLE-V12">
-
-/* ---------------- PHONE: NEVER BLACK WHILE CHAT IS OPEN ---------------- */
-@media (max-width:767px) {
-    body.chat-open #chatOverlay.chat-overlay,
-    body.chat-open #conteggPhoneChatMotionLayer,
-    body.chat-open #chatMessages.chat-messages,
-    body.chat-open #chatInputBar.chat-input-bar {
-        visibility:visible !important;
-        opacity:1 !important;
-    }
-
-    body.chat-open #chatOverlay.chat-overlay {
-        display:block !important;
-        background:#000 !important;
-    }
-
-    body.chat-open #conteggPhoneChatMotionLayer {
-        display:block !important;
-    }
-
-    body.chat-open #chatMessages.chat-messages {
-        display:block !important;
-        min-height:0 !important;
-    }
-
-    body.chat-open #chatInputBar.chat-input-bar {
-        display:flex !important;
-    }
-
-    body.chat-open:not(.keyboard-open) #conteggPhoneChatMotionLayer {
-        transform:translate3d(0,0,0) !important;
-    }
-}
-
-
-/* ---------------- CHAT SWITCH: DESKTOP + TABLET ---------------- */
-@media (min-width:768px) {
-    #conteggDesktopChatPane #chatMessages.chat-messages {
-        opacity:1;
-        transform:translate3d(0,0,0);
-        transition:
-            opacity 90ms ease-out,
-            transform 105ms cubic-bezier(.22,.78,.22,1) !important;
-    }
-
-    #conteggDesktopChatPane #chatMessages.chat-messages.contegg-feed-switching {
-        opacity:.08 !important;
-        transform:translate3d(0,3px,0) !important;
-    }
-
-    #conteggDesktopChatPane #chatMessages.chat-messages.contegg-feed-entering {
-        animation:conteggV12FeedIn 155ms cubic-bezier(.18,.82,.22,1) both !important;
-    }
-
-    @keyframes conteggV12FeedIn {
-        from {
-            opacity:.08;
-            transform:translate3d(0,5px,0);
-        }
-        to {
-            opacity:1;
-            transform:translate3d(0,0,0);
-        }
-    }
-
-    #conteggDesktopChatPane #chatMessages .msg.contegg-msg-initial {
-        animation:
-            conteggV12MessageIn 150ms cubic-bezier(.18,.82,.22,1)
-            var(--contegg-msg-delay,0ms)
-            both !important;
-    }
-
-    #conteggDesktopChatPane #chatMessages .msg.contegg-msg-animate:not(.contegg-msg-initial) {
-        animation:conteggV12MessageIn 155ms cubic-bezier(.18,.82,.22,1) both !important;
-    }
-
-    @keyframes conteggV12MessageIn {
-        from {
-            opacity:0;
-            transform:translate3d(0,5px,0) scale(.995);
-        }
-        to {
-            opacity:1;
-            transform:none;
-        }
-    }
-}
-
-
-/* ---------------- RIGHT PANEL: ONE AUTHORITATIVE MOTION ---------------- */
-@media (min-width:1200px) {
-    #conteggDesktopChatPane {
-        right:var(--contegg-desktop-right) !important;
-        transition:right 285ms cubic-bezier(.22,.82,.22,1) !important;
-    }
-
-    body.contegg-right-collapsed #conteggDesktopChatPane {
-        right:0 !important;
-    }
-
-    #conteggDesktopRightPanel {
-        display:flex !important;
-        visibility:visible;
-        opacity:1;
-        transform:translate3d(0,0,0);
-        pointer-events:auto;
-
-        transition:
-            transform 285ms cubic-bezier(.22,.82,.22,1),
-            opacity 175ms ease,
-            visibility 0s linear 0s !important;
-    }
-
-    body.contegg-right-collapsed #conteggDesktopRightPanel {
-        transform:translate3d(100%,0,0) !important;
-        opacity:0 !important;
-        visibility:hidden !important;
-        pointer-events:none !important;
-
-        transition:
-            transform 285ms cubic-bezier(.22,.82,.22,1),
-            opacity 160ms ease,
-            visibility 0s linear 285ms !important;
-    }
-
-    #conteggDesktopRightToggle {
-        right:var(--contegg-desktop-right) !important;
-        transition:
-            right 285ms cubic-bezier(.22,.82,.22,1),
-            transform 165ms ease,
-            background 150ms ease !important;
-    }
-
-    body.contegg-right-collapsed #conteggDesktopRightToggle {
-        right:0 !important;
-    }
-
-    #conteggSidePanelContent,
-    .contegg-side-tabs {
-        transition:
-            opacity 160ms ease,
-            transform 220ms cubic-bezier(.22,.82,.22,1) !important;
-    }
-
-    body.contegg-right-collapsed #conteggSidePanelContent,
-    body.contegg-right-collapsed .contegg-side-tabs {
-        opacity:0 !important;
-        transform:translate3d(10px,0,0) !important;
-    }
-
-    body:not(.contegg-right-collapsed) #conteggSidePanelContent,
-    body:not(.contegg-right-collapsed) .contegg-side-tabs {
-        opacity:1 !important;
-        transform:none !important;
-    }
-
-    #conteggDesktopRightToggle i {
-        transition:transform 285ms cubic-bezier(.22,.82,.22,1) !important;
-    }
-
-    body.contegg-right-collapsed #conteggDesktopRightToggle i {
-        transform:rotate(180deg) !important;
-    }
-}
-
-
-/* Tablet: no right emoji panel at all; chat must own entire center area. */
-@media (min-width:768px) and (max-width:1199px) {
-    #conteggDesktopRightPanel,
-    #conteggDesktopRightToggle {
-        display:none !important;
-    }
-
-    #conteggDesktopChatPane {
-        right:0 !important;
-    }
-}
-
-</style>
-
-
-<style id="CONTEGG-FLAT-TELEGRAM-STYLE-V14">
-
-:root {
-    --flat-bg: #1f1f1f;
-    --flat-panel: #242424;
-    --flat-panel-2: #292929;
-    --flat-line: rgba(255,255,255,.105);
-    --flat-text: #f2f2f2;
-    --flat-secondary: rgba(235,235,245,.58);
-    --flat-tertiary: rgba(235,235,245,.34);
-    --flat-hover: rgba(255,255,255,.045);
-    --flat-selected: rgba(255,255,255,.075);
-}
-
-/* =========================================================
-   GLOBAL: REMOVE GLASS
-   ========================================================= */
-html,
-body {
-    background: var(--flat-bg) !important;
-}
-
-.app-container,
-.navbar,
-.content-area,
-.tabbar,
-.chat-list,
-.chat-overlay,
-.chat-navbar,
-.chat-messages,
-.chat-input-bar,
-#conteggDesktopShell,
-#conteggDesktopLeft,
-#conteggDesktopWorkspace,
-#conteggDesktopChatPane,
-#conteggDesktopRightPanel,
-#conteggAdminWorkspace,
-.modal-sheet,
-.contegg-forward-sheet,
-.contegg-qr-sheet,
-.context-menu,
-.contegg-message-menu,
-.contegg-reaction-strip,
-.profile-card,
-.admin-panel,
-.search-bar,
-.input-container {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    box-shadow: none !important;
-}
-
-/* No glossy gradients on structural UI. */
-.navbar,
-.tabbar,
-.chat-navbar,
-.chat-input-bar,
-#conteggDesktopLeft,
-#conteggDesktopRightPanel,
-#conteggAdminWorkspace,
-.modal-sheet,
-.contegg-forward-sheet,
-.contegg-qr-sheet,
-.admin-panel {
-    background-image: none !important;
-}
-
-/* =========================================================
-   LEFT CHAT LIST — ONE FLAT LAYER
-   ========================================================= */
-#conteggDesktopLeft,
-.app-container {
-    background: var(--flat-panel) !important;
-}
-
-.navbar {
-    background: var(--flat-panel) !important;
-    border-bottom: 1px solid var(--flat-line) !important;
-}
-
-.content-area,
-#pageChats,
-#pageProfile {
-    background: var(--flat-panel) !important;
-}
-
-.chat-list,
-#chatsList {
-    background: var(--flat-panel) !important;
-    padding: 0 !important;
-    gap: 0 !important;
-}
-
-.chat-cell {
-    position: relative !important;
-    width: 100% !important;
-    min-height: 72px !important;
-    margin: 0 !important;
-    padding: 10px 14px 10px 12px !important;
-
-    display: flex !important;
-    align-items: center !important;
-    gap: 12px !important;
-
-    border: 0 !important;
-    border-radius: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-
-    transition:
-        background .14s ease,
-        opacity .14s ease !important;
-}
-
-.chat-cell::after {
-    content: "";
-    position: absolute;
-    left: 76px;
-    right: 0;
-    bottom: 0;
-    height: 1px;
-    background: var(--flat-line);
-    pointer-events: none;
-}
-
-.chat-cell:hover {
-    background: var(--flat-hover) !important;
-    transform: none !important;
-}
-
-.chat-cell.active,
-.chat-cell.selected {
-    background: var(--flat-selected) !important;
-}
-
-.chat-cell:active {
-    background: rgba(255,255,255,.095) !important;
-    transform: none !important;
-}
-
-.chat-avatar {
-    width: 52px !important;
-    height: 52px !important;
-    min-width: 52px !important;
-    flex: 0 0 52px !important;
-    border-radius: 50% !important;
-    box-shadow: none !important;
-    border: 0 !important;
-}
-
-.chat-avatar img {
-    width: 100% !important;
-    height: 100% !important;
-    object-fit: cover !important;
-    border-radius: inherit !important;
-}
-
-.chat-content {
-    min-width: 0 !important;
-    flex: 1 1 auto !important;
-    padding: 0 !important;
-}
-
-.chat-top {
-    min-width: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-    margin-bottom: 3px !important;
-}
-
-.chat-name {
-    min-width: 0 !important;
-    flex: 1 1 auto !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    white-space: nowrap !important;
-
-    color: var(--flat-text) !important;
-    font-size: 15px !important;
-    line-height: 1.18 !important;
-    font-weight: 620 !important;
-}
-
-.chat-time {
-    flex: 0 0 auto !important;
-    color: var(--flat-secondary) !important;
-    font-size: 11px !important;
-    font-weight: 400 !important;
-}
-
-.chat-preview {
-    min-width: 0 !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    white-space: nowrap !important;
-
-    color: var(--flat-secondary) !important;
-    font-size: 13px !important;
-    line-height: 1.25 !important;
-}
-
-.unread-badge,
-.chat-badge {
-    border: 0 !important;
-    box-shadow: none !important;
-}
-
-/* Search looks like Telegram desktop: one simple field. */
-.search-bar {
-    margin: 9px 12px !important;
-    border: 0 !important;
-    border-radius: 10px !important;
-    background: #303030 !important;
-    box-shadow: none !important;
-}
-
-.search-bar input {
-    color: var(--flat-text) !important;
-}
-
-/* Bottom nav is part of the same flat sidebar. */
-.tabbar {
-    background: var(--flat-panel) !important;
-    border-top: 1px solid var(--flat-line) !important;
-}
-
-.tab-item {
-    border-radius: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-}
-
-.tab-item.active {
-    background: rgba(255,255,255,.055) !important;
-}
-
-/* =========================================================
-   CHAT / CENTER PANE
-   ========================================================= */
-#conteggDesktopWorkspace,
-#conteggDesktopChatPane,
-#conteggDesktopEmptyState {
-    background: #151515 !important;
-}
-
-.chat-overlay {
-    background: #151515 !important;
-}
-
-.chat-navbar {
-    background: #242424 !important;
-    border-bottom: 1px solid var(--flat-line) !important;
-    box-shadow: none !important;
-}
-
-.chat-messages {
-    background: #151515 !important;
-}
-
-/* Keep bubble shapes, remove glass/specular look. */
-.msg,
-.msg-bubble,
-.comment-bubble {
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-}
-
-.msg-in {
-    background: #2b2b2b !important;
-}
-
-.msg-out {
-    box-shadow: none !important;
-}
-
-.chat-input-bar {
-    background: #242424 !important;
-    border-top: 1px solid var(--flat-line) !important;
-}
-
-.input-container,
-#chatInput {
-    box-shadow: none !important;
-}
-
-.input-container {
-    background: #303030 !important;
-    border: 0 !important;
-}
-
-/* =========================================================
-   RIGHT EMOJI PANEL — FLAT
-   ========================================================= */
-#conteggDesktopRightPanel {
-    background: #202020 !important;
-    border-left: 1px solid var(--flat-line) !important;
-}
-
-.contegg-side-tabs {
-    background: #202020 !important;
-    border-bottom: 1px solid var(--flat-line) !important;
-}
-
-.contegg-side-tab {
-    border-radius: 7px !important;
-    background: transparent !important;
-    box-shadow: none !important;
-}
-
-.contegg-side-tab.active {
-    background: #303030 !important;
-}
-
-#conteggDesktopRightToggle {
-    background: #2b2b2b !important;
-    border: 1px solid var(--flat-line) !important;
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-}
-
-/* =========================================================
-   PROFILE / SETTINGS
-   ========================================================= */
-.profile-card,
-.profile-section,
-.profile-cell,
-.settings-cell {
-    background: transparent !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-}
-
-.profile-cell,
-.settings-cell {
-    border-bottom: 1px solid var(--flat-line) !important;
-}
-
-/* =========================================================
-   ADMIN PANEL — FLAT
-   ========================================================= */
-#conteggAdminWorkspace {
-    background: #181818 !important;
-}
-
-.contegg-admin-workspace-header {
-    background: #242424 !important;
-    border-bottom: 1px solid var(--flat-line) !important;
-}
-
-.contegg-admin-workspace-content {
-    background: #181818 !important;
-}
-
-.admin-panel {
-    background: #242424 !important;
-    border: 1px solid var(--flat-line) !important;
-    border-radius: 12px !important;
-}
-
-.contegg-admin-user-row,
-.contegg-admin-target-card,
-.contegg-admin-permanent-code,
-.contegg-admin-code-row {
-    background: #2b2b2b !important;
-    border-color: var(--flat-line) !important;
-    box-shadow: none !important;
-}
-
-/* =========================================================
-   MENUS / MODALS — SOLID, NOT GLASS
-   ========================================================= */
-.modal-overlay {
-    background: rgba(0,0,0,.58) !important;
-}
-
-.modal-sheet,
-.contegg-forward-sheet,
-.contegg-qr-sheet,
-.context-menu,
-.contegg-message-menu,
-.contegg-reaction-strip {
-    background: #292929 !important;
-    border: 1px solid var(--flat-line) !important;
-    box-shadow: 0 12px 34px rgba(0,0,0,.32) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-}
-
-/* =========================================================
-   MOBILE — VISUAL ONLY. KEEP V12 MECHANICS UNTOUCHED.
-   ========================================================= */
-@media (max-width:767px) {
-    .app-container,
     #pageChats,
-    #pageProfile {
-        background: #1d1d1d !important;
+    #pageProfile,
+    #conteggAdminWorkspace {
+        animation:none !important;
     }
-
-    .navbar {
-        background: #242424 !important;
-    }
-
-    .chat-list,
-    #chatsList {
-        background: #1d1d1d !important;
-    }
-
-    .chat-cell {
-        min-height: 70px !important;
-        padding: 9px 12px !important;
-        background: transparent !important;
-    }
-
-    .chat-cell::after {
-        left: 73px !important;
-    }
-
-    .chat-avatar {
-        width: 50px !important;
-        height: 50px !important;
-        min-width: 50px !important;
-        flex-basis: 50px !important;
-    }
-
-    .chat-name {
-        font-size: 15px !important;
-    }
-
-    .chat-preview {
-        font-size: 12.5px !important;
-    }
-
-    /* Crucially: no mobile positioning/viewport/keyboard overrides here. */
 }
+</style>
 
-/* =========================================================
-   TABLET
-   ========================================================= */
-@media (min-width:768px) and (max-width:1199px) {
-    .chat-cell {
-        min-height: 74px !important;
-    }
 
-    .chat-avatar {
-        width: 54px !important;
-        height: 54px !important;
-        min-width: 54px !important;
-        flex-basis: 54px !important;
+<style id="CONTEGG-FULLSCREEN-V8-CSS">
+@media (min-width:1200px) {
+    body:not(.contegg-layout-settling) {
+        --contegg-fullscreen-shortcut: "Esc";
     }
 }
 
+/* No transition should run while entering/exiting native fullscreen. */
+body.contegg-layout-settling #conteggDesktopShell,
+body.contegg-layout-settling #conteggDesktopShell *,
+:fullscreen #conteggDesktopShell,
+:fullscreen #conteggDesktopShell * {
+    animation-play-state: paused !important;
+}
+
+:fullscreen #conteggDesktopShell {
+    width:100vw !important;
+    height:100vh !important;
+    height:100dvh !important;
+    max-width:none !important;
+    max-height:none !important;
+}
 </style>
 
 </body>
