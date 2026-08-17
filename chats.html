@@ -5470,6 +5470,7 @@ function hideChatOverlay() {
     document.documentElement.style.setProperty('--contegg-chat-vh', '100dvh');
     document.documentElement.style.setProperty('--contegg-chat-top', '0px');
     document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
+    document.documentElement.style.setProperty('--contegg-visual-top', '0px');
 }
 
   function getChannelRights(chat) {
@@ -9715,6 +9716,7 @@ if (postCommentInput) {
 function updateMobileKeyboardViewport() {
     if (!isMobileLike) {
         document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
+        document.documentElement.style.setProperty('--contegg-visual-top', '0px');
         document.body.classList.remove('keyboard-open');
         return;
     }
@@ -9734,6 +9736,7 @@ function updateMobileKeyboardViewport() {
             root.style.setProperty('--contegg-chat-vh', '100dvh');
             root.style.setProperty('--contegg-chat-top', '0px');
             root.style.setProperty('--contegg-keyboard-height', '0px');
+            root.style.setProperty('--contegg-visual-top', '0px');
         document.body.classList.remove('keyboard-open');
         return;
         }
@@ -9754,6 +9757,14 @@ function updateMobileKeyboardViewport() {
         root.style.setProperty('--contegg-chat-vh', '100dvh');
         root.style.setProperty('--contegg-chat-top', '0px');
         root.style.setProperty('--contegg-keyboard-height', `${keyboardHeight}px`);
+
+        // iOS Safari: при клавиатуре visual viewport может смещаться вниз,
+        // даже если элемент position: fixed. Компенсируем это смещение.
+        const visualTop = keyboardOpen
+            ? Math.max(0, Math.round(vv.offsetTop || 0))
+            : 0;
+        root.style.setProperty('--contegg-visual-top', `${visualTop}px`);
+
         document.body.classList.toggle('keyboard-open', keyboardOpen);
 
         updateChatInputBarHeight();
@@ -9785,7 +9796,13 @@ function scheduleMobileKeyboardViewportUpdate(delay = 180) {
 }
 
 if (isMobileLike && window.visualViewport) {
-    window.visualViewport.addEventListener('resize', () => scheduleMobileKeyboardViewportUpdate(160));
+    window.visualViewport.addEventListener('resize', () => scheduleMobileKeyboardViewportUpdate(30));
+
+    // На iOS offsetTop меняется не только на resize, но и во время
+    // анимации/сдвига visual viewport при появлении клавиатуры.
+    window.visualViewport.addEventListener('scroll', () => {
+        updateMobileKeyboardViewport();
+    });
 }
 
 if (isMobileLike) {
@@ -9823,6 +9840,7 @@ document.getElementById('chatInput')?.addEventListener('blur', () => {
     document.body.classList.remove('keyboard-settling-in');
     document.body.classList.remove('keyboard-settling-out');
     document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
+    document.documentElement.style.setProperty('--contegg-visual-top', '0px');
     document.body.classList.remove('keyboard-open');
 
     requestAnimationFrame(() => {
@@ -10224,6 +10242,10 @@ body.chat-open .chat-navbar {
     transform: none !important;
 }
 
+:root {
+    --contegg-visual-top: 0px;
+}
+
 /* ===== iOS / MOBILE: KEEP CHAT HEADER FIXED ABOVE KEYBOARD =====
    Safari двигает visual viewport при открытии клавиатуры.
    Поэтому верхнюю панель на мобильных закрепляем прямо к viewport,
@@ -10231,7 +10253,7 @@ body.chat-open .chat-navbar {
 @media (max-width: 900px), (pointer: coarse) {
     body.chat-open .chat-navbar {
         position: fixed !important;
-        top: 0 !important;
+        top: var(--contegg-visual-top, 0px) !important;
         left: 0 !important;
         right: 0 !important;
         width: 100% !important;
@@ -10254,7 +10276,7 @@ body.chat-open .chat-navbar {
     body.keyboard-settling-in .chat-navbar,
     body.keyboard-settling-out .chat-navbar {
         position: fixed !important;
-        top: 0 !important;
+        top: var(--contegg-visual-top, 0px) !important;
         transform: translate3d(0, 0, 0) !important;
         -webkit-transform: translate3d(0, 0, 0) !important;
     }
