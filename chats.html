@@ -7811,12 +7811,12 @@ const avatarHTML = avatarSrc
     div.setAttribute('data-comment-id', commentId);
 
     div.innerHTML = `
-        <div class="comment-avatar" onclick="openCommentUserProfile('${comment.senderId}')">
+        <div class="comment-avatar contegg-comment-profile-trigger" data-comment-user-id="${esc(comment.senderId)}">
             ${avatarHTML}
         </div>
 
         <div class="comment-bubble">
-            <div class="comment-author" onclick="openCommentUserProfile('${comment.senderId}')">
+            <div class="comment-author contegg-comment-profile-trigger" data-comment-user-id="${esc(comment.senderId)}">
                 ${isMine ? 'Вы' : esc(user.displayName || user.username || 'Пользователь')}
                 ${user.isAdmin ? '<i class="fas fa-check-circle verified-icon"></i>' : ''}
             </div>
@@ -7893,7 +7893,13 @@ async function openCommentUserProfile(userId) {
             </div>
 
             ${userId !== currentUser.uid ? `
-                <button class="btn btn-primary" onclick="openChatFromCommentProfile(${jsString(userId)}, ${jsString(user.username || '')})" style="margin-top:20px;">
+                <button
+                    type="button"
+                    class="btn btn-primary contegg-profile-open-chat"
+                    data-profile-chat-user="${esc(userId)}"
+                    data-profile-chat-username="${esc(user.username || '')}"
+                    style="margin-top:20px;"
+                >
                     <i class="fas fa-comment" style="margin-right:7px;"></i>
                     Открыть чат
                 </button>
@@ -7910,19 +7916,80 @@ async function openCommentUserProfile(userId) {
 
 
 async function openChatFromCommentProfile(userId, username = '') {
-    if (!userId || userId === currentUser.uid || userId === 'system') return;
+    if (!userId || !currentUser || userId === currentUser.uid || userId === 'system') return;
 
     try {
+        // Remove modal interaction first, then open the DM on the next frame.
         closeUserProfile();
-        await openDirectChat(userId, username || '');
+
+        const user = await getUserInfo(userId);
+        const resolvedUsername = username || user.username || '';
+
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        await openDirectChat(userId, resolvedUsername);
+
+        // On tablet/desktop make sure the main chat pane is visible after opening from a modal.
+        if (typeof arrangeForViewport === 'function') {
+            arrangeForViewport();
+        }
+
+        document.getElementById('chatInput')?.focus?.({ preventScroll: true });
     } catch (e) {
         console.error('openChatFromCommentProfile error:', e);
-        toast('Не удалось открыть чат');
+        toast(`Не удалось открыть чат${e?.message ? ': ' + e.message : ''}`);
     }
 }
 window.openChatFromCommentProfile = openChatFromCommentProfile;
 
+function bindCommentProfileDelegation(container) {
+    if (!container || container.dataset.profileDelegationBound === '1') return;
+    container.dataset.profileDelegationBound = '1';
+
+    container.addEventListener('click', (e) => {
+        const trigger = e.target.closest('.contegg-comment-profile-trigger[data-comment-user-id]');
+        if (!trigger || !container.contains(trigger)) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const userId = trigger.dataset.commentUserId || '';
+        if (userId) openCommentUserProfile(userId);
+    });
+}
+
+bindCommentProfileDelegation(document.getElementById('postCommentsList'));
+bindCommentProfileDelegation(document.getElementById('conteggDiscussionCommentsList'));
+
+
 window.openUserProfile = openCommentUserProfile;
+
+const userProfileModalElement = document.getElementById('userProfileModal');
+
+userProfileModalElement?.addEventListener('click', async (e) => {
+    const button = e.target.closest('.contegg-profile-open-chat[data-profile-chat-user]');
+    if (!button || !userProfileModalElement.contains(button)) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (button.disabled) return;
+
+    const userId = button.dataset.profileChatUser || '';
+    const username = button.dataset.profileChatUsername || '';
+
+    if (!userId) return;
+
+    button.disabled = true;
+    button.classList.add('is-opening-chat');
+
+    try {
+        await openChatFromCommentProfile(userId, username);
+    } finally {
+        button.disabled = false;
+        button.classList.remove('is-opening-chat');
+    }
+});
+
 
 
 async function sendMessage() {
@@ -10423,9 +10490,10 @@ async function viewChatUserProfile() {
     if (!currentChatUser || currentChatIsGroup || currentChatIsSaved || currentChatIsSystem) return;
     
     const user = await getUserInfo(currentChatUser.uid);
-    const avHTML = user.avatarBase64
-        ? `<img src="${user.avatarBase64}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;">`
-        : `<div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#007aff,#5856d6);display:flex;align-items:center;justify-content:center;font-size:32px;color:white;margin:0 auto;">${(user.displayName?.[0] || 'U')}</div>`;
+    const profileAvatarSrc = getAvatarSrc(user);
+    const avHTML = profileAvatarSrc
+        ? `<img src="${profileAvatarSrc}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;">`
+        : `<div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#007aff,#5856d6);display:flex;align-items:center;justify-content:center;font-size:32px;color:white;margin:0 auto;">${(user.displayName?.[0] || user.username?.[0] || 'U').toUpperCase()}</div>`;
     
     document.getElementById('userProfileContent').innerHTML = `
         <div style="padding-top:20px;">
@@ -10434,10 +10502,24 @@ async function viewChatUserProfile() {
                 ${esc(user.displayName || 'Пользователь')}
                 ${user.isAdmin ? '<i class="fas fa-check-circle" style="color:var(--accent);font-size:16px;margin-left:4px;"></i>' : ''}
             </div>
-            <div style="font-size:15px;color:var(--text-secondary);">@${esc(user.username)}</div>
+            <div style="font-size:15px;color:var(--text-secondary);">@${esc(user.username || '')}</div>
             <div style="font-size:14px;color:var(--text-secondary);margin-top:8px;line-height:1.4;">${esc(user.bio || 'Нет описания')}</div>
-            <div style="font-size:13px;color:var(--text-tertiary);margin-top:8px;">ID: ${user.uid.slice(-8)}</div>
-            <button class="btn btn-secondary" onclick="closeUserProfile()" style="margin-top:20px;">Закрыть</button>
+            <div style="font-size:13px;color:var(--text-tertiary);margin-top:8px;">ID: ${(user.uid || currentChatUser.uid).slice(-8)}</div>
+
+            ${currentChatUser.uid !== currentUser.uid ? `
+                <button
+                    type="button"
+                    class="btn btn-primary contegg-profile-open-chat"
+                    data-profile-chat-user="${esc(currentChatUser.uid)}"
+                    data-profile-chat-username="${esc(user.username || '')}"
+                    style="margin-top:20px;"
+                >
+                    <i class="fas fa-comment" style="margin-right:7px;"></i>
+                    Открыть чат
+                </button>
+            ` : ''}
+
+            <button class="btn btn-secondary" onclick="closeUserProfile()" style="margin-top:8px;">Закрыть</button>
         </div>
     `;
     
@@ -14685,6 +14767,24 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
 
 .contegg-forward-chat.is-sending {
     cursor: wait;
+}
+</style>
+
+
+<style id="CONTEGG-V13-PROFILE-CHAT-BUTTON-FIX">
+.contegg-profile-open-chat {
+    touch-action: manipulation;
+}
+
+.contegg-profile-open-chat.is-opening-chat,
+.contegg-profile-open-chat:disabled {
+    opacity: .58 !important;
+    pointer-events: none !important;
+}
+
+.contegg-comment-profile-trigger {
+    cursor: pointer;
+    touch-action: manipulation;
 }
 </style>
 
