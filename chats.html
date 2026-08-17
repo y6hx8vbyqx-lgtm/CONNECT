@@ -6143,22 +6143,55 @@ async function loadAllUsers() {
     });
 }
 
+const conteggTabScrollPositions = {
+    chats: 0,
+    profile: 0
+};
+
+let conteggActiveLeftTab = 'chats';
+
 function switchTab(tab) {
-    const pages = document.querySelectorAll('.page');
-    const tabs = document.querySelectorAll('.tab-item');
-    const currentPage = document.querySelector('.page.active');
-    const targetPage = document.getElementById(tab === 'chats' ? 'pageChats' : 'pageProfile');
-    
-    if (currentPage === targetPage) return;
-    
-    currentPage.classList.remove('active');
+    const nextTab = tab === 'profile' ? 'profile' : 'chats';
+    if (nextTab === conteggActiveLeftTab) return;
+
+    const currentPageId =
+        conteggActiveLeftTab === 'chats' ? 'pageChats' : 'pageProfile';
+    const targetPageId =
+        nextTab === 'chats' ? 'pageChats' : 'pageProfile';
+
+    const currentPage = document.getElementById(currentPageId);
+    const targetPage = document.getElementById(targetPageId);
+
+    if (!targetPage) return;
+
+    if (currentPage) {
+        conteggTabScrollPositions[conteggActiveLeftTab] = currentPage.scrollTop || 0;
+    }
+
+    document.body.classList.add('contegg-tab-switching');
+
+    // Only these two pages belong to the left navigation. Avoid touching
+    // unrelated .page nodes that may be mounted by other components.
+    currentPage?.classList.remove('active');
     targetPage.classList.add('active');
-    
-    tabs.forEach(t => t.classList.remove('active'));
-    const activeTab = document.querySelector(`.tab-item[data-tab="${tab}"]`);
-    if (activeTab) activeTab.classList.add('active');
-    
-    if (tab === 'profile') renderProfile();
+
+    document.querySelectorAll('.tab-item[data-tab]').forEach(item => {
+        item.classList.toggle('active', item.dataset.tab === nextTab);
+    });
+
+    conteggActiveLeftTab = nextTab;
+
+    if (nextTab === 'profile') {
+        renderProfile();
+    }
+
+    requestAnimationFrame(() => {
+        targetPage.scrollTop = conteggTabScrollPositions[nextTab] || 0;
+
+        requestAnimationFrame(() => {
+            document.body.classList.remove('contegg-tab-switching');
+        });
+    });
 }
 
 function initSearchScroll() {
@@ -13887,7 +13920,9 @@ if (inlineDiscussionInput) {
 /* ===== MOBILE KEYBOARD VIEWPORT FIX ===== */
 
 function updateMobileKeyboardViewport() {
-    if (!isMobileLike) {
+    // V7: this is legacy PHONE-only keyboard code.
+    // Tablet >=768px uses the desktop/tablet architecture below.
+    if (!isMobileLike || window.innerWidth >= 768) {
         document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
         document.body.classList.remove('keyboard-open');
         return;
@@ -13958,21 +13993,21 @@ function scheduleMobileKeyboardViewportUpdate(delay = 180) {
     }, delay);
 }
 
-if (isMobileLike && window.visualViewport) {
+if (isMobileLike && window.innerWidth < 768 && window.visualViewport) {
     window.visualViewport.addEventListener('resize', () => scheduleMobileKeyboardViewportUpdate(160));
 }
 
-if (isMobileLike) {
+if (isMobileLike && window.innerWidth < 768) {
     window.addEventListener('resize', () => scheduleMobileKeyboardViewportUpdate(160));
 }
 
 window.addEventListener('orientationchange', () => {
-    if (!isMobileLike) return;
+    if (!isMobileLike || window.innerWidth >= 768) return;
     scheduleMobileKeyboardViewportUpdate(300);
 });
 
 document.getElementById('chatInput')?.addEventListener('focus', () => {
-    if (!isMobileLike) return;
+    if (!isMobileLike || window.innerWidth >= 768) return;
 
     document.body.classList.add('keyboard-open');
     document.body.classList.remove('keyboard-settling-out');
@@ -13991,7 +14026,7 @@ document.getElementById('chatInput')?.addEventListener('focus', () => {
 });
 
 document.getElementById('chatInput')?.addEventListener('blur', () => {
-    if (!isMobileLike) return;
+    if (!isMobileLike || window.innerWidth >= 768) return;
 
     document.body.classList.add('keyboard-no-transition');
     document.body.classList.remove('keyboard-settling-in');
@@ -15455,60 +15490,12 @@ body.keyboard-no-transition .chat-input-bar {
 </style>
     
 <script id="CONTEGG-PC-AUTO-FULLSCREEN">
-(function () {
-    let tried = false;
-
-    function isMobileLike() {
-        return (
-            window.matchMedia('(pointer: coarse)').matches ||
-            window.innerWidth < 900 ||
-            /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-        );
-    }
-
-    function isFullscreen() {
-        return !!(
-            document.fullscreenElement ||
-            document.webkitFullscreenElement ||
-            document.mozFullScreenElement ||
-            document.msFullscreenElement
-        );
-    }
-
-    async function enterFullscreen() {
-        if (tried) return;
-        if (isMobileLike()) return;
-        if (isFullscreen()) return;
-
-        tried = true;
-
-        const el = document.documentElement;
-
-        try {
-            if (el.requestFullscreen) {
-                await el.requestFullscreen({ navigationUI: 'hide' });
-            } else if (el.webkitRequestFullscreen) {
-                el.webkitRequestFullscreen();
-            } else if (el.mozRequestFullScreen) {
-                el.mozRequestFullScreen();
-            } else if (el.msRequestFullscreen) {
-                el.msRequestFullscreen();
-            }
-        } catch (e) {
-            console.warn('Fullscreen blocked:', e);
-        }
-    }
-
-    function onFirstUserAction() {
-        enterFullscreen();
-
-        document.removeEventListener('click', onFirstUserAction, true);
-        document.removeEventListener('keydown', onFirstUserAction, true);
-    }
-
-    document.addEventListener('click', onFirstUserAction, true); 
-    document.addEventListener('keydown', onFirstUserAction, true);
-})();
+/*
+ * V7: automatic fullscreen intentionally disabled.
+ * Entering browser fullscreen from the first click generated a burst of
+ * resize/fullscreen events and caused the responsive DOM to rebuild mid-action.
+ * Fullscreen is now entirely controlled by the browser/user.
+ */
 </script>
 
 
@@ -16468,14 +16455,21 @@ body.keyboard-no-transition .chat-input-bar {
     const originalShow = window.showChatOverlay;
     if (typeof originalShow === 'function') {
         window.showChatOverlay = function(...args) {
+            if (typeof closeInlinePostComments === 'function') {
+                closeInlinePostComments();
+            }
+
+            // Arrange once BEFORE showing. The old code reparented the same DOM
+            // both before and after every chat open.
             arrangeForViewport();
-            if (typeof closeInlinePostComments === 'function') closeInlinePostComments();
+
             const result = originalShow.apply(this, args);
-            arrangeForViewport();
+
             if (isPhone()) {
                 freezePhoneBaseHeight();
                 syncPhoneKeyboard();
             }
+
             return result;
         };
     }
@@ -16525,18 +16519,139 @@ body.keyboard-no-transition .chat-input-bar {
         }, true);
     }
 
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', syncPhoneKeyboard, { passive: true });
-        window.visualViewport.addEventListener('scroll', syncPhoneKeyboard, { passive: true });
-    }
-    window.addEventListener('resize', () => {
-        arrangeForViewport();
-        syncPhoneKeyboard();
-    }, { passive: true });
-    window.addEventListener('orientationchange', () => setTimeout(arrangeForViewport, 180), { passive: true });
+    /*
+     * V7 CENTRAL LAYOUT ENGINE
+     * One scheduler owns resize/orientation/fullscreen changes.
+     * During browser fullscreen transitions Chromium can emit many resize events
+     * in a few frames. Reparenting DOM for every one of them was causing flicker.
+     */
+    let layoutEngineRaf = 0;
+    let layoutEngineSettleTimer = 0;
+    let lastLayoutMode = '';
+    let lastLayoutWidth = 0;
+    let lastLayoutHeight = 0;
 
-    // Initial state: desktop/tablet always show chat list and empty workspace.
-    arrangeForViewport();
+    function getConteggLayoutMode() {
+        if (window.innerWidth < 768) return 'phone';
+        if (window.innerWidth < 1200) return 'tablet';
+        return 'desktop';
+    }
+
+    function runConteggLayout(reason = 'resize') {
+        const mode = getConteggLayoutMode();
+        const width = Math.round(window.innerWidth || 0);
+        const height = Math.round(window.innerHeight || 0);
+
+        const modeChanged = mode !== lastLayoutMode;
+        const meaningfulSizeChange =
+            Math.abs(width - lastLayoutWidth) >= 2 ||
+            Math.abs(height - lastLayoutHeight) >= 2;
+
+        // Ignore duplicate events emitted by the same browser layout frame.
+        if (!modeChanged && !meaningfulSizeChange && reason !== 'force') {
+            if (mode === 'phone') syncPhoneKeyboard();
+            return;
+        }
+
+        lastLayoutMode = mode;
+        lastLayoutWidth = width;
+        lastLayoutHeight = height;
+
+        document.body.classList.add('contegg-layout-settling');
+        document.documentElement.dataset.conteggLayout = mode;
+
+        arrangeForViewport();
+
+        if (mode === 'phone') {
+            syncPhoneKeyboard();
+        } else {
+            document.body.classList.remove('keyboard-open');
+            document.documentElement.style.setProperty(
+                '--contegg-phone-keyboard-shift',
+                '0px'
+            );
+        }
+
+        clearTimeout(layoutEngineSettleTimer);
+        layoutEngineSettleTimer = setTimeout(() => {
+            requestAnimationFrame(() => {
+                document.body.classList.remove('contegg-layout-settling');
+
+                // Do not reload Firestore data. Only make sure current pane remains
+                // geometrically valid after fullscreen/orientation settled.
+                if (
+                    mode !== 'phone' &&
+                    document.body.classList.contains('contegg-admin-workspace-open')
+                ) {
+                    const workspace = document.getElementById('conteggAdminWorkspace');
+                    if (workspace) {
+                        workspace.style.visibility = 'visible';
+                    }
+                }
+            });
+        }, 180);
+    }
+
+    function scheduleConteggLayout(reason = 'resize') {
+        cancelAnimationFrame(layoutEngineRaf);
+
+        layoutEngineRaf = requestAnimationFrame(() => {
+            runConteggLayout(reason);
+        });
+    }
+
+    window.__conteggScheduleLayout = scheduleConteggLayout;
+    window.__conteggRunLayout = runConteggLayout;
+
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => {
+            if (getConteggLayoutMode() === 'phone') {
+                syncPhoneKeyboard();
+            }
+        }, { passive: true });
+
+        // visualViewport.scroll is keyboard/Safari chrome related. It must never
+        // rebuild the desktop/tablet DOM.
+        window.visualViewport.addEventListener('scroll', () => {
+            if (getConteggLayoutMode() === 'phone') {
+                syncPhoneKeyboard();
+            }
+        }, { passive: true });
+    }
+
+    window.addEventListener('resize', () => {
+        scheduleConteggLayout('resize');
+    }, { passive: true });
+
+    window.addEventListener('orientationchange', () => {
+        document.body.classList.add('contegg-layout-settling');
+
+        clearTimeout(layoutEngineSettleTimer);
+        layoutEngineSettleTimer = setTimeout(() => {
+            scheduleConteggLayout('orientation');
+        }, 140);
+    }, { passive: true });
+
+    document.addEventListener('fullscreenchange', () => {
+        document.body.classList.add('contegg-layout-settling');
+
+        clearTimeout(layoutEngineSettleTimer);
+        layoutEngineSettleTimer = setTimeout(() => {
+            scheduleConteggLayout('fullscreen');
+        }, 160);
+    }, { passive: true });
+
+    document.addEventListener('webkitfullscreenchange', () => {
+        document.body.classList.add('contegg-layout-settling');
+
+        clearTimeout(layoutEngineSettleTimer);
+        layoutEngineSettleTimer = setTimeout(() => {
+            scheduleConteggLayout('fullscreen');
+        }, 160);
+    }, { passive: true });
+
+    // Initial state: exactly one initial layout pass.
+    runConteggLayout('force');
 })();
 </script>
 
@@ -18628,7 +18743,7 @@ Do not override that display state or two QR codes appear.
      * mounting, but never make startup feel frozen.
      */
     const minDuration = 2200;
-    const maxDuration = 2900;
+    const maxDuration = 3400;
 
     let progress = 4;
     let finished = false;
@@ -18674,6 +18789,32 @@ Do not override that display state or two QR codes appear.
         paint(Math.min(94, target));
     }, 70);
 
+    async function waitForInitialUiReady() {
+        const deadline = performance.now() + 950;
+
+        while (performance.now() < deadline) {
+            const chatsList = document.getElementById('chatsList');
+            const app = document.querySelector('.app-container');
+            const shell = document.getElementById('conteggDesktopShell');
+
+            const shellReady =
+                window.innerWidth < 768
+                    ? !!app
+                    : !!shell;
+
+            const chatListReady =
+                !!chatsList &&
+                (
+                    chatsList.querySelector('.chat-cell') ||
+                    chatsList.textContent.trim().length > 0
+                );
+
+            if (shellReady && chatListReady) return;
+
+            await new Promise(resolve => setTimeout(resolve, 60));
+        }
+    }
+
     async function finishStartup() {
         if (finished) return;
         finished = true;
@@ -18686,6 +18827,8 @@ Do not override that display state or two QR codes appear.
         if (remaining > 0) {
             await new Promise(resolve => setTimeout(resolve, remaining));
         }
+
+        await waitForInitialUiReady();
 
         paint(100);
 
@@ -18730,425 +18873,131 @@ Do not override that display state or two QR codes appear.
 })();
 </script>
 
-</body>
-</html>}
 
-.contegg-qr-username {
-    margin-top:3px;
-    color:var(--text-secondary);
-    font-size:13px;
-}
-
-.contegg-qr-stage {
-    position:relative;
-    width:272px;
-    height:272px;
-    margin:18px auto 14px;
-    padding:16px;
-    border-radius:26px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    background:#fff;
-    box-shadow:0 16px 42px rgba(0,0,0,.36);
-}
-
-.contegg-qr-code {
-    position:relative;
-    width:240px;
-    height:240px;
-    overflow:hidden;
-    flex:0 0 240px;
-}
-
+<style id="CONTEGG-LAYOUT-ENGINE-V7-CSS">
 /*
-QRCode.js internally creates BOTH canvas + img.
-The library hides the canvas after converting it to the final image.
-Do not override that display state or two QR codes appear.
-*/
-.contegg-qr-code img {
-    display:block;
-    width:240px !important;
-    height:240px !important;
-    max-width:240px !important;
-    max-height:240px !important;
-    object-fit:contain;
+ * During a resize/fullscreen/tab transition, geometry changes are already being
+ * performed by the browser. Running UI transitions at the same time forces
+ * repeated compositing/layout. Freeze them briefly.
+ */
+body.contegg-layout-settling *,
+body.contegg-tab-switching * {
+    transition-property: none !important;
+    animation-play-state: paused !important;
+    scroll-behavior: auto !important;
 }
 
-.contegg-qr-code canvas {
-    width:240px !important;
-    height:240px !important;
-    max-width:240px !important;
-    max-height:240px !important;
+body.contegg-layout-settling .chat-cell,
+body.contegg-layout-settling #conteggDesktopShell,
+body.contegg-layout-settling #conteggDesktopWorkspace,
+body.contegg-layout-settling #conteggDesktopChatPane,
+body.contegg-layout-settling #conteggDesktopRightPanel,
+body.contegg-layout-settling .app-container,
+body.contegg-layout-settling #chatOverlay,
+body.contegg-layout-settling #conteggAdminWorkspace {
+    transform: none !important;
 }
 
-/* Once QRCode.js has produced its img, only that visible result is needed. */
-.contegg-qr-code img[style*="display: block"] ~ canvas {
-    display:none !important;
-}
-
-.contegg-qr-avatar {
-    position:absolute;
-    left:50%;
-    top:50%;
-    width:46px;
-    height:46px;
-    transform:translate(-50%,-50%);
-    border:5px solid #fff;
-    border-radius:50%;
-    overflow:hidden;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    background:linear-gradient(135deg,#0a84ff,#5e5ce6);
-    color:#fff;
-    font-size:17px;
-    font-weight:700;
-    box-shadow:0 2px 10px rgba(0,0,0,.24);
-    z-index:3;
-}
-
-.contegg-qr-avatar img {
-    width:100%;
-    height:100%;
-    object-fit:cover;
-}
-
-.contegg-qr-description {
-    max-width:310px;
-    margin:0 auto 14px;
-    color:var(--text-secondary);
-    font-size:12px;
-    line-height:1.4;
-}
-
-.contegg-qr-actions {
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:8px;
-}
-
-.contegg-qr-refreshing {
-    animation:conteggQrRefresh .24s ease;
-}
-
-@keyframes conteggQrRefresh {
-    0% { transform:scale(.96); opacity:.55; }
-    100% { transform:scale(1); opacity:1; }
-}
-
-.contegg-qr-error {
-    color:#111;
-    font-size:12px;
-}
-
-@media (max-width:480px) {
-    .contegg-qr-stage {
-        width:248px;
-        height:248px;
-        padding:14px;
-    }
-
-    .contegg-qr-code {
-        width:220px !important;
-        height:220px !important;
-        flex-basis:220px !important;
-    }
-
-    .contegg-qr-code img,
-    .contegg-qr-code canvas {
-        width:220px !important;
-        height:220px !important;
-        max-width:220px !important;
-        max-height:220px !important;
-    }
-
-    .contegg-qr-actions {
-        grid-template-columns:1fr;
-    }
-}
-</style>
-
-
-<style id="CONTEGG-QR-V4-HARD-CONTAINMENT">
-#profileQrModal .contegg-qr-stage {
-    overflow:hidden !important;
-}
-
-#profileQrCode {
-    overflow:hidden !important;
-}
-
-#profileQrCode > * {
-    margin:0 !important;
-}
-</style>
-
-
-<style id="CONTEGG-V5-OPTIMIZATION-STABILITY">
-
-/* =========================================================
-   GLOBAL STABILITY
-   ========================================================= */
-
-/* Old experimental containment/scroll anchoring created extra repaint and
-   clipping problems in long chat feeds. Explicit scroll preservation in JS
-   is enough; keep this container simple. */
-#chatMessages.chat-messages {
-    contain: none !important;
-    overflow-anchor: none !important;
-    will-change: auto !important;
-}
-
-#chatMessages.chat-messages *,
-#chatMessages .msg,
-#chatMessages .date-divider,
-#chatMessages .media-card {
-    overflow-anchor: none !important;
-}
-
-/* Avoid GPU layers for every card. */
-.chat-cell,
-.msg,
-.media-card,
-.admin-panel,
-.contegg-admin-user-row {
-    will-change: auto !important;
-}
-
-/* =========================================================
-   ADMIN WORKSPACE — ONE FIXED CENTRAL VIEW
-   ========================================================= */
+/* Left pages occupy the exact same box, so Chats/Profile switching cannot
+   change the parent geometry. */
 @media (min-width:768px) {
-    body.contegg-admin-workspace-open #conteggDesktopChatPane {
-        position: relative !important;
-        overflow: hidden !important;
-        min-width: 0 !important;
-        min-height: 0 !important;
+    #conteggDesktopLeft {
+        overflow:hidden !important;
     }
 
-    body.contegg-admin-workspace-open #conteggAdminWorkspace {
-        position: absolute !important;
-        inset: 0 !important;
-        display: flex !important;
-        flex-direction: column !important;
-        min-width: 0 !important;
-        min-height: 0 !important;
-        overflow: hidden !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-        transform: none !important;
-        transition: none !important;
-        animation: none !important;
-        contain: none !important;
-        isolation: isolate;
+    #conteggDesktopLeft > .app-container {
+        height:100% !important;
+        min-height:0 !important;
+        overflow:hidden !important;
     }
 
-    .contegg-admin-workspace-header {
-        position: relative !important;
-        z-index: 2;
-        flex: 0 0 52px !important;
-        height: 52px !important;
-        min-height: 52px !important;
-        transform: none !important;
-        transition: none !important;
-        animation: none !important;
+    #conteggDesktopLeft .content-area {
+        position:relative !important;
+        min-height:0 !important;
+        overflow:hidden !important;
     }
 
-    .contegg-admin-workspace-content {
-        position: relative !important;
-        height: auto !important;
-        flex: 1 1 auto !important;
-        min-height: 0 !important;
-        overflow-y: auto !important;
-        overflow-x: hidden !important;
-        overscroll-behavior: contain !important;
-        contain: none !important;
-        transform: none !important;
-        transition: none !important;
-        animation: none !important;
-        padding-bottom: 34px !important;
+    #conteggDesktopLeft .page {
+        position:absolute !important;
+        inset:0 !important;
+        width:100% !important;
+        height:100% !important;
+        min-height:0 !important;
+        overflow-y:auto !important;
+        overflow-x:hidden !important;
+        opacity:0 !important;
+        visibility:hidden !important;
+        pointer-events:none !important;
+        transform:none !important;
+        transition:none !important;
     }
 
-    .contegg-admin-workspace-content > .admin-panel,
-    .contegg-admin-users-list,
-    .contegg-admin-one-time-codes,
-    .contegg-admin-user-row {
-        contain: none !important;
-        transform: none !important;
-        animation: none !important;
+    #conteggDesktopLeft .page.active {
+        opacity:1 !important;
+        visibility:visible !important;
+        pointer-events:auto !important;
     }
 
-    /* Lists have their own scroll area but never collapse while loading. */
-    .contegg-admin-users-list {
-        min-height: 90px !important;
-        max-height: 300px !important;
-        overflow-y: auto !important;
-    }
-
-    .contegg-admin-one-time-codes {
-        min-height: 54px !important;
-        max-height: 210px !important;
-        overflow-y: auto !important;
+    /* Navbar and tabbar remain outside the page's own scroll geometry. */
+    #conteggDesktopLeft .navbar,
+    #conteggDesktopLeft .tabbar {
+        flex:0 0 auto !important;
     }
 }
 
-/* =========================================================
-   QR MODAL — ALWAYS FITS THE VIEWPORT
-   ========================================================= */
-
-#profileQrModal.modal-overlay {
-    align-items: center !important;
-    justify-content: center !important;
-    overflow: hidden !important;
-    padding:
-        max(14px, env(safe-area-inset-top, 0px))
-        max(14px, env(safe-area-inset-right, 0px))
-        max(14px, env(safe-area-inset-bottom, 0px))
-        max(14px, env(safe-area-inset-left, 0px)) !important;
+/* Avoid expensive backdrop blur while the window is physically resizing.
+   It is restored after ~180 ms. */
+body.contegg-layout-settling .contegg-side-tabs,
+body.contegg-layout-settling .contegg-message-menu,
+body.contegg-layout-settling .contegg-reaction-strip,
+body.contegg-layout-settling .modal-sheet {
+    backdrop-filter:none !important;
+    -webkit-backdrop-filter:none !important;
 }
 
-#profileQrModal .contegg-qr-sheet {
-    width: min(390px, calc(100vw - 28px)) !important;
-    max-width: 390px !important;
-    height: auto !important;
-    max-height: calc(100dvh - 28px) !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-    border-radius: 24px !important;
-    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
-    transform: translateY(10px) scale(.99) !important;
-    scrollbar-width: none;
-}
-
-#profileQrModal .contegg-qr-sheet::-webkit-scrollbar {
-    display: none;
-}
-
-#profileQrModal.show .contegg-qr-sheet {
-    transform: translateY(0) scale(1) !important;
-}
-
-#profileQrModal .contegg-qr-content {
-    padding: 0 18px 18px !important;
-}
-
-/*
-   QR size adapts to BOTH viewport width and height.
-   On a normal desktop it remains 240px.
-   On short windows it shrinks instead of being clipped.
-*/
-#profileQrModal .contegg-qr-stage {
-    --contegg-qr-visible-size: clamp(170px, 30dvh, 240px);
-
-    width: calc(var(--contegg-qr-visible-size) + 28px) !important;
-    height: calc(var(--contegg-qr-visible-size) + 28px) !important;
-    max-width: calc(100vw - 74px) !important;
-    max-height: calc(100dvh - 300px) !important;
-    min-width: 198px;
-    min-height: 198px;
-    padding: 14px !important;
-    margin: 14px auto 12px !important;
-    border-radius: 24px !important;
-    overflow: hidden !important;
-    flex: 0 0 auto !important;
-}
-
-#profileQrModal #profileQrCode {
-    width: var(--contegg-qr-visible-size) !important;
-    height: var(--contegg-qr-visible-size) !important;
-    max-width: calc(100vw - 102px) !important;
-    max-height: calc(100dvh - 328px) !important;
-    overflow: hidden !important;
-    flex: 0 0 auto !important;
-}
-
-#profileQrModal #profileQrCode img,
-#profileQrModal #profileQrCode canvas {
-    width: 100% !important;
-    height: 100% !important;
-    max-width: 100% !important;
-    max-height: 100% !important;
-    object-fit: contain !important;
-}
-
-#profileQrModal #profileQrCode canvas {
-    display: none !important;
-}
-
-#profileQrModal .contegg-qr-avatar {
-    width: 42px !important;
-    height: 42px !important;
-    border-width: 4px !important;
-}
-
-#profileQrModal .contegg-qr-description {
-    margin-bottom: 11px !important;
-}
-
-#profileQrModal .contegg-qr-actions {
-    gap: 7px !important;
-}
-
-#profileQrModal .contegg-qr-refreshing {
-    animation: none !important;
-}
-
-@media (max-height:650px) and (min-width:481px) {
-    #profileQrModal .contegg-qr-name {
-        font-size: 16px !important;
+/* Chromium can keep stale composited textures around after document fullscreen.
+   Keep only the few large structural layers composited. */
+@media (min-width:768px) {
+    #conteggDesktopShell {
+        backface-visibility:hidden;
     }
 
-    #profileQrModal .contegg-qr-stage {
-        --contegg-qr-visible-size: clamp(160px, 26dvh, 205px);
-        margin-top: 9px !important;
-        margin-bottom: 8px !important;
+    #conteggDesktopWorkspace,
+    #conteggDesktopChatPane,
+    #conteggDesktopRightPanel {
+        will-change:auto !important;
     }
 
-    #profileQrModal .contegg-qr-description {
-        font-size: 10px !important;
-        margin-bottom: 8px !important;
+    .chat-cell,
+    .msg,
+    .contegg-emoji-btn,
+    .admin-panel {
+        will-change:auto !important;
+        backface-visibility:visible !important;
     }
 }
 
-@media (max-width:480px) {
-    #profileQrModal.modal-overlay {
-        align-items: center !important;
-    }
-
-    #profileQrModal .contegg-qr-sheet {
-        width: calc(100vw - 20px) !important;
-        max-height: calc(100dvh - 20px) !important;
-        border-radius: 22px !important;
-    }
-
-    #profileQrModal .contegg-qr-stage {
-        --contegg-qr-visible-size: min(220px, calc(100vw - 76px));
-        width: calc(var(--contegg-qr-visible-size) + 24px) !important;
-        height: calc(var(--contegg-qr-visible-size) + 24px) !important;
-        min-width: 0 !important;
-        min-height: 0 !important;
-        padding: 12px !important;
-    }
-
-    #profileQrModal #profileQrCode {
-        width: var(--contegg-qr-visible-size) !important;
-        height: var(--contegg-qr-visible-size) !important;
-        max-width: none !important;
-        max-height: none !important;
-    }
-
-    #profileQrModal .contegg-qr-actions {
-        grid-template-columns: 1fr !important;
-    }
+/* Fullscreen must use the same geometry as ordinary browser mode. */
+:fullscreen body,
+:-webkit-full-screen body {
+    width:100% !important;
+    height:100% !important;
 }
 
-/* Reduced-motion also helps old/iPad Safari during heavy DOM updates. */
-@media (prefers-reduced-motion: reduce) {
-    #conteggAdminWorkspace *,
-    #profileQrModal * {
-        animation-duration: 0.001ms !important;
-        transition-duration: 0.001ms !important;
+:fullscreen #conteggDesktopShell,
+:-webkit-full-screen #conteggDesktopShell {
+    width:100vw !important;
+    height:100vh !important;
+    height:100dvh !important;
+}
+
+/* No animated page entrance on desktop/tablet. It looks nice on one page but
+   is expensive and causes flashing when pages are reactivated. */
+@media (min-width:768px) {
+    #pageChats,
+    #pageProfile,
+    #conteggAdminWorkspace {
+        animation:none !important;
     }
 }
 </style>
