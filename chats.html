@@ -6017,6 +6017,15 @@ function settleChatAfterInputChange(options = {}) {
 
                             const commentsCount = msgEl?.querySelector(`#commentsCount_${change.doc.id}`);
                             if (commentsCount) commentsCount.textContent = msg.commentsCount || 0;
+
+                            const commentsLabel = msgEl?.querySelector(`#commentsLabel_${change.doc.id}`);
+                            if (commentsLabel) {
+                                const count = msg.commentsCount || 0;
+                                commentsLabel.textContent = count > 0 ? `${count} ${formatCommentsWord(count)}` : 'Прокомментировать';
+                            }
+
+                            const viewsCount = msgEl?.querySelector(`#viewsCount_${change.doc.id}`);
+                            if (viewsCount) viewsCount.textContent = msg.viewsCount || 0;
                         }
                     });
                 }
@@ -6394,20 +6403,38 @@ if (msg.notificationAction === 'terminate_device' && msg.actionDeviceId) {
         html += '</div>';
     }
     
-    if (currentChatIsChannel && currentChannelCommentsEnabled && !msg.isSystemMessage) {
-    html += `
-        <button 
-            class="post-comments-btn" 
-            onclick="event.stopPropagation(); openPostComments('${id}')"
-        >
-            <i class="fas fa-comment"></i>
-            Комментарии
-            <span id="commentsCount_${id}">${msg.commentsCount || 0}</span>
-        </button>
-    `;
-}
-    
-    html += `<div class="msg-time ${hasVisualMedia && !hasCaption ? 'msg-time-overlay' : ''}">${buildMessageTimeText(msg, isOut, d)}</div>`;
+    const isChannelPost = currentChatIsChannel && !msg.isSystemMessage;
+
+    if (isChannelPost) {
+        html += `
+            <div class="msg-time channel-post-meta">
+                <span class="channel-post-views" title="Просмотры">
+                    <i class="fas fa-eye"></i>
+                    <span id="viewsCount_${id}">${msg.viewsCount || 0}</span>
+                </span>
+                <span class="channel-post-time">${timeFormat(d)}</span>
+            </div>
+        `;
+
+        if (currentChannelCommentsEnabled) {
+            const commentsCount = msg.commentsCount || 0;
+            html += `
+                <button
+                    class="post-comments-btn"
+                    onclick="event.stopPropagation(); openPostComments('${id}')"
+                >
+                    <span class="post-comments-left">
+                        <i class="far fa-comment"></i>
+                        <span class="post-comments-label" id="commentsLabel_${id}">${commentsCount > 0 ? `${commentsCount} ${formatCommentsWord(commentsCount)}` : 'Прокомментировать'}</span>
+                    </span>
+                    <i class="fas fa-chevron-right post-comments-chevron"></i>
+                    <span id="commentsCount_${id}" class="post-comments-count-source">${commentsCount}</span>
+                </button>
+            `;
+        }
+    } else {
+        html += `<div class="msg-time ${hasVisualMedia && !hasCaption ? 'msg-time-overlay' : ''}">${buildMessageTimeText(msg, isOut, d)}</div>`;
+    }
     div.innerHTML = html;
     
     // Привязываем события для аудио после добавления в DOM
@@ -6670,6 +6697,98 @@ div.addEventListener('touchend', (e) => {
 }, { passive: true });
 
 container.appendChild(div);
+
+if (currentChatIsChannel && !msg.isSystemMessage) {
+    div.classList.add('channel-post');
+    observeChannelPostForView(div, id);
+}
+}
+
+function formatCommentsWord(count) {
+    const n = Math.abs(Number(count) || 0) % 100;
+    const n1 = n % 10;
+    if (n > 10 && n < 20) return 'комментариев';
+    if (n1 === 1) return 'комментарий';
+    if (n1 >= 2 && n1 <= 4) return 'комментария';
+    return 'комментариев';
+}
+
+const registeringPostViews = new Set();
+let channelPostViewsObserver = null;
+let channelPostViewsObserverRoot = null;
+
+function ensureChannelPostViewsObserver() {
+    const root = document.getElementById('chatMessages');
+    if (!root) return null;
+
+    if (channelPostViewsObserver && channelPostViewsObserverRoot === root) {
+        return channelPostViewsObserver;
+    }
+
+    if (channelPostViewsObserver) channelPostViewsObserver.disconnect();
+    channelPostViewsObserverRoot = root;
+
+    channelPostViewsObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+
+            const visibleHeight = entry.intersectionRect?.height || 0;
+            const fullHeight = entry.boundingClientRect?.height || 0;
+            const neededHeight = Math.min(120, Math.max(36, fullHeight * 0.28));
+            if (visibleHeight < neededHeight) return;
+
+            const postId = entry.target?.dataset?.msgId;
+            if (!postId) return;
+
+            channelPostViewsObserver.unobserve(entry.target);
+            registerPostView(postId);
+        });
+    }, {
+        root,
+        threshold: [0.01, 0.1, 0.25, 0.5]
+    });
+
+    return channelPostViewsObserver;
+}
+
+function observeChannelPostForView(element, postId) {
+    if (!element || !postId || !currentUser?.uid) return;
+    element.dataset.viewPostId = postId;
+    requestAnimationFrame(() => ensureChannelPostViewsObserver()?.observe(element));
+}
+
+async function registerPostView(postId) {
+    if (!currentUser?.uid || !currentChatId || !postId) return;
+
+    const key = `${currentChatId}:${postId}:${currentUser.uid}`;
+    if (registeringPostViews.has(key)) return;
+    registeringPostViews.add(key);
+
+    try {
+        const postRef = db.collection('chats')
+            .doc(currentChatId)
+            .collection('messages')
+            .doc(postId);
+        const viewRef = postRef.collection('views').doc(currentUser.uid);
+
+        await db.runTransaction(async transaction => {
+            const viewSnap = await transaction.get(viewRef);
+            if (viewSnap.exists) return;
+
+            transaction.set(viewRef, {
+                uid: currentUser.uid,
+                viewedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+
+            transaction.update(postRef, {
+                viewsCount: firebase.firestore.FieldValue.increment(1)
+            });
+        });
+    } catch (error) {
+        console.warn('registerPostView error:', error);
+    } finally {
+        registeringPostViews.delete(key);
+    }
 }
 
 function updateRenderedMessage(id, msg) {
@@ -9981,44 +10100,103 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
     background: rgba(10,132,255,0.28);
 }
 
-.post-comments-btn {
-    width: 100%;
-    margin-top: 8px;
-    border: none;
-    border-radius: 16px;
-    padding: 9px 12px;
-    background: rgba(255, 255, 255, 0.08);
-    color: rgba(245,245,247,0.86);
-    font-size: 13px;
-    font-weight: 600;
-    font-family: inherit;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    cursor: pointer;
+.channel-post .msg-reactions {
+    margin: 10px 10px 7px !important;
 }
 
-.post-comments-btn i {
-    color: var(--accent);
+.channel-post-meta {
+    position: static !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 6px !important;
+    margin: 5px 12px 7px !important;
+    padding: 0 !important;
+    min-height: 18px;
+    color: rgba(235,235,245,0.58) !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+    background: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 
-.post-comments-btn span {
-    min-width: 18px;
-    height: 18px;
-    border-radius: 999px;
-    padding: 0 6px;
-    background: rgba(10, 132, 255, 0.22);
-    color: var(--accent);
+.channel-post-views {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.channel-post-views i {
     font-size: 11px;
+    color: rgba(235,235,245,0.66);
+}
+
+.channel-post-time {
+    white-space: nowrap;
+}
+
+.post-comments-btn {
+    width: 100%;
+    min-height: 42px;
+    margin: 0 !important;
+    padding: 0 12px !important;
+    border: none !important;
+    border-top: 0.5px solid rgba(255,255,255,0.11) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: rgba(235,235,245,0.62) !important;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease !important;
+}
+
+.post-comments-left {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.post-comments-left > i {
+    width: 18px;
+    text-align: center;
+    font-size: 17px;
+    color: rgba(235,235,245,0.54) !important;
+}
+
+.post-comments-label {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.post-comments-chevron {
+    flex-shrink: 0;
+    font-size: 13px;
+    color: rgba(235,235,245,0.42) !important;
+}
+
+.post-comments-count-source {
+    display: none !important;
+}
+
+.post-comments-btn:hover {
+    background: rgba(255,255,255,0.045) !important;
+    color: rgba(245,245,247,0.84) !important;
 }
 
 .post-comments-btn:active {
-    transform: scale(0.98);
-    background: rgba(255,255,255,0.12);
+    transform: none !important;
+    background: rgba(255,255,255,0.075) !important;
 }
 
 .comments-sheet {
