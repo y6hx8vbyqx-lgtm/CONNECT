@@ -3381,13 +3381,22 @@ async function sendEditedPhoto() {
 
 async function uploadImageBlobToStorage(blob) {
     const safeName = `${currentUser.uid}_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+    const path = `images/${safeName}`;
+    const fileRef = storage.ref().child(path);
 
-    const fileRef = storage.ref().child(`images/${safeName}`);
-
-    const snapshot = await fileRef.put(blob, {
-        contentType: 'image/jpeg',
-        cacheControl: 'public,max-age=31536000'
-    });
+    // Desktop Chromium occasionally fails a Storage PUT with custom metadata while
+    // the same upload succeeds without it. Retry once without metadata instead of
+    // turning the whole photo flow into an error.
+    let snapshot;
+    try {
+        snapshot = await fileRef.put(blob, {
+            contentType: blob.type || 'image/jpeg',
+            cacheControl: 'public,max-age=31536000'
+        });
+    } catch (firstError) {
+        console.warn('Image upload with metadata failed, retrying:', firstError);
+        snapshot = await fileRef.put(blob);
+    }
 
     return await snapshot.ref.getDownloadURL();
 }
@@ -6200,6 +6209,43 @@ function seekAudio(event, msgId, duration) {
     }
 }
     
+function getFirebaseStoragePathFromDownloadUrl(url) {
+    try {
+        const parsed = new URL(url, window.location.href);
+        if (!/firebasestorage\.googleapis\.com$/i.test(parsed.hostname)) return null;
+        const match = parsed.pathname.match(/\/o\/([^/?]+)/);
+        if (!match) return null;
+        return decodeURIComponent(match[1]);
+    } catch (_) {
+        return null;
+    }
+}
+
+async function recoverFirebaseImage(img) {
+    if (!img || img.dataset.firebaseRecovering === '1' || img.dataset.firebaseRecovered === '1') return;
+    const path = getFirebaseStoragePathFromDownloadUrl(img.currentSrc || img.src || '');
+    if (!path) return;
+
+    img.dataset.firebaseRecovering = '1';
+    try {
+        // Ask Firebase for the current download URL again. This repairs images whose
+        // stored URL contains an old download token without changing message data.
+        const freshUrl = await storage.ref().child(path).getDownloadURL();
+        img.dataset.firebaseRecovered = '1';
+        img.src = freshUrl;
+    } catch (e) {
+        console.warn('Firebase image recovery failed:', path, e);
+    } finally {
+        delete img.dataset.firebaseRecovering;
+    }
+}
+
+// Works for message photos, avatars and any other Firebase-backed image added later.
+document.addEventListener('error', (event) => {
+    const img = event.target;
+    if (img instanceof HTMLImageElement) recoverFirebaseImage(img);
+}, true);
+
 function renderMessage(id, msg, options = {}) {
     const container = document.getElementById('chatMessages');
     if (msg.deletedFor?.includes(currentUser.uid)) return;
@@ -6274,6 +6320,8 @@ if (msg.videoUrl) {
                 class="msg-image" 
                 onclick="event.stopPropagation(); viewImage(this.src)" 
                 onload="fitChatMedia(this)"
+                decoding="async"
+                referrerpolicy="no-referrer"
                 alt="Photo"
             >
         </div>
@@ -10956,6 +11004,28 @@ body.keyboard-no-transition .chat-input-bar {
     }
 }
 
+/* Composer scrollbar on tablet + desktop. */
+@media (min-width: 768px) {
+    #chatInput.chat-input {
+        overflow-y: auto !important;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(235,235,245,.22) transparent;
+    }
+    #chatInput.chat-input::-webkit-scrollbar { width: 7px; }
+    #chatInput.chat-input::-webkit-scrollbar-track { background: transparent; margin: 7px 0; }
+    #chatInput.chat-input::-webkit-scrollbar-thumb {
+        min-height: 26px;
+        border: 2px solid transparent;
+        border-radius: 999px;
+        background: rgba(235,235,245,.20);
+        background-clip: padding-box;
+    }
+    #chatInput.chat-input::-webkit-scrollbar-thumb:hover {
+        background: rgba(235,235,245,.34);
+        background-clip: padding-box;
+    }
+}
+
 /* ---------------- WIDE DESKTOP RIGHT PANEL ---------------- */
 @media (min-width: 1200px) {
     #conteggDesktopChatPane {
@@ -11078,6 +11148,36 @@ body.keyboard-no-transition .chat-input-bar {
     }
 
     #conteggSidePanelContent::-webkit-scrollbar-thumb:hover {
+        background: rgba(235,235,245,.34);
+        background-clip: padding-box;
+    }
+
+    /* Message composer: same quiet translucent capsule instead of the white OS scrollbar. */
+    #chatInput.chat-input {
+        overflow-y: auto !important;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(235,235,245,.22) transparent;
+        scrollbar-gutter: auto;
+    }
+
+    #chatInput.chat-input::-webkit-scrollbar {
+        width: 7px;
+    }
+
+    #chatInput.chat-input::-webkit-scrollbar-track {
+        background: transparent;
+        margin: 7px 0;
+    }
+
+    #chatInput.chat-input::-webkit-scrollbar-thumb {
+        min-height: 26px;
+        border: 2px solid transparent;
+        border-radius: 999px;
+        background: rgba(235,235,245,.20);
+        background-clip: padding-box;
+    }
+
+    #chatInput.chat-input::-webkit-scrollbar-thumb:hover {
         background: rgba(235,235,245,.34);
         background-clip: padding-box;
     }
