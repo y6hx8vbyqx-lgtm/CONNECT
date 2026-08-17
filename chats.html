@@ -2417,11 +2417,45 @@ body {
                 <input type="text" id="editName" maxlength="50">
             </div>
             <div class="input-row">
+                <label>Username</label>
+                <input type="text" id="editUsername" maxlength="32" placeholder="username" autocomplete="off">
+                <div style="font-size:11px;color:var(--text-tertiary);margin-top:5px;">
+                    3–32 символа: латиница, цифры, точка и _
+                </div>
+            </div>
+            <div class="input-row">
                 <label>Описание</label>
                 <textarea id="editBio" placeholder="Расскажите о себе..." maxlength="200"></textarea>
             </div>
             <button class="btn btn-primary" onclick="saveProfile()">Сохранить</button>
             <button class="btn btn-secondary" onclick="closeProfileEdit()">Отмена</button>
+        </div>
+    </div>
+</div>
+
+
+<div class="modal-overlay" id="changeEmailModal">
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Изменить почту</div>
+        <div class="modal-content">
+            <div class="input-row">
+                <label>Новая почта</label>
+                <input type="email" id="newAccountEmail" placeholder="new@example.com" autocomplete="email">
+            </div>
+
+            <div class="input-row">
+                <label>Текущий пароль</label>
+                <input type="password" id="emailChangePassword" placeholder="Подтвердите текущим паролем" autocomplete="current-password">
+                <button class="password-toggle" onclick="togglePasswordVisibility('emailChangePassword', this)">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </div>
+
+            <div id="emailChangeError" style="display:none;color:var(--danger);font-size:13px;margin:4px 2px 12px;"></div>
+
+            <button class="btn btn-primary" onclick="changeAccountEmail()">Изменить почту</button>
+            <button class="btn btn-secondary" onclick="closeChangeEmailModal()">Отмена</button>
         </div>
     </div>
 </div>
@@ -2872,6 +2906,11 @@ const MAX_IMAGE_SIZE_MB = 5;
 const JPEG_QUALITY = 0.75;
 
 const DEVELOPER_EMAILS = ['hidehrouden@gmail.com', 'wostdi@icloud.com'];
+const CONTEGG_SUPER_ADMIN_EMAIL = 'wostdi@icloud.com';
+
+let usersDirectoryListener = null;
+let usersDirectoryRefreshTimer = null;
+let currentAdminTargetUser = null;
 
     async function uploadFileToStorage(file, folder = 'uploads') {
     const uploaded = await uploadToSupabaseStorage(file, folder, {
@@ -5420,8 +5459,17 @@ auth.onAuthStateChanged(async user => {
 
     await loadUserData();
 
+    if (userData?.isBlocked === true && !isConteggSuperAdmin()) {
+        localStorage.setItem('contegg_blocked_notice', '1');
+        alert('Аккаунт заблокирован');
+        await auth.signOut();
+        location.href = 'index.html?blocked=1';
+        return;
+    }
+
 checkIsDeveloper();
 startPresenceTracking();
+startUsersDirectoryListener();
 
 await getOrCreateSystemChat(currentUser.uid).catch(console.error);
 loadChats().catch(console.error);
@@ -5459,7 +5507,11 @@ async function loadUserData() {
             avatarBase64: null,
             blockedUsers: [],
             pinnedChats: [],
-            isAdmin: false
+            isAdmin: false,
+            isBlocked: false,
+            verified: false,
+            verificationBadgeUrl: '',
+            usernameLower: ('user' + Date.now().toString(36)).toLowerCase()
         };
 
         await db.collection('users').doc(currentUser.uid).set(userData);
@@ -5491,6 +5543,26 @@ async function loadUserData() {
             repair.email = userData.email;
         }
 
+        if (!userData.usernameLower && userData.username) {
+            userData.usernameLower = String(userData.username).toLowerCase();
+            repair.usernameLower = userData.usernameLower;
+        }
+
+        if (userData.isBlocked === undefined) {
+            userData.isBlocked = false;
+            repair.isBlocked = false;
+        }
+
+        if (userData.verified === undefined) {
+            userData.verified = false;
+            repair.verified = false;
+        }
+
+        if (userData.verificationBadgeUrl === undefined) {
+            userData.verificationBadgeUrl = '';
+            repair.verificationBadgeUrl = '';
+        }
+
         userData.blockedUsers = userData.blockedUsers || [];
         userData.pinnedChats = userData.pinnedChats || [];
         userData.avatarUrl = userData.avatarUrl || null;
@@ -5505,6 +5577,136 @@ async function loadUserData() {
     pinnedChats = userData.pinnedChats || [];
 }
     
+
+function isConteggSuperAdmin() {
+    return !!(
+        currentUser?.email &&
+        currentUser.email.toLowerCase() === CONTEGG_SUPER_ADMIN_EMAIL
+    );
+}
+
+function normalizePublicUserData(data, uid = '') {
+    const raw = {
+        uid,
+        ...(data || {})
+    };
+
+    if (raw.isBlocked === true) {
+        return {
+            ...raw,
+            uid: raw.uid || uid,
+            originalUsername: raw.username || '',
+            originalDisplayName: raw.displayName || '',
+            username: 'deleted_account',
+            displayName: 'Удалённый аккаунт',
+            bio: '(аккаунт заблокирован)',
+            avatarBase64: null,
+            avatarUrl: null,
+            verified: false,
+            verificationBadgeUrl: '',
+            accountBlocked: true,
+            isBlocked: true
+        };
+    }
+
+    return {
+        ...raw,
+        accountBlocked: false,
+        verified: raw.verified === true,
+        verificationBadgeUrl: raw.verificationBadgeUrl || ''
+    };
+}
+
+function renderVerificationBadge(user, size = 12) {
+    if (!user || user.accountBlocked || user.isBlocked) return '';
+
+    const verified = user.verified === true || user.isAdmin === true;
+    if (!verified) return '';
+
+    if (user.verificationBadgeUrl) {
+        return `<img
+            class="contegg-verification-badge-image"
+            src="${esc(user.verificationBadgeUrl)}"
+            alt="verified"
+            style="width:${size}px;height:${size}px;"
+        >`;
+    }
+
+    return `<i class="fas fa-check-circle verified-icon contegg-verification-check" style="font-size:${size}px;"></i>`;
+}
+
+function renderBlockedAccountMark(user) {
+    return user?.accountBlocked || user?.isBlocked
+        ? '<span class="contegg-deleted-account-mark">аккаунт заблокирован</span>'
+        : '';
+}
+
+function invalidateUserCaches(uid = '') {
+    if (uid) {
+        delete usersCache[uid];
+        delete usersCachePromises[uid];
+    } else {
+        usersCache = {};
+        usersCachePromises = {};
+    }
+}
+
+function scheduleDirectoryUiRefresh() {
+    clearTimeout(usersDirectoryRefreshTimer);
+    usersDirectoryRefreshTimer = setTimeout(async () => {
+        try {
+            await loadChats();
+
+            if (currentChatId && document.body.classList.contains('chat-open')) {
+                await loadMessages();
+            }
+
+            if (document.getElementById('pageProfile')?.classList.contains('active')) {
+                renderProfile();
+            }
+        } catch (e) {
+            console.warn('directory UI refresh:', e);
+        }
+    }, 120);
+}
+
+function startUsersDirectoryListener() {
+    if (usersDirectoryListener) {
+        usersDirectoryListener();
+        usersDirectoryListener = null;
+    }
+
+    usersDirectoryListener = db.collection('users').onSnapshot(async snap => {
+        allUsers = [];
+
+        for (const doc of snap.docs) {
+            const raw = { uid: doc.id, ...doc.data() };
+            const normalized = normalizePublicUserData(raw, doc.id);
+
+            if (doc.id !== currentUser?.uid) {
+                allUsers.push(normalized);
+            }
+
+            usersCache[doc.id] = normalized;
+            delete usersCachePromises[doc.id];
+
+            if (doc.id === currentUser?.uid && raw.isBlocked === true && !isConteggSuperAdmin()) {
+                try {
+                    localStorage.setItem('contegg_blocked_notice', '1');
+                    alert('Аккаунт заблокирован');
+                    await auth.signOut();
+                    location.href = 'index.html?blocked=1';
+                } catch (_) {}
+                return;
+            }
+        }
+
+        scheduleDirectoryUiRefresh();
+    }, error => {
+        console.warn('users directory listener error:', error);
+    });
+}
+
 async function loadAdminUsers() {
     const snap = await db.collection('users').where('isAdmin', '==', true).get();
     adminUsers = [];
@@ -5549,10 +5751,12 @@ const data = snap.exists ? {
     isAdmin: false
 };
 
-            usersCache[uid] = data;
+            const normalized = normalizePublicUserData(data, uid);
+
+            usersCache[uid] = normalized;
             delete usersCachePromises[uid];
 
-            return data;
+            return normalized;
         })
         .catch(e => {
             delete usersCachePromises[uid];
@@ -5576,7 +5780,9 @@ async function loadAllUsers() {
     const snap = await db.collection('users').get();
     allUsers = [];
     snap.forEach(doc => {
-        if (doc.id !== currentUser.uid) allUsers.push({ uid: doc.id, ...doc.data() });
+        if (doc.id !== currentUser.uid) {
+            allUsers.push(normalizePublicUserData({ uid: doc.id, ...doc.data() }, doc.id));
+        }
     });
 }
 
@@ -5700,7 +5906,16 @@ const systemChats = chats.filter(c => c.type === 'system');
         };
         unpinned.sort(sortByTime);
         
-        const sortedChats = [...systemChats, ...pinned, ...unpinned];
+        let sortedChats = [...systemChats, ...pinned, ...unpinned];
+
+        if (isConteggSuperAdmin()) {
+            sortedChats = [{
+                id: '__contegg_admin_workspace__',
+                type: 'adminpanel',
+                name: 'Админ панель',
+                lastMessage: 'Управление пользователями Contegg'
+            }, ...sortedChats];
+        }
         
         if (sortedChats.length === 0) {
             list.innerHTML = `<div class="empty-state"><div class="empty-state-icon">💬</div><div class="empty-state-title">Нет чатов</div><div class="empty-state-desc">Используйте поиск, чтобы найти пользователей и начать общение</div></div>`;
@@ -5708,7 +5923,27 @@ const systemChats = chats.filter(c => c.type === 'system');
         }
         
         list.innerHTML = sortedChats.map(chat => {
-if (chat.type === 'saved') {
+if (chat.type === 'adminpanel') {
+    return `
+        <div class="chat-cell contegg-admin-chat-cell"
+             data-chat-id="__contegg_admin_workspace__"
+             data-chat-type="adminpanel"
+             onclick="openConteggAdminWorkspace()">
+            <div class="chat-avatar contegg-admin-chat-avatar">
+                <i class="fas fa-shield-alt"></i>
+            </div>
+            <div class="chat-content">
+                <div class="chat-top">
+                    <span class="chat-name">
+                        Админ панель
+                        <i class="fas fa-crown" style="color:#ffd60a;font-size:11px;"></i>
+                    </span>
+                </div>
+                <div class="chat-preview">Блокировка · верификация · управление аккаунтами</div>
+            </div>
+        </div>
+    `;
+} else if (chat.type === 'saved') {
     const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
     const isPinned = pinnedChats.includes(chat.id);
     const isUnread = chat.unreadFor?.includes(currentUser.uid);
@@ -5819,7 +6054,7 @@ const avHTML = userAvatarSrc ? `<img src="${userAvatarSrc}">` : (u.displayName?.
                         <div class="chat-avatar">${avHTML}</div>
                         <div class="chat-content">
                             <div class="chat-top">
-                                <span class="chat-name">${esc(u.displayName || u.username)}${adminUsers.includes(chat.otherId) ? ' <i class="fas fa-check-circle verified-icon"></i>' : ''}${isPinned ? ' <i class="fas fa-thumbtack pinned-icon"></i>' : ''}</span>
+                                <span class="chat-name">${esc(u.displayName || u.username)} ${renderVerificationBadge(u, 12)} ${renderBlockedAccountMark(u)}${isPinned ? ' <i class="fas fa-thumbtack pinned-icon"></i>' : ''}</span>
                                 <span class="chat-time">${timeStr}</span>
                             </div>
                             <div class="chat-preview">${chat.lastSender === currentUser.uid ? 'Вы: ' : ''}${esc(chat.lastMessage || '')}</div>
@@ -6405,13 +6640,18 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
         currentChatUser = null;
     } else {
         const user = await getUserInfo(userId);
-        if (user.avatarBase64) {
-            avatar.innerHTML = `<img src="${user.avatarBase64}">`;
+        const directAvatarSrc = getAvatarSrc(user);
+
+        if (directAvatarSrc) {
+            avatar.innerHTML = `<img src="${directAvatarSrc}">`;
         } else {
             avatar.textContent = (user.displayName || user.username)[0]?.toUpperCase() || 'U';
             avatar.style.background = 'linear-gradient(135deg, #007aff, #5856d6)';
         }
-        document.getElementById('chatName').textContent = user.displayName || user.username;
+
+        const directNameEl = document.getElementById('chatName');
+        directNameEl.innerHTML = `${esc(user.displayName || user.username)} ${renderVerificationBadge(user, 13)} ${renderBlockedAccountMark(user)}`;
+
        watchChatUserPresence(userId);
         currentChatUser = { uid: userId, username: name };
         document.getElementById('chatInputBar').style.display = 'flex';
@@ -6982,7 +7222,7 @@ if (msg.replyTo) {
             const avatarEl = senderButton.querySelector('.contegg-group-sender-avatar');
 
             if (nameEl) {
-                nameEl.textContent = u.displayName || u.username || 'Пользователь';
+                nameEl.innerHTML = `${esc(u.displayName || u.username || 'Пользователь')} ${renderVerificationBadge(u, 11)} ${renderBlockedAccountMark(u)}`;
             }
 
             if (avatarEl) {
@@ -7158,6 +7398,19 @@ if (msg.notificationAction === 'terminate_device' && msg.actionDeviceId) {
     });
 
     div.querySelectorAll('.contegg-forwarded-from').forEach(btn => {
+        const forwardedUserId = btn.dataset.forwardSourceUser || '';
+
+        if (forwardedUserId && forwardedUserId !== 'system') {
+            getUserInfo(forwardedUserId).then(forwardUser => {
+                const nameEl = btn.querySelector('.contegg-forwarded-name');
+                if (!nameEl) return;
+
+                nameEl.innerHTML = forwardUser.accountBlocked
+                    ? `Удалённый аккаунт <span class="contegg-deleted-account-mark">заблокирован</span>`
+                    : `${esc(forwardUser.displayName || forwardUser.username || 'Пользователь')} ${renderVerificationBadge(forwardUser, 11)}`;
+            }).catch(console.error);
+        }
+
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -7818,7 +8071,7 @@ const avatarHTML = avatarSrc
         <div class="comment-bubble">
             <div class="comment-author contegg-comment-profile-trigger" data-comment-user-id="${esc(comment.senderId)}">
                 ${isMine ? 'Вы' : esc(user.displayName || user.username || 'Пользователь')}
-                ${user.isAdmin ? '<i class="fas fa-check-circle verified-icon"></i>' : ''}
+                ${renderVerificationBadge(user, 12)}
             </div>
 
             <div class="comment-text">${esc(comment.text || '')}</div>
@@ -7868,6 +8121,19 @@ async function openCommentUserProfile(userId) {
 
     const user = await getUserInfo(userId);
 
+    if (user.accountBlocked) {
+        document.getElementById('userProfileContent').innerHTML = `
+            <div class="contegg-blocked-profile-card">
+                <div class="contegg-blocked-profile-avatar"><i class="fas fa-user-slash"></i></div>
+                <div class="contegg-blocked-profile-title">Удалённый аккаунт</div>
+                <div class="contegg-blocked-profile-text">(аккаунт заблокирован)</div>
+                <button class="btn btn-secondary" onclick="closeUserProfile()" style="margin-top:18px;">Закрыть</button>
+            </div>
+        `;
+        document.getElementById('userProfileModal').classList.add('show');
+        return;
+    }
+
     const profileAvatarSrc = getAvatarSrc(user);
     const avHTML = profileAvatarSrc
         ? `<img src="${profileAvatarSrc}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;">`
@@ -7879,7 +8145,7 @@ async function openCommentUserProfile(userId) {
 
             <div style="font-size:20px;font-weight:600;margin-top:12px;">
                 ${esc(user.displayName || 'Пользователь')}
-                ${user.isAdmin ? '<i class="fas fa-check-circle" style="color:var(--accent);font-size:16px;margin-left:4px;"></i>' : ''}
+                ${renderVerificationBadge(user, 16)}
             </div>
 
             <div style="font-size:15px;color:var(--text-secondary);">@${esc(user.username || '')}</div>
@@ -8994,6 +9260,7 @@ const avHTML = myAvatarSrc
             </div>
             <div class="profile-name">
                 ${esc(userData.displayName || 'Пользователь')}
+                ${renderVerificationBadge(userData, 16)}
                 <i class="fas fa-pen" style="font-size:14px;color:var(--accent);cursor:pointer;" onclick="openProfileEdit()"></i>
             </div>
             <div class="profile-username">@${esc(userData.username)}</div>
@@ -9058,13 +9325,16 @@ const avHTML = myAvatarSrc
                     </span>
                 </div>
             </div>
-            <div class="profile-cell">
+            <div class="profile-cell" onclick="openChangeEmailModal()">
                 <div class="profile-cell-icon" style="background:rgba(142,142,147,0.15);color:#8e8e93;">
                     <i class="fas fa-envelope"></i>
                 </div>
                 <div class="profile-cell-content">
                     <span class="profile-cell-title">Почта</span>
-                    <span class="profile-cell-value">${esc(userData.email || 'Не указана')}</span>
+                    <span class="profile-cell-value" style="display:flex;align-items:center;gap:7px;">
+                        ${esc(userData.email || 'Не указана')}
+                        <i class="fas fa-chevron-right profile-cell-arrow"></i>
+                    </span>
                 </div>
             </div>
             <div class="profile-cell">
@@ -9283,6 +9553,7 @@ async function openSystemChatFromProfile() {
 
 function openProfileEdit() {
     document.getElementById('editName').value = userData.displayName || '';
+    document.getElementById('editUsername').value = userData.username || '';
     document.getElementById('editBio').value = userData.bio || '';
     
     const av = document.getElementById('editAvatarPreview');
@@ -9308,8 +9579,31 @@ function closeProfileEdit() {
     document.getElementById('profileEditModal').classList.remove('show');
 }
 
+async function isUsernameAvailable(username, exceptUid = '') {
+    const target = String(username || '').toLowerCase();
+
+    if (!target) return false;
+
+    try {
+        const snap = await db.collection('users')
+            .where('usernameLower', '==', target)
+            .limit(2)
+            .get();
+
+        if (snap.docs.some(doc => doc.id !== exceptUid)) return false;
+    } catch (_) {}
+
+    // Compatibility with old user docs which do not have usernameLower yet.
+    const allSnap = await db.collection('users').get();
+    return !allSnap.docs.some(doc => {
+        if (doc.id === exceptUid) return false;
+        return String(doc.data().username || '').toLowerCase() === target;
+    });
+}
+
 async function saveProfile() {
     const name = document.getElementById('editName').value.trim();
+    const username = document.getElementById('editUsername').value.trim();
     const bio = document.getElementById('editBio').value.trim();
 
     if (!name) {
@@ -9317,28 +9611,145 @@ async function saveProfile() {
         return;
     }
 
+    if (!/^[A-Za-z0-9._]{3,32}$/.test(username)) {
+        toast('Username: 3–32 символа, латиница, цифры, точка и _');
+        return;
+    }
+
+    const usernameChanged =
+        String(username).toLowerCase() !== String(userData.username || '').toLowerCase();
+
+    if (usernameChanged) {
+        const available = await isUsernameAvailable(username, currentUser.uid);
+        if (!available) {
+            toast('Этот username уже занят');
+            return;
+        }
+    }
+
     try {
-        await db.collection('users').doc(currentUser.uid).update({
+        const update = {
             displayName: name,
+            username,
+            usernameLower: username.toLowerCase(),
             bio
-        });
+        };
 
-        userData.displayName = name;
-        userData.bio = bio;
+        await db.collection('users').doc(currentUser.uid).update(update);
 
-        await sendSystemNotification(currentUser.uid, 'profile_updated', {});
+        userData = {
+            ...userData,
+            ...update
+        };
+
+        invalidateUserCaches(currentUser.uid);
+        usersCache[currentUser.uid] = normalizePublicUserData(userData, currentUser.uid);
+
+        await sendSystemNotification(
+            currentUser.uid,
+            usernameChanged ? 'username_changed' : 'profile_updated',
+            usernameChanged ? { username } : {}
+        ).catch(console.error);
 
         loadLinkedAccounts();
         closeProfileEdit();
         renderProfile();
-        usersCache = {};
-        toast('Профиль обновлён');
+        await loadAllUsers();
+        await loadChats();
+
+        toast(usernameChanged ? `Username изменён на @${username}` : 'Профиль обновлён');
     } catch (e) {
         console.error('saveProfile error:', e);
         toast('Ошибка сохранения');
     }
 }
-    
+
+
+function openChangeEmailModal() {
+    document.getElementById('newAccountEmail').value = currentUser?.email || userData?.email || '';
+    document.getElementById('emailChangePassword').value = '';
+    document.getElementById('emailChangeError').style.display = 'none';
+    document.getElementById('changeEmailModal').classList.add('show');
+}
+
+function closeChangeEmailModal() {
+    document.getElementById('changeEmailModal').classList.remove('show');
+}
+
+async function changeAccountEmail() {
+    const newEmail = document.getElementById('newAccountEmail').value.trim().toLowerCase();
+    const password = document.getElementById('emailChangePassword').value;
+    const errorEl = document.getElementById('emailChangeError');
+    const user = auth.currentUser;
+
+    errorEl.style.display = 'none';
+
+    if (!user || !user.email) {
+        errorEl.textContent = 'Пользователь не авторизован';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    if (!newEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+        errorEl.textContent = 'Введите корректную почту';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    if (!password) {
+        errorEl.textContent = 'Введите текущий пароль';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    if (newEmail === String(user.email).toLowerCase()) {
+        closeChangeEmailModal();
+        return;
+    }
+
+    try {
+        const oldEmail = user.email;
+        const credential = firebase.auth.EmailAuthProvider.credential(oldEmail, password);
+
+        await user.reauthenticateWithCredential(credential);
+        await user.updateEmail(newEmail);
+
+        await db.collection('users').doc(user.uid).update({
+            email: newEmail
+        });
+
+        userData.email = newEmail;
+
+        // Keep quick-login credentials synchronized with the new auth email.
+        saveAccountCredentials(user.uid, newEmail, password);
+
+        const linked = linkedAccounts.find(a => a.uid === user.uid);
+        if (linked) {
+            linked.email = newEmail;
+            saveLinkedAccounts();
+        }
+
+        checkIsDeveloper();
+        closeChangeEmailModal();
+        renderProfile();
+
+        toast('Почта изменена. Теперь вход выполняется с новой почтой.');
+    } catch (error) {
+        console.error('changeAccountEmail error:', error);
+
+        const map = {
+            'auth/wrong-password': 'Неверный текущий пароль',
+            'auth/invalid-credential': 'Неверный текущий пароль',
+            'auth/email-already-in-use': 'Эта почта уже используется',
+            'auth/invalid-email': 'Некорректная почта',
+            'auth/requires-recent-login': 'Нужно заново подтвердить вход'
+        };
+
+        errorEl.textContent = map[error.code] || ('Ошибка: ' + error.message);
+        errorEl.style.display = 'block';
+    }
+}
+
 function openChangePasswordModal() {
     document.getElementById('oldPassword').value = '';
     document.getElementById('newPassword').value = '';
@@ -9381,6 +9792,15 @@ async function changePassword() {
     try {
         await user.reauthenticateWithCredential(credential);
         await user.updatePassword(newPassword);
+
+        saveAccountCredentials(currentUser.uid, user.email, newPassword);
+
+        const linked = linkedAccounts.find(a => a.uid === currentUser.uid);
+        if (linked) {
+            linked.email = user.email;
+            saveLinkedAccounts();
+        }
+
         await sendSystemNotification(currentUser.uid, 'password_changed', {});
         toast('Пароль успешно изменён');
         closeChangePasswordModal();
@@ -10490,6 +10910,20 @@ async function viewChatUserProfile() {
     if (!currentChatUser || currentChatIsGroup || currentChatIsSaved || currentChatIsSystem) return;
     
     const user = await getUserInfo(currentChatUser.uid);
+
+    if (user.accountBlocked) {
+        document.getElementById('userProfileContent').innerHTML = `
+            <div class="contegg-blocked-profile-card">
+                <div class="contegg-blocked-profile-avatar"><i class="fas fa-user-slash"></i></div>
+                <div class="contegg-blocked-profile-title">Удалённый аккаунт</div>
+                <div class="contegg-blocked-profile-text">(аккаунт заблокирован)</div>
+                <button class="btn btn-secondary" onclick="closeUserProfile()" style="margin-top:18px;">Закрыть</button>
+            </div>
+        `;
+        document.getElementById('userProfileModal').classList.add('show');
+        return;
+    }
+
     const profileAvatarSrc = getAvatarSrc(user);
     const avHTML = profileAvatarSrc
         ? `<img src="${profileAvatarSrc}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;">`
@@ -10500,7 +10934,7 @@ async function viewChatUserProfile() {
             ${avHTML}
             <div style="font-size:20px;font-weight:600;margin-top:12px;">
                 ${esc(user.displayName || 'Пользователь')}
-                ${user.isAdmin ? '<i class="fas fa-check-circle" style="color:var(--accent);font-size:16px;margin-left:4px;"></i>' : ''}
+                ${renderVerificationBadge(user, 16)}
             </div>
             <div style="font-size:15px;color:var(--text-secondary);">@${esc(user.username || '')}</div>
             <div style="font-size:14px;color:var(--text-secondary);margin-top:8px;line-height:1.4;">${esc(user.bio || 'Нет описания')}</div>
@@ -10753,41 +11187,249 @@ async function toggleGroupAdmin(userId, makeAdmin) {
     }
 }
 
+
+function openConteggAdminWorkspace() {
+    if (!isConteggSuperAdmin()) {
+        toast('Недостаточно прав');
+        return;
+    }
+
+    openAdminPanel();
+}
+window.openConteggAdminWorkspace = openConteggAdminWorkspace;
+
+async function findAdminTargetUser(identifier) {
+    const query = String(identifier || '').trim().toLowerCase();
+    if (!query) return null;
+
+    const snap = await db.collection('users').get();
+
+    for (const doc of snap.docs) {
+        const data = { uid: doc.id, ...doc.data() };
+        const username = String(data.username || '').toLowerCase();
+        const email = String(data.email || '').toLowerCase();
+
+        if (username === query.replace(/^@/, '') || email === query) {
+            return data;
+        }
+    }
+
+    return null;
+}
+
+function renderAdminTargetUser(user) {
+    const box = document.getElementById('conteggAdminTargetCard');
+    if (!box) return;
+
+    if (!user) {
+        box.innerHTML = '<div style="color:var(--text-secondary);font-size:13px;">Пользователь не выбран</div>';
+        return;
+    }
+
+    currentAdminTargetUser = user;
+
+    const publicUser = normalizePublicUserData(user, user.uid);
+    const originalName = user.displayName || user.username || 'Пользователь';
+    const originalUsername = user.username || '';
+    const avatarSrc = getAvatarSrc(user);
+
+    box.innerHTML = `
+        <div class="contegg-admin-target-head">
+            <div class="contegg-admin-target-avatar">
+                ${avatarSrc ? `<img src="${avatarSrc}">` : esc((originalName[0] || 'U').toUpperCase())}
+            </div>
+            <div class="contegg-admin-target-info">
+                <div class="contegg-admin-target-name">
+                    ${esc(originalName)}
+                    ${renderVerificationBadge(publicUser, 14)}
+                </div>
+                <div>@${esc(originalUsername)} · ${esc(user.email || '')}</div>
+                <div class="${user.isBlocked ? 'contegg-admin-status-danger' : 'contegg-admin-status-ok'}">
+                    ${user.isBlocked ? 'ЗАБЛОКИРОВАН' : 'Активен'}
+                </div>
+            </div>
+        </div>
+
+        <div class="contegg-admin-control-row">
+            <div>
+                <div class="contegg-admin-control-title">Блокировка аккаунта</div>
+                <div class="contegg-admin-control-desc">Пользователь будет выкинут из Contegg и скрыт как удалённый аккаунт.</div>
+            </div>
+            <label class="contegg-switch">
+                <input id="adminBlockedToggle" type="checkbox" ${user.isBlocked ? 'checked' : ''}>
+                <span></span>
+            </label>
+        </div>
+
+        <div class="contegg-admin-control-row">
+            <div>
+                <div class="contegg-admin-control-title">Верификация</div>
+                <div class="contegg-admin-control-desc">Галочка или собственный значок после ника.</div>
+            </div>
+            <label class="contegg-switch">
+                <input id="adminVerifiedToggle" type="checkbox" ${user.verified ? 'checked' : ''}>
+                <span></span>
+            </label>
+        </div>
+
+        <div class="input-row" style="margin-top:10px;">
+            <label>Своя картинка вместо галочки</label>
+            <input id="adminBadgeInput" type="file" accept="image/*">
+            <div id="adminBadgePreview" class="contegg-admin-badge-preview">
+                ${user.verificationBadgeUrl
+                    ? `<img src="${esc(user.verificationBadgeUrl)}">`
+                    : '<span>Стандартная синяя галочка</span>'}
+            </div>
+        </div>
+
+        <button class="btn btn-primary" onclick="applyAdminUserControls()">Сохранить изменения</button>
+    `;
+}
+
+async function adminLookupUser() {
+    if (!isConteggSuperAdmin()) return;
+
+    const input = document.getElementById('adminUserLookup');
+    const query = input?.value?.trim();
+
+    if (!query) {
+        toast('Введите username или почту');
+        return;
+    }
+
+    const user = await findAdminTargetUser(query);
+
+    if (!user) {
+        currentAdminTargetUser = null;
+        renderAdminTargetUser(null);
+        toast('Пользователь не найден');
+        return;
+    }
+
+    renderAdminTargetUser(user);
+
+    document.getElementById('adminBadgeInput')?.addEventListener('change', function() {
+        const file = this.files?.[0];
+        const preview = document.getElementById('adminBadgePreview');
+        if (!file || !preview) return;
+
+        const url = URL.createObjectURL(file);
+        preview.innerHTML = `<img src="${url}">`;
+    }, { once: true });
+}
+
+async function applyAdminUserControls() {
+    if (!isConteggSuperAdmin() || !currentAdminTargetUser) return;
+
+    const uid = currentAdminTargetUser.uid;
+
+    if (uid === currentUser.uid && document.getElementById('adminBlockedToggle')?.checked) {
+        toast('Нельзя заблокировать текущий админ-аккаунт');
+        return;
+    }
+
+    const isBlocked = !!document.getElementById('adminBlockedToggle')?.checked;
+    const verified = !!document.getElementById('adminVerifiedToggle')?.checked;
+    const badgeFile = document.getElementById('adminBadgeInput')?.files?.[0];
+
+    try {
+        let verificationBadgeUrl = currentAdminTargetUser.verificationBadgeUrl || '';
+
+        if (!verified) {
+            verificationBadgeUrl = '';
+        } else if (badgeFile) {
+            const ext = getStorageExtension(badgeFile, 'png');
+            const uploaded = await uploadToSupabaseStorage(badgeFile, 'badges', {
+                path: `badges/${uid}/verification_${Date.now()}.${ext}`
+            });
+            verificationBadgeUrl = uploaded.url;
+        }
+
+        await db.collection('users').doc(uid).update({
+            isBlocked,
+            verified,
+            verificationBadgeUrl,
+            moderationUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            moderationUpdatedBy: currentUser.uid
+        });
+
+        invalidateUserCaches(uid);
+        currentAdminTargetUser = {
+            ...currentAdminTargetUser,
+            isBlocked,
+            verified,
+            verificationBadgeUrl
+        };
+
+        renderAdminTargetUser(currentAdminTargetUser);
+        await loadAllUsers();
+        await loadChats();
+
+        toast('Изменения сохранены');
+    } catch (e) {
+        console.error('applyAdminUserControls error:', e);
+        toast('Ошибка: ' + e.message);
+    }
+}
+
 function openAdminPanel() {
     if (!isCurrentUserDeveloper) {
         toast('Недостаточно прав');
         return;
     }
-    
+
     const content = document.getElementById('adminPanelContent');
+
     content.innerHTML = `
+        ${isConteggSuperAdmin() ? `
+        <div class="admin-panel contegg-super-admin-panel">
+            <div class="admin-panel-title">
+                <i class="fas fa-shield-alt"></i>
+                Управление аккаунтами
+            </div>
+
+            <div class="contegg-admin-search-line">
+                <div class="search-bar contegg-admin-search-bar">
+                    <i class="fas fa-search"></i>
+                    <input id="adminUserLookup" type="text" placeholder="@username или email">
+                </div>
+                <button class="btn btn-primary contegg-admin-find-btn" onclick="adminLookupUser()">Найти</button>
+            </div>
+
+            <div id="conteggAdminTargetCard" class="contegg-admin-target-card">
+                <div style="color:var(--text-secondary);font-size:13px;">Введите username или почту пользователя</div>
+            </div>
+        </div>
+        ` : ''}
+
         <div class="admin-panel">
             <div class="admin-panel-title">
                 <i class="fas fa-crown"></i>
                 Панель разработчика
             </div>
-            
+
             <div class="input-row">
                 <label>Рассылка всем пользователям</label>
                 <textarea class="admin-textarea" id="broadcastMessage" placeholder="Введите текст рассылки..."></textarea>
             </div>
-            
+
             <button class="btn btn-primary" onclick="sendBroadcastFromPanel()">
                 <i class="fas fa-paper-plane"></i> Отправить рассылку
             </button>
-            
-            <div style="margin-top:16px;padding:12px;background:var(--bg-tertiary);border-radius:10px;">
-                <div style="font-size:14px;color:var(--text-secondary);">
-                    <i class="fas fa-info-circle"></i> 
-                    Рассылка будет отправлена всем пользователям через системный чат "Contegg"
-                </div>
-            </div>
         </div>
-        
+
         <button class="btn btn-secondary" onclick="closeAdminPanel()">Закрыть</button>
     `;
-    
+
+    currentAdminTargetUser = null;
     document.getElementById('adminPanelModal').classList.add('show');
+
+    setTimeout(() => {
+        const input = document.getElementById('adminUserLookup');
+        input?.addEventListener('keydown', e => {
+            if (e.key === 'Enter') adminLookupUser();
+        });
+    }, 0);
 }
 
 function closeAdminPanel() {
@@ -10837,6 +11479,7 @@ async function searchUsersAndChats(q) {
 
     for (const u of allUsers) {
         if (u.uid === currentUser.uid) continue;
+        if (u.accountBlocked) continue;
 
         const username = (u.username || '').toLowerCase();
         const displayName = (u.displayName || '').toLowerCase();
@@ -10854,8 +11497,12 @@ async function searchUsersAndChats(q) {
                 <div class="search-result-item" onclick="startChatWith('${u.uid}', '${esc(u.username || '')}')">
                     <div class="chat-avatar" style="width:40px;height:40px;font-size:16px;">${avHTML}</div>
                     <div>
-                        <div style="font-size:15px;">${esc(u.displayName || 'Пользователь')}</div>
-                        <div style="font-size:13px;color:var(--text-secondary);">@${esc(u.username || '')}</div>
+                        <div style="font-size:15px;display:flex;align-items:center;gap:4px;">
+                            ${esc(u.displayName || 'Пользователь')} ${renderVerificationBadge(u, 12)}
+                        </div>
+                        <div style="font-size:13px;color:var(--text-secondary);">
+                            ${u.accountBlocked ? '(аккаунт заблокирован)' : '@' + esc(u.username || '')}
+                        </div>
                     </div>
                 </div>
             `;
@@ -11329,6 +11976,7 @@ document.addEventListener('keydown', e => {
 document.getElementById('channelCropSettingsModal')?.classList.remove('show');
         document.getElementById('profileEditModal').classList.remove('show');
         document.getElementById('changePasswordModal').classList.remove('show');
+        document.getElementById('changeEmailModal')?.classList.remove('show');
         document.getElementById('userProfileModal').classList.remove('show');
         document.getElementById('cropModal').classList.remove('show');
         document.getElementById('groupCropModal').classList.remove('show');
@@ -14902,6 +15550,249 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
     body.chat-open #conteggPhoneHeaderLayer {
         visibility: visible !important;
         opacity: 1 !important;
+    }
+}
+</style>
+
+
+<style id="CONTEGG-V15-ACCOUNTS-ADMIN-STYLES">
+.contegg-verification-badge-image {
+    display:inline-block;
+    flex:0 0 auto;
+    object-fit:contain;
+    border-radius:3px;
+    vertical-align:-2px;
+}
+
+.contegg-deleted-account-mark {
+    display:inline-flex;
+    align-items:center;
+    margin-left:3px;
+    padding:1px 5px;
+    border-radius:999px;
+    background:rgba(142,142,147,.16);
+    color:rgba(235,235,245,.48);
+    font-size:9px;
+    font-weight:600;
+    white-space:nowrap;
+}
+
+.contegg-blocked-profile-card {
+    padding:30px 8px 8px;
+    text-align:center;
+}
+
+.contegg-blocked-profile-avatar {
+    width:82px;
+    height:82px;
+    margin:0 auto 14px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(142,142,147,.18);
+    color:rgba(235,235,245,.5);
+    font-size:30px;
+}
+
+.contegg-blocked-profile-title {
+    font-size:19px;
+    font-weight:650;
+}
+
+.contegg-blocked-profile-text {
+    margin-top:5px;
+    color:var(--text-secondary);
+    font-size:14px;
+}
+
+.contegg-admin-chat-cell {
+    background:linear-gradient(135deg,rgba(255,204,0,.10),rgba(255,159,10,.06)) !important;
+    border-color:rgba(255,204,0,.15) !important;
+}
+
+.contegg-admin-chat-avatar {
+    background:linear-gradient(135deg,#ff9f0a,#ff453a) !important;
+    color:white;
+}
+
+#adminPanelModal .modal-sheet {
+    max-width:620px;
+}
+
+.contegg-admin-search-line {
+    display:flex;
+    align-items:center;
+    gap:8px;
+}
+
+.contegg-admin-search-bar {
+    flex:1;
+    margin:0 !important;
+}
+
+.contegg-admin-find-btn {
+    width:auto !important;
+    min-width:80px;
+    padding:11px 14px !important;
+}
+
+.contegg-admin-target-card {
+    margin-top:12px;
+    padding:12px;
+    border-radius:14px;
+    background:rgba(44,44,46,.58);
+    border:.5px solid rgba(255,255,255,.08);
+}
+
+.contegg-admin-target-head {
+    display:flex;
+    align-items:center;
+    gap:11px;
+    margin-bottom:12px;
+}
+
+.contegg-admin-target-avatar {
+    width:48px;
+    height:48px;
+    flex:0 0 48px;
+    border-radius:50%;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:linear-gradient(135deg,#0a84ff,#5e5ce6);
+    color:white;
+    font-weight:700;
+}
+
+.contegg-admin-target-avatar img {
+    width:100%;
+    height:100%;
+    object-fit:cover;
+}
+
+.contegg-admin-target-info {
+    min-width:0;
+    color:var(--text-secondary);
+    font-size:12px;
+}
+
+.contegg-admin-target-name {
+    display:flex;
+    align-items:center;
+    gap:5px;
+    color:var(--text-primary);
+    font-size:15px;
+    font-weight:650;
+}
+
+.contegg-admin-status-danger {
+    color:#ff453a;
+    font-weight:700;
+    margin-top:3px;
+}
+
+.contegg-admin-status-ok {
+    color:#30d158;
+    font-weight:700;
+    margin-top:3px;
+}
+
+.contegg-admin-control-row {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    padding:12px 2px;
+    border-top:.5px solid rgba(255,255,255,.08);
+}
+
+.contegg-admin-control-title {
+    font-size:14px;
+    font-weight:600;
+}
+
+.contegg-admin-control-desc {
+    max-width:390px;
+    margin-top:2px;
+    color:var(--text-secondary);
+    font-size:11px;
+    line-height:1.35;
+}
+
+.contegg-switch {
+    position:relative;
+    width:46px;
+    height:27px;
+    flex:0 0 46px;
+}
+
+.contegg-switch input {
+    opacity:0;
+    width:0;
+    height:0;
+}
+
+.contegg-switch span {
+    position:absolute;
+    inset:0;
+    border-radius:999px;
+    background:#3a3a3c;
+    transition:.18s ease;
+    cursor:pointer;
+}
+
+.contegg-switch span::after {
+    content:'';
+    position:absolute;
+    width:23px;
+    height:23px;
+    left:2px;
+    top:2px;
+    border-radius:50%;
+    background:#fff;
+    transition:.18s ease;
+    box-shadow:0 2px 7px rgba(0,0,0,.3);
+}
+
+.contegg-switch input:checked + span {
+    background:#34c759;
+}
+
+.contegg-switch input:checked + span::after {
+    transform:translateX(19px);
+}
+
+.contegg-admin-badge-preview {
+    margin-top:8px;
+    min-height:36px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    color:var(--text-secondary);
+    font-size:12px;
+}
+
+.contegg-admin-badge-preview img {
+    width:28px;
+    height:28px;
+    object-fit:contain;
+    border-radius:5px;
+}
+
+@media (max-width:767px) {
+    #adminPanelModal .modal-sheet {
+        max-height:92dvh;
+    }
+
+    .contegg-admin-search-line {
+        align-items:stretch;
+        flex-direction:column;
+    }
+
+    .contegg-admin-find-btn {
+        width:100% !important;
     }
 }
 </style>
