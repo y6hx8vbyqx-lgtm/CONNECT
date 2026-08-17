@@ -33,6 +33,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script> <!-- Supabase Storage -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     
     <!-- ✅ ФИКС ДЛЯ INPUT -->
     <style>
@@ -2667,6 +2668,41 @@ body {
     <div class="modal-sheet">
         <div class="modal-handle"></div>
         <div id="userProfileContent" style="padding: 0 16px 30px; text-align: center;"></div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="profileQrModal">
+    <div class="modal-sheet contegg-qr-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">QR-код профиля</div>
+        <div class="contegg-qr-content">
+            <div class="contegg-qr-name" id="profileQrName">Профиль</div>
+            <div class="contegg-qr-username" id="profileQrUsername">@username</div>
+
+            <div class="contegg-qr-stage">
+                <div id="profileQrCode" class="contegg-qr-code"></div>
+                <div id="profileQrAvatar" class="contegg-qr-avatar">U</div>
+            </div>
+
+            <div class="contegg-qr-description">
+                Отсканируйте код, чтобы открыть личный чат с этим пользователем в Contegg.
+            </div>
+
+            <div class="contegg-qr-actions">
+                <button class="btn btn-secondary" type="button" onclick="refreshProfileQr()">
+                    <i class="fas fa-sync-alt"></i>
+                    Обновить QR
+                </button>
+                <button class="btn btn-primary" type="button" onclick="copyProfileQrLink()">
+                    <i class="far fa-copy"></i>
+                    Скопировать ссылку
+                </button>
+            </div>
+
+            <button class="btn btn-secondary" type="button" onclick="closeProfileQrModal()" style="margin-top:8px;">
+                Закрыть
+            </button>
+        </div>
     </div>
 </div>
 
@@ -5507,6 +5543,43 @@ function startPresenceTracking() {
     });
 }
 
+
+let qrDeepLinkHandled = false;
+
+async function handleProfileQrDeepLink() {
+    if (qrDeepLinkHandled || !currentUser) return;
+
+    const params = new URLSearchParams(location.search);
+    const targetUid = params.get('user');
+
+    if (!targetUid || targetUid === currentUser.uid) {
+        qrDeepLinkHandled = true;
+        return;
+    }
+
+    qrDeepLinkHandled = true;
+
+    try {
+        const targetUser = await getUserInfo(targetUid);
+
+        if (!targetUser || targetUser.accountBlocked || targetUser.deletedAccount) {
+            toast('Пользователь недоступен');
+            return;
+        }
+
+        await openDirectChat(targetUid, targetUser.username || '');
+
+        // Remove QR params without reloading, so refresh doesn't reopen the chat.
+        const clean = new URL(location.href);
+        clean.searchParams.delete('user');
+        clean.searchParams.delete('qr');
+        history.replaceState(history.state, '', clean.pathname + clean.search + clean.hash);
+    } catch (error) {
+        console.error('handleProfileQrDeepLink error:', error);
+        toast('Не удалось открыть чат из QR-кода');
+    }
+}
+
 auth.onAuthStateChanged(async user => {
     if (!user) { 
         if (deviceControlListener) {
@@ -5515,7 +5588,8 @@ auth.onAuthStateChanged(async user => {
         }
 
         if (!isSwitchingAccount) {
-            location.href = 'index.html';
+            const returnTo = location.pathname + location.search;
+            location.href = `index.html?next=${encodeURIComponent(returnTo)}`;
         }
         return; 
     }
@@ -5554,6 +5628,10 @@ setTimeout(() => {
 loadLinkedAccounts();
 registerCurrentDevice().then(startDeviceControlListener).catch(console.error);
 checkAutoOpen();
+
+setTimeout(() => {
+    handleProfileQrDeepLink().catch(console.error);
+}, 180);
 
     isSwitchingAccount = false;
 });
@@ -5738,8 +5816,21 @@ function invalidateUserCaches(uid = '') {
 
 function scheduleDirectoryUiRefresh() {
     clearTimeout(usersDirectoryRefreshTimer);
+
     usersDirectoryRefreshTimer = setTimeout(async () => {
         try {
+            // Admin workspace is its own stable central view.
+            // Never rebuild the whole desktop/chat layout while it is open.
+            if (document.body.classList.contains('contegg-admin-workspace-open')) {
+                if (isConteggSuperAdmin()) {
+                    await Promise.allSettled([
+                        loadAdminRegisteredUsers(),
+                        loadAdminOneTimeCodes()
+                    ]);
+                }
+                return;
+            }
+
             await loadChats();
 
             if (currentChatId && document.body.classList.contains('chat-open')) {
@@ -5752,7 +5843,7 @@ function scheduleDirectoryUiRefresh() {
         } catch (e) {
             console.warn('directory UI refresh:', e);
         }
-    }, 120);
+    }, 180);
 }
 
 function startUsersDirectoryListener() {
@@ -8347,6 +8438,16 @@ async function openCommentUserProfile(userId) {
                 ID: ${(user.uid || userId).slice(-8)}
             </div>
 
+            <button
+                type="button"
+                class="btn btn-secondary"
+                onclick="openProfileQr('${userId}')"
+                style="margin-top:20px;"
+            >
+                <i class="fas fa-qrcode" style="margin-right:7px;"></i>
+                QR-код
+            </button>
+
             ${userId !== currentUser.uid ? `
                 <button
                     type="button"
@@ -9431,6 +9532,129 @@ async function ctxDeleteForAll() {
     }
 }
 
+
+let currentProfileQrUserId = '';
+let currentProfileQrLink = '';
+
+function getConteggBaseUrl() {
+    const url = new URL(window.location.href);
+    const basePath = url.pathname.replace(/\/[^/]*$/, '/');
+    return `${url.origin}${basePath}`;
+}
+
+function buildProfileQrLink(userId) {
+    return `${getConteggBaseUrl()}chats.html?user=${encodeURIComponent(userId)}`;
+}
+
+async function openProfileQr(userId) {
+    if (!userId) return;
+
+    try {
+        const user = userId === currentUser?.uid
+            ? normalizePublicUserData(userData, currentUser.uid)
+            : await getUserInfo(userId);
+
+        if (!user || user.accountBlocked || user.deletedAccount) {
+            toast('QR-код недоступен для этого аккаунта');
+            return;
+        }
+
+        currentProfileQrUserId = userId;
+        currentProfileQrLink = buildProfileQrLink(userId);
+
+        document.getElementById('profileQrName').innerHTML =
+            `${esc(user.displayName || user.username || 'Пользователь')} ${renderVerificationBadge(user, 14)}`;
+        document.getElementById('profileQrUsername').textContent =
+            `@${user.username || ''}`;
+
+        const avatar = document.getElementById('profileQrAvatar');
+        const avatarSrc = getAvatarSrc(user);
+
+        if (avatarSrc) {
+            avatar.innerHTML = `<img src="${avatarSrc}" alt="">`;
+        } else {
+            avatar.textContent = (user.displayName || user.username || 'U')[0].toUpperCase();
+        }
+
+        closeUserProfile();
+        document.getElementById('profileQrModal').classList.add('show');
+
+        requestAnimationFrame(() => renderProfileQrCode(currentProfileQrLink));
+    } catch (error) {
+        console.error('openProfileQr error:', error);
+        toast('Не удалось создать QR-код');
+    }
+}
+
+function renderProfileQrCode(link) {
+    const target = document.getElementById('profileQrCode');
+    if (!target || !link) return;
+
+    target.innerHTML = '';
+
+    if (typeof QRCode !== 'function') {
+        target.innerHTML = '<div class="contegg-qr-error">QR-библиотека не загрузилась</div>';
+        return;
+    }
+
+    new QRCode(target, {
+        text: link,
+        width: 240,
+        height: 240,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.H
+    });
+}
+
+function refreshProfileQr() {
+    if (!currentProfileQrUserId) return;
+
+    // Same destination, new cache-buster: scanners still open the same user.
+    currentProfileQrLink =
+        buildProfileQrLink(currentProfileQrUserId) +
+        `&qr=${Date.now().toString(36)}`;
+
+    renderProfileQrCode(currentProfileQrLink);
+
+    const stage = document.querySelector('.contegg-qr-stage');
+    stage?.classList.remove('contegg-qr-refreshing');
+    requestAnimationFrame(() => stage?.classList.add('contegg-qr-refreshing'));
+}
+
+async function copyProfileQrLink() {
+    if (!currentProfileQrLink) return;
+
+    try {
+        await navigator.clipboard.writeText(currentProfileQrLink);
+        toast('Ссылка на профиль скопирована');
+    } catch (_) {
+        const ta = document.createElement('textarea');
+        ta.value = currentProfileQrLink;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        toast('Ссылка на профиль скопирована');
+    }
+}
+
+function closeProfileQrModal() {
+    const modal = document.getElementById('profileQrModal');
+    const active = document.activeElement;
+
+    if (modal && active && modal.contains(active) && typeof active.blur === 'function') {
+        active.blur();
+    }
+
+    modal?.classList.remove('show');
+}
+
+window.openProfileQr = openProfileQr;
+window.refreshProfileQr = refreshProfileQr;
+window.copyProfileQrLink = copyProfileQrLink;
+window.closeProfileQrModal = closeProfileQrModal;
+
 async function renderProfile() {
     const container = document.getElementById('profileContent');
 const myAvatarSrc = getAvatarSrc(userData);
@@ -9522,6 +9746,18 @@ const avHTML = myAvatarSrc
                     <span class="profile-cell-title">Почта</span>
                     <span class="profile-cell-value" style="display:flex;align-items:center;gap:7px;">
                         ${esc(userData.email || 'Не указана')}
+                        <i class="fas fa-chevron-right profile-cell-arrow"></i>
+                    </span>
+                </div>
+            </div>
+            <div class="profile-cell" onclick="openProfileQr(currentUser.uid)">
+                <div class="profile-cell-icon" style="background:rgba(94,92,230,0.15);color:#7d7aff;">
+                    <i class="fas fa-qrcode"></i>
+                </div>
+                <div class="profile-cell-content">
+                    <span class="profile-cell-title">QR-код</span>
+                    <span class="profile-cell-value" style="display:flex;align-items:center;gap:7px;">
+                        Мой профиль
                         <i class="fas fa-chevron-right profile-cell-arrow"></i>
                     </span>
                 </div>
@@ -11531,6 +11767,16 @@ async function viewChatUserProfile() {
             <div style="font-size:14px;color:var(--text-secondary);margin-top:8px;line-height:1.4;">${esc(user.bio || 'Нет описания')}</div>
             <div style="font-size:13px;color:var(--text-tertiary);margin-top:8px;">ID: ${(user.uid || currentChatUser.uid).slice(-8)}</div>
 
+            <button
+                type="button"
+                class="btn btn-secondary"
+                onclick="openProfileQr('${currentChatUser.uid}')"
+                style="margin-top:20px;"
+            >
+                <i class="fas fa-qrcode" style="margin-right:7px;"></i>
+                QR-код
+            </button>
+
             ${currentChatUser.uid !== currentUser.uid ? `
                 <button
                     type="button"
@@ -12282,6 +12528,15 @@ async function loadAdminOneTimeCodes() {
                 <div class="contegg-admin-code-row ${used ? 'is-used' : ''}">
                     <code>${esc(item.id)}</code>
                     <span>${used ? 'использован' : 'активен'}</span>
+                    <button
+                        type="button"
+                        class="contegg-admin-code-copy"
+                        data-copy-one-time-code="${esc(item.id)}"
+                        title="Скопировать код"
+                    >
+                        <i class="far fa-copy"></i>
+                    </button>
+
                     ${!used ? `
                         <button
                             type="button"
@@ -12434,12 +12689,22 @@ function getAdminPanelMarkup() {
 
                 <div class="input-row" style="margin-top:10px;">
                     <label>Новый код</label>
-                    <input
-                        id="adminGeneratedInviteCode"
-                        type="text"
-                        readonly
-                        placeholder="Сгенерированный код появится здесь"
-                    >
+                    <div class="contegg-admin-generated-code-line">
+                        <input
+                            id="adminGeneratedInviteCode"
+                            type="text"
+                            readonly
+                            placeholder="Сгенерированный код появится здесь"
+                        >
+                        <button
+                            type="button"
+                            class="contegg-admin-copy-code"
+                            onclick="copyAdminRegistrationCode(document.getElementById('adminGeneratedInviteCode')?.value || '')"
+                            title="Скопировать код"
+                        >
+                            <i class="far fa-copy"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -12498,6 +12763,14 @@ function bindAdminPanelInputs() {
                 codeList.dataset.codeClickBound = '1';
 
                 codeList.addEventListener('click', async e => {
+                    const copyButton = e.target.closest('[data-copy-one-time-code]');
+
+                    if (copyButton) {
+                        e.preventDefault();
+                        await copyAdminRegistrationCode(copyButton.dataset.copyOneTimeCode || '');
+                        return;
+                    }
+
                     const button = e.target.closest('[data-disable-code]');
                     if (!button) return;
 
@@ -12547,11 +12820,23 @@ function openAdminPanel() {
             closeInlinePostComments();
         }
 
-        document.body.classList.remove('chat-open');
+        // Keep the desktop chat shell in its normal open state.
+        // Removing chat-open made responsive/viewport handlers tear the center pane apart.
+        document.body.classList.add('chat-open');
         document.body.classList.add('contegg-admin-workspace-open');
         workspace.setAttribute('aria-hidden', 'false');
-        content.innerHTML = getAdminPanelMarkup();
-        bindAdminPanelInputs();
+
+        if (content.dataset.adminMounted !== '1') {
+            content.innerHTML = getAdminPanelMarkup();
+            content.dataset.adminMounted = '1';
+            bindAdminPanelInputs();
+        } else {
+            // Reuse the mounted workspace: no disappearing sections / scroll jumps.
+            bindAdminPanelInputs();
+            loadAdminRegisteredUsers().catch(console.error);
+            loadAdminOneTimeCodes().catch(console.error);
+        }
+
         return;
     }
 
@@ -17609,6 +17894,209 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
     .contegg-admin-mini-button {
         justify-content:center;
         min-width:34px;
+    }
+}
+</style>
+
+
+<style id="CONTEGG-ADMIN-STABLE-QR-V3-STYLES">
+/* Admin workspace: fixed composition, only the content column scrolls. */
+@media (min-width:768px) {
+    body.contegg-admin-workspace-open {
+        overflow:hidden !important;
+    }
+
+    body.contegg-admin-workspace-open #conteggDesktopChatPane {
+        min-height:0 !important;
+        overflow:hidden !important;
+    }
+
+    body.contegg-admin-workspace-open #conteggAdminWorkspace {
+        display:flex !important;
+        visibility:visible !important;
+        opacity:1 !important;
+        transform:none !important;
+        pointer-events:auto !important;
+    }
+
+    .contegg-admin-workspace-content {
+        position:relative;
+        height:0;
+        flex:1 1 0 !important;
+        min-height:0 !important;
+        overflow-y:auto !important;
+        overflow-x:hidden !important;
+        -webkit-overflow-scrolling:touch;
+        contain:layout paint;
+    }
+
+    .contegg-admin-workspace-content > .admin-panel {
+        contain:layout style;
+    }
+
+    .contegg-admin-users-list {
+        min-height:72px;
+        max-height:280px;
+        overflow-y:auto;
+        overscroll-behavior:contain;
+    }
+
+    .contegg-admin-one-time-codes {
+        min-height:42px;
+        max-height:190px;
+        overflow-y:auto;
+        overscroll-behavior:contain;
+    }
+}
+
+.contegg-admin-code-copy {
+    width:28px;
+    height:28px;
+    flex:0 0 28px;
+    border:0;
+    border-radius:8px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(10,132,255,.11);
+    color:#64a8ff;
+    cursor:pointer;
+}
+
+.contegg-admin-generated-code-line {
+    display:flex;
+    align-items:center;
+    gap:7px;
+}
+
+.contegg-admin-generated-code-line input {
+    min-width:0;
+    flex:1;
+}
+
+/* QR */
+.contegg-qr-sheet {
+    max-width:390px !important;
+}
+
+.contegg-qr-content {
+    padding:0 18px 22px;
+    text-align:center;
+}
+
+.contegg-qr-name {
+    margin-top:2px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:5px;
+    font-size:18px;
+    font-weight:650;
+}
+
+.contegg-qr-username {
+    margin-top:3px;
+    color:var(--text-secondary);
+    font-size:13px;
+}
+
+.contegg-qr-stage {
+    position:relative;
+    width:272px;
+    height:272px;
+    margin:18px auto 14px;
+    padding:16px;
+    border-radius:26px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#fff;
+    box-shadow:0 16px 42px rgba(0,0,0,.36);
+}
+
+.contegg-qr-code {
+    width:240px;
+    height:240px;
+}
+
+.contegg-qr-code img,
+.contegg-qr-code canvas {
+    display:block !important;
+    width:240px !important;
+    height:240px !important;
+}
+
+.contegg-qr-avatar {
+    position:absolute;
+    left:50%;
+    top:50%;
+    width:46px;
+    height:46px;
+    transform:translate(-50%,-50%);
+    border:5px solid #fff;
+    border-radius:50%;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:linear-gradient(135deg,#0a84ff,#5e5ce6);
+    color:#fff;
+    font-size:17px;
+    font-weight:700;
+    box-shadow:0 2px 10px rgba(0,0,0,.24);
+    z-index:3;
+}
+
+.contegg-qr-avatar img {
+    width:100%;
+    height:100%;
+    object-fit:cover;
+}
+
+.contegg-qr-description {
+    max-width:310px;
+    margin:0 auto 14px;
+    color:var(--text-secondary);
+    font-size:12px;
+    line-height:1.4;
+}
+
+.contegg-qr-actions {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+}
+
+.contegg-qr-refreshing {
+    animation:conteggQrRefresh .24s ease;
+}
+
+@keyframes conteggQrRefresh {
+    0% { transform:scale(.96); opacity:.55; }
+    100% { transform:scale(1); opacity:1; }
+}
+
+.contegg-qr-error {
+    color:#111;
+    font-size:12px;
+}
+
+@media (max-width:480px) {
+    .contegg-qr-stage {
+        width:248px;
+        height:248px;
+        padding:14px;
+    }
+
+    .contegg-qr-code,
+    .contegg-qr-code img,
+    .contegg-qr-code canvas {
+        width:220px !important;
+        height:220px !important;
+    }
+
+    .contegg-qr-actions {
+        grid-template-columns:1fr;
     }
 }
 </style>
