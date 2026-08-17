@@ -32,7 +32,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-storage-compat.js"></script>  <!-- 👈 ДОБАВЛЕНО! -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script> <!-- Supabase Storage -->
     
     <!-- ✅ ФИКС ДЛЯ INPUT -->
     <style>
@@ -2656,7 +2656,97 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
-const storage = firebase.storage();
+
+/* ===== SUPABASE STORAGE: media only =====
+   Firebase remains for Auth + Firestore.
+   New photos / videos / audio / avatars are stored in Supabase.
+*/
+const SUPABASE_URL = 'https://qbkpnvyoaobfykydxbnj.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_789yUW1BQuA_nRUIinCWLg_Dfit421H';
+const SUPABASE_BUCKET = 'contegg-media';
+
+const supabaseStorage = window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_PUBLISHABLE_KEY
+);
+
+function getSupabaseFileExtension(fileOrBlob, fallback = 'bin') {
+    const name = fileOrBlob?.name || '';
+    const nameMatch = name.match(/\.([a-zA-Z0-9]{1,10})$/);
+    if (nameMatch) return nameMatch[1].toLowerCase();
+
+    const mime = fileOrBlob?.type || '';
+    const map = {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+        'image/gif': 'gif',
+        'video/mp4': 'mp4',
+        'video/webm': 'webm',
+        'video/quicktime': 'mov',
+        'audio/webm': 'webm',
+        'audio/ogg': 'ogg',
+        'audio/mpeg': 'mp3',
+        'audio/mp4': 'm4a',
+        'audio/aac': 'aac',
+        'audio/wav': 'wav'
+    };
+    return map[mime] || fallback;
+}
+
+function makeSupabaseMediaPath(folder, fileOrBlob, prefix = '') {
+    const uid = currentUser?.uid || auth.currentUser?.uid || 'anonymous';
+    const ext = getSupabaseFileExtension(fileOrBlob);
+    const rand = Math.random().toString(36).slice(2, 12);
+    const safePrefix = String(prefix || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const base = safePrefix
+        ? `${safePrefix}_${Date.now()}_${rand}.${ext}`
+        : `${Date.now()}_${rand}.${ext}`;
+    return `${folder}/${uid}/${base}`;
+}
+
+async function uploadToSupabaseStorage(fileOrBlob, folder = 'uploads', options = {}) {
+    if (!fileOrBlob) throw new Error('Файл не передан');
+
+    const path = options.path || makeSupabaseMediaPath(
+        folder,
+        fileOrBlob,
+        options.prefix || ''
+    );
+
+    const uploadOptions = {
+        cacheControl: options.cacheControl || '31536000',
+        upsert: options.upsert === true
+    };
+
+    if (fileOrBlob.type) uploadOptions.contentType = fileOrBlob.type;
+
+    const { data, error } = await supabaseStorage.storage
+        .from(SUPABASE_BUCKET)
+        .upload(path, fileOrBlob, uploadOptions);
+
+    if (error) {
+        console.error('Supabase Storage upload error:', error);
+        throw error;
+    }
+
+    const { data: publicData } = supabaseStorage.storage
+        .from(SUPABASE_BUCKET)
+        .getPublicUrl(data.path);
+
+    if (!publicData?.publicUrl) {
+        throw new Error('Supabase не вернул public URL');
+    }
+
+    return {
+        url: publicData.publicUrl,
+        path: data.path,
+        bucket: SUPABASE_BUCKET,
+        provider: 'supabase'
+    };
+}
+
+console.log('✅ Contegg media storage: Supabase');
     
 let currentUser = null;
 let userData = {};
@@ -2719,12 +2809,11 @@ const JPEG_QUALITY = 0.75;
 const DEVELOPER_EMAILS = ['hidehrouden@gmail.com', 'wostdi@icloud.com'];
 
     async function uploadFileToStorage(file, folder = 'uploads') {
-    const fileRef = storage.ref().child(`${folder}/${Date.now()}_${file.name}`);
-    
-    const snapshot = await fileRef.put(file);
-    const url = await snapshot.ref.getDownloadURL();
-    
-    return url;
+    const uploaded = await uploadToSupabaseStorage(file, folder, {
+        prefix: currentUser?.uid || 'media',
+        cacheControl: '31536000'
+    });
+    return uploaded.url;
 }
 
 async function uploadVideoToStorage(file) {
@@ -2867,14 +2956,11 @@ function loadImageFromDataURL(dataUrl) {
 }
 
 async function uploadImageBlobToStorage(blob) {
-    const fileName = `${currentUser.uid}_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
-    const fileRef = storage.ref().child(`images/${fileName}`);
-
-    const snapshot = await fileRef.put(blob, {
-        contentType: 'image/jpeg'
+    const uploaded = await uploadToSupabaseStorage(blob, 'images', {
+        prefix: currentUser?.uid || 'image',
+        cacheControl: '31536000'
     });
-
-    return await snapshot.ref.getDownloadURL();
+    return uploaded.url;
 }
 
 async function sendImages(files) {
@@ -3627,11 +3713,8 @@ async function sendChannelPhotoAlbum(files) {
         return true;
     } catch (e) {
         console.error('sendChannelPhotoAlbum error:', e);
-        if (e?.code === 'storage/quota-exceeded' || String(e?.message || '').includes('quota')) {
-            toast('Firebase Storage недоступен: превышена квота / отключён billing');
-        } else {
-            toast('Ошибка загрузки фото');
-        }
+        console.error('Supabase album upload failed:', e);
+        toast('Ошибка загрузки фото в Supabase');
         return true;
     } finally {
         if (sendBtn) sendBtn.disabled = false;
@@ -3690,25 +3773,11 @@ async function sendEditedPhoto() {
 }
 
 async function uploadImageBlobToStorage(blob) {
-    const safeName = `${currentUser.uid}_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
-    const path = `images/${safeName}`;
-    const fileRef = storage.ref().child(path);
-
-    // Desktop Chromium occasionally fails a Storage PUT with custom metadata while
-    // the same upload succeeds without it. Retry once without metadata instead of
-    // turning the whole photo flow into an error.
-    let snapshot;
-    try {
-        snapshot = await fileRef.put(blob, {
-            contentType: blob.type || 'image/jpeg',
-            cacheControl: 'public,max-age=31536000'
-        });
-    } catch (firstError) {
-        console.warn('Image upload with metadata failed, retrying:', firstError);
-        snapshot = await fileRef.put(blob);
-    }
-
-    return await snapshot.ref.getDownloadURL();
+    const uploaded = await uploadToSupabaseStorage(blob, 'images', {
+        prefix: currentUser?.uid || 'image',
+        cacheControl: '31536000'
+    });
+    return uploaded.url;
 }
 
     async function uploadAvatarCanvasToStorage(canvas, folder = 'avatars') {
@@ -3720,15 +3789,15 @@ async function uploadImageBlobToStorage(blob) {
         throw new Error('Не удалось подготовить аватар');
     }
 
-    const fileName = `${currentUser.uid}_${Date.now()}.jpg`;
-    const fileRef = storage.ref().child(`${folder}/${fileName}`);
+    const uid = currentUser?.uid || auth.currentUser?.uid;
+    if (!uid) throw new Error('Пользователь не авторизован');
 
-    const snapshot = await fileRef.put(blob, {
-        contentType: 'image/jpeg',
-        cacheControl: 'public,max-age=31536000'
+    const uploaded = await uploadToSupabaseStorage(blob, folder, {
+        path: `${folder}/${uid}/avatar_${Date.now()}_${Math.random().toString(36).slice(2,10)}.jpg`,
+        cacheControl: '31536000'
     });
 
-    return await snapshot.ref.getDownloadURL();
+    return uploaded.url;
 }
 
 function getAvatarSrc(user) {
@@ -6528,42 +6597,17 @@ function seekAudio(event, msgId, duration) {
     }
 }
     
+/* Legacy Firebase Storage recovery disabled.
+   Old Firebase media URLs may remain in historical messages, but the Firebase
+   bucket is unavailable. New media is stored in Supabase and does not need
+   token recovery. */
 function getFirebaseStoragePathFromDownloadUrl(url) {
-    try {
-        const parsed = new URL(url, window.location.href);
-        if (!/firebasestorage\.googleapis\.com$/i.test(parsed.hostname)) return null;
-        const match = parsed.pathname.match(/\/o\/([^/?]+)/);
-        if (!match) return null;
-        return decodeURIComponent(match[1]);
-    } catch (_) {
-        return null;
-    }
+    return null;
 }
 
 async function recoverFirebaseImage(img) {
-    if (!img || img.dataset.firebaseRecovering === '1' || img.dataset.firebaseRecovered === '1') return;
-    const path = getFirebaseStoragePathFromDownloadUrl(img.currentSrc || img.src || '');
-    if (!path) return;
-
-    img.dataset.firebaseRecovering = '1';
-    try {
-        // Ask Firebase for the current download URL again. This repairs images whose
-        // stored URL contains an old download token without changing message data.
-        const freshUrl = await storage.ref().child(path).getDownloadURL();
-        img.dataset.firebaseRecovered = '1';
-        img.src = freshUrl;
-    } catch (e) {
-        console.warn('Firebase image recovery failed:', path, e);
-    } finally {
-        delete img.dataset.firebaseRecovering;
-    }
+    return;
 }
-
-// Works for message photos, avatars and any other Firebase-backed image added later.
-document.addEventListener('error', (event) => {
-    const img = event.target;
-    if (img instanceof HTMLImageElement) recoverFirebaseImage(img);
-}, true);
 
 function renderMessage(id, msg, options = {}) {
     const container = document.getElementById('chatMessages');
