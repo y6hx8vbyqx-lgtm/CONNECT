@@ -666,6 +666,12 @@
         const autoLoginBadge = document.getElementById('autoLoginBadge');
 
         const LOGOUT_FLAG_KEY = 'contegg_manual_logout';
+        const TEMP_MANUAL_ENTRY_KEY = 'contegg_temp_manual_entry';
+
+        // True only while this page is explicitly registering/signing in.
+        // A restored Firebase session on page load must NOT auto-enter a
+        // temporary test account.
+        let explicitAuthAction = false;
 
         // Закрытая регистрация Contegg
         // ВАЖНО: клиентская проверка защищает от случайной регистрации,
@@ -1045,6 +1051,8 @@
             submitBtn.disabled = true;
 
             try {
+                explicitAuthAction = true;
+
                 const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                 const user = userCredential.user;
 
@@ -1088,6 +1096,10 @@
 
                 setManualLogout(false);
 
+                if (isConteggTemporaryTestEmail(email)) {
+                    sessionStorage.setItem(TEMP_MANUAL_ENTRY_KEY, '1');
+                }
+
                 showSuccess(registerError, 'Регистрация успешна! Перенаправление...');
 
                 setTimeout(() => {
@@ -1095,6 +1107,7 @@
                 }, 1500);
 
             } catch (error) {
+                explicitAuthAction = false;
                 console.error('Registration error:', error);
 
                 let message = 'Ошибка регистрации';
@@ -1142,9 +1155,15 @@
             submitBtn.disabled = true;
 
             try {
+                explicitAuthAction = true;
+
                 await auth.signInWithEmailAndPassword(email, password);
 
                 setManualLogout(false);
+
+                if (isConteggTemporaryTestEmail(email)) {
+                    sessionStorage.setItem(TEMP_MANUAL_ENTRY_KEY, '1');
+                }
 
                 showSuccess(loginError, 'Вход выполнен! Перенаправление...');
 
@@ -1153,6 +1172,7 @@
                 }, 1500);
 
             } catch (error) {
+                explicitAuthAction = false;
                 console.error('Login error:', error);
 
                 let message = 'Неверный email или пароль';
@@ -1201,14 +1221,13 @@
                     return;
                 }
 
-                console.log('Auto-login in progress...');
-                showAutoLoginBadge();
+                let userDocData = null;
 
                 try {
                     const userDoc = await db.collection('users').doc(user.uid).get();
 
                     if (!userDoc.exists) {
-                        await db.collection('users').doc(user.uid).set({
+                        userDocData = {
                             uid: user.uid,
                             username: user.displayName || 'user_' + user.uid.slice(0, 8),
                             displayName: user.displayName || 'Пользователь',
@@ -1224,16 +1243,56 @@
                             temporaryAccount: isConteggTemporaryTestEmail(user.email),
                             temporaryAccountType: isConteggTemporaryTestEmail(user.email) ? 'delete_on_logout' : '',
                             createdAt: new Date()
-                        });
+                        };
+
+                        await db.collection('users').doc(user.uid).set(userDocData);
+                    } else {
+                        userDocData = userDoc.data() || {};
                     }
                 } catch (error) {
                     console.error('Error checking user document:', error);
                 }
 
+                const temporary =
+                    isConteggTemporaryTestEmail(user.email) ||
+                    userDocData?.temporaryAccount === true;
+
+                /*
+                 * Temporary accounts are NEVER auto-entered from restored
+                 * Firebase persistence. They are allowed only as the direct
+                 * result of a registration/login action performed on this page.
+                 */
+                if (temporary && !explicitAuthAction) {
+                    console.log('Temporary account restored automatically — signing out');
+
+                    hideAutoLoginBadge();
+                    sessionStorage.removeItem(TEMP_MANUAL_ENTRY_KEY);
+                    setManualLogout(false);
+
+                    await auth.signOut().catch(console.error);
+
+                    welcomeScreen.classList.remove('hidden');
+                    registerForm.classList.add('hidden');
+                    loginForm.classList.add('hidden');
+
+                    return;
+                }
+
+                if (!temporary) {
+                    console.log('Auto-login in progress...');
+                    showAutoLoginBadge();
+                } else {
+                    hideAutoLoginBadge();
+                    sessionStorage.setItem(TEMP_MANUAL_ENTRY_KEY, '1');
+                }
+
+                explicitAuthAction = false;
+
                 setTimeout(() => {
                     redirectToChats();
                 }, 500);
             } else {
+                explicitAuthAction = false;
                 hideAutoLoginBadge();
             }
         });
