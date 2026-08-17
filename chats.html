@@ -5355,6 +5355,69 @@ async function openDirectChat(userId, username, knownChatId = null) {
 }
     
 
+// ===== MOBILE CHAT HISTORY / SAFARI EDGE-SWIPE FIX =====
+//
+// На телефоне открытый чат получает отдельную запись History.
+// Поэтому системный свайп Safari "назад" сначала закрывает чат,
+// а уже следующий свайп со списка чатов может уйти на предыдущую страницу.
+
+function isMobileChatNavigation() {
+    return (
+        window.matchMedia('(pointer: coarse)').matches ||
+        window.innerWidth <= 900 ||
+        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    );
+}
+
+function getCleanHistoryState() {
+    const state = history.state;
+    return (state && typeof state === 'object') ? { ...state } : {};
+}
+
+function pushChatHistoryEntry() {
+    if (!isMobileChatNavigation()) return;
+
+    const state = getCleanHistoryState();
+
+    // Не создаём второй history-step, если чат уже открыт.
+    if (state.conteggChatOpen === true) {
+        history.replaceState(
+            {
+                ...state,
+                conteggChatOpen: true,
+                conteggChatId: currentChatId || null
+            },
+            '',
+            location.href
+        );
+        return;
+    }
+
+    history.pushState(
+        {
+            ...state,
+            conteggChatOpen: true,
+            conteggChatId: currentChatId || null
+        },
+        '',
+        location.href
+    );
+}
+
+function clearStaleChatHistoryState() {
+    const state = getCleanHistoryState();
+
+    // После обычной перезагрузки overlay изначально закрыт.
+    // Старый флаг открытого чата оставлять нельзя.
+    if (state.conteggChatOpen === true) {
+        delete state.conteggChatOpen;
+        delete state.conteggChatId;
+        history.replaceState(state, '', location.href);
+    }
+}
+
+clearStaleChatHistoryState();
+
 function showChatOverlay() {
     const overlay = document.getElementById('chatOverlay');
     if (!overlay) return;
@@ -5369,6 +5432,9 @@ function showChatOverlay() {
     document.documentElement.style.setProperty('--contegg-keyboard-height', '0px');
 
     overlay.classList.add('show');
+
+    // На мобильном добавляем отдельный шаг истории для открытого чата.
+    pushChatHistoryEntry();
 
     if (typeof updateMobileKeyboardViewport === 'function') {
         updateMobileKeyboardViewport();
@@ -5670,28 +5736,78 @@ if (!chatData?.isSystem) {
 }
 }
 
-function closeChat() {
-    
+function closeChatUIOnly() {
     if (chatUserPresenceListener) {
-    chatUserPresenceListener();
-    chatUserPresenceListener = null;
-}
+        chatUserPresenceListener();
+        chatUserPresenceListener = null;
+    }
 
-document.getElementById('chatStatus').style.color = 'var(--text-secondary)';
-   hideChatOverlay();
-    if (chatMessagesListener) { chatMessagesListener(); chatMessagesListener = null; }
+    const statusEl = document.getElementById('chatStatus');
+    if (statusEl) {
+        statusEl.style.color = 'var(--text-secondary)';
+    }
+
+    hideChatOverlay();
+
+    if (chatMessagesListener) {
+        chatMessagesListener();
+        chatMessagesListener = null;
+    }
+
     clearChatNavbarActions();
+
     currentChatId = null;
     currentChatUser = null;
     currentChatIsGroup = false;
-currentChatIsSaved = false;
-currentChatIsSystem = false;
-currentChatIsChannel = false;
+    currentChatIsSaved = false;
+    currentChatIsSystem = false;
+    currentChatIsChannel = false;
     currentChatParticipants = [];
+
     cancelReply();
-    document.getElementById('chatInputBar').style.display = 'flex';
-    if (isRecording) stopRecording();
+
+    const inputBar = document.getElementById('chatInputBar');
+    if (inputBar) {
+        inputBar.style.display = 'flex';
+    }
+
+    if (isRecording) {
+        stopRecording();
+    }
 }
+
+function closeChat() {
+    const overlay = document.getElementById('chatOverlay');
+    const chatIsOpen = overlay?.classList.contains('show');
+
+    if (!chatIsOpen) return;
+
+    // На мобильном кнопка назад снимает history-step чата.
+    // Точно так же работает системный свайп Safari от левого края.
+    if (
+        isMobileChatNavigation() &&
+        history.state?.conteggChatOpen === true
+    ) {
+        history.back();
+        return;
+    }
+
+    // ПК / запасной сценарий.
+    closeChatUIOnly();
+}
+
+// Safari edge-swipe / browser Back:
+// если открыт чат — закрываем только чат и остаёмся на списке.
+window.addEventListener('popstate', () => {
+    const overlay = document.getElementById('chatOverlay');
+
+    if (
+        isMobileChatNavigation() &&
+        overlay?.classList.contains('show')
+    ) {
+        closeChatUIOnly();
+    }
+});
 
 async function markAsRead() {
     if (!currentChatId) return;
@@ -10398,7 +10514,7 @@ body.keyboard-no-transition .chat-input-bar {
         document.removeEventListener('keydown', onFirstUserAction, true);
     }
 
-    document.addEventListener('click', onFirstUserAction, true);
+    document.addEventListener('click', onFirstUserAction, true); 
     document.addEventListener('keydown', onFirstUserAction, true);
 })();
 </script>
