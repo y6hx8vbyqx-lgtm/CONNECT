@@ -319,6 +319,23 @@
             color: var(--error-color);
         }
 
+        .temporary-account-hint {
+            margin: -6px 4px 16px;
+            padding: 9px 11px;
+            border-radius: 11px;
+            background: rgba(43, 126, 245, 0.08);
+            border: 1px solid rgba(43, 126, 245, 0.15);
+            color: var(--text-secondary);
+            font-size: 11px;
+            line-height: 1.4;
+            text-align: left;
+        }
+
+        .temporary-account-hint b {
+            color: var(--accent-color);
+            font-weight: 600;
+        }
+
         .password-strength {
             margin: -6px 0 16px;
         }
@@ -544,6 +561,11 @@
                     Регистрация доступна только по приглашению
                 </div>
 
+                <div class="temporary-account-hint">
+                    Для временного тестового аккаунта используйте <b>test@test.contegg</b>.
+                    Он будет полностью удалён после выхода.
+                </div>
+
                 <div class="input-group">
                     <i class="fas fa-lock input-icon"></i>
                     <input type="password" id="regPassword" placeholder="Пароль" autocomplete="new-password" required>
@@ -649,6 +671,11 @@
         // ВАЖНО: клиентская проверка защищает от случайной регистрации,
         // но код технически можно увидеть в исходном коде браузера.
         const CONTEGG_REGISTRATION_ACCESS_CODE = 'Ft$d$1Zq.^&HfshF~USnfo2J:x;44A';
+        const CONTEGG_TEMP_TEST_EMAIL = 'test@test.contegg';
+
+        function isConteggTemporaryTestEmail(email) {
+            return String(email || '').trim().toLowerCase() === CONTEGG_TEMP_TEST_EMAIL;
+        }
 
         window.togglePassword = function(inputId, icon) {
             const input = document.getElementById(inputId);
@@ -897,6 +924,8 @@
                     blockedUsers: [],
                     pinnedChats: [],
                     registrationMethod: 'invite_code',
+                    temporaryAccount: isConteggTemporaryTestEmail(email),
+                    temporaryAccountType: isConteggTemporaryTestEmail(email) ? 'delete_on_logout' : '',
                     createdAt: new Date()
                 });
 
@@ -1031,6 +1060,8 @@
                             usernameLower: (user.displayName || 'user_' + user.uid.slice(0, 8)).toLowerCase(),
                             blockedUsers: [],
                             pinnedChats: [],
+                            temporaryAccount: isConteggTemporaryTestEmail(user.email),
+                            temporaryAccountType: isConteggTemporaryTestEmail(user.email) ? 'delete_on_logout' : '',
                             createdAt: new Date()
                         });
                     }
