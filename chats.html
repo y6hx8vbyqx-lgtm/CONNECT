@@ -5432,9 +5432,14 @@ function showChatOverlay() {
 
     document.body.classList.add('chat-open');
 
-    requestAnimationFrame(() => {
-        overlay.classList.add('show');
-    });
+    // Сам overlay появляется сразу. Шапка больше не участвует
+    // в горизонтальной анимации и поэтому стоит неподвижно.
+    overlay.classList.add('show');
+
+    // Отдельно запускаем мягкую анимацию только контента чата.
+    overlay.classList.remove('chat-content-enter');
+    void overlay.offsetWidth;
+    overlay.classList.add('chat-content-enter');
 
     // На мобильном открытый чат = отдельный шаг history.
     pushChatHistoryEntry();
@@ -5456,7 +5461,7 @@ function hideChatOverlay() {
     const overlay = document.getElementById('chatOverlay');
     if (!overlay) return;
 
-    overlay.classList.remove('show');
+    overlay.classList.remove('show', 'chat-content-enter');
     document.body.classList.remove(
         'chat-open',
         'keyboard-open',
@@ -10213,15 +10218,23 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
     background: var(--bg-primary) !important;
     z-index: 900 !important;
 
-    transform: translate3d(100%, 0, 0) !important;
-    transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1) !important;
+    /* ВАЖНО: весь экран чата больше НЕ ездит вправо-влево.
+       Это полностью убирает движение/рывки шапки. */
+    transform: none !important;
+    transition: none !important;
+
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
 
     backface-visibility: hidden !important;
     -webkit-backface-visibility: hidden !important;
 }
 
 .chat-overlay.show {
-    transform: translate3d(0, 0, 0) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
 }
 
 /* На мобильном весь экран чата следует за visualViewport целиком. */
@@ -10256,11 +10269,21 @@ console.log('✅ Contegg Messenger · Полная версия с фото, в�
 }
 
 body:not(.chat-open) .chat-navbar {
-    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
 }
 
 body.chat-open .chat-navbar {
     display: flex !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+
+    /* Шапка статична: никаких transition/transform */
+    transform: none !important;
+    transition: none !important;
+    animation: none !important;
 }
 
 /* Сообщения занимают пространство между шапкой и input bar. */
@@ -10321,6 +10344,52 @@ body.keyboard-open {
 
 body.keyboard-open .chat-input-bar {
     padding-bottom: 8px !important;
+}
+
+/* ===== OPEN CHAT: ANIMATE CONTENT ONLY, HEADER STAYS STATIC ===== */
+
+@keyframes conteggChatMessagesIn {
+    from {
+        opacity: 0;
+        transform: translate3d(18px, 0, 0);
+    }
+    to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+}
+
+@keyframes conteggChatInputIn {
+    from {
+        opacity: 0;
+        transform: translate3d(0, 8px, 0);
+    }
+    to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+}
+
+.chat-overlay.chat-content-enter .chat-messages {
+    animation: conteggChatMessagesIn 0.22s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+}
+
+.chat-overlay.chat-content-enter .chat-input-bar {
+    animation: conteggChatInputIn 0.20s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+}
+
+/* После первого открытия никаких постоянных will-change */
+.chat-messages,
+.chat-input-bar,
+.chat-navbar {
+    will-change: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-overlay.chat-content-enter .chat-messages,
+    .chat-overlay.chat-content-enter .chat-input-bar {
+        animation: none !important;
+    }
 }
 
 /* ПК остаётся обычным полноэкранным overlay. */
