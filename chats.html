@@ -3106,6 +3106,7 @@ let currentChatIsChannel = false;
 let currentChatUser = null;
 let currentChatParticipants = [];
 let chatMessagesListener = null;
+let chatMessagesGeneration = 0;
 let chatsGlobalListener = null;
 let chatUserPresenceListener = null;
 let deviceControlListener = null;
@@ -5561,7 +5562,24 @@ async function getOrCreateSavedChat() {
     const query = await savedChatsRef.where('isSaved', '==', true).where('ownerId', '==', currentUser.uid).get();
     
     if (!query.empty) {
-        savedChatId = query.docs[0].id;
+        const existing = query.docs[0];
+        savedChatId = existing.id;
+
+        const existingData = existing.data() || {};
+        const participants = Array.isArray(existingData.participants)
+            ? existingData.participants
+            : [];
+
+        if (!participants.includes(currentUser.uid)) {
+            await db.collection('chats').doc(savedChatId).set({
+                participants: [currentUser.uid],
+                ownerId: currentUser.uid,
+                isSaved: true,
+                isGroup: false,
+                name: 'Избранное'
+            }, { merge: true });
+        }
+
         return savedChatId;
     }
     
@@ -6273,9 +6291,31 @@ const snap = await db.collection('chats')
     .where('participants', 'array-contains', currentUser.uid)
     .get();
 
-const rawChats = snap.docs
+let rawChats = snap.docs
     .map(doc => ({ id: doc.id, ...doc.data() }))
     .filter(chat => chat.participants?.includes(currentUser.uid));
+
+// Legacy-safe Favorites: older saved chats may not have participants.
+// Repair them and merge them explicitly so "Избранное" can never disappear.
+try {
+    const ensuredSavedId = await getOrCreateSavedChat();
+
+    if (!rawChats.some(chat => chat.id === ensuredSavedId)) {
+        const savedSnap = await db.collection('chats').doc(ensuredSavedId).get();
+
+        if (savedSnap.exists) {
+            rawChats.push({
+                id: savedSnap.id,
+                ...savedSnap.data(),
+                participants: [currentUser.uid],
+                isSaved: true,
+                ownerId: currentUser.uid
+            });
+        }
+    }
+} catch (savedRepairError) {
+    console.warn('Favorites repair warning:', savedRepairError);
+}
 
 const dmUserIds = [
     ...new Set(
@@ -7133,6 +7173,8 @@ function closeChatUIOnly() {
 
     hideChatOverlay();
 
+    chatMessagesGeneration++;
+
     if (chatMessagesListener) {
         chatMessagesListener();
         chatMessagesListener = null;
@@ -7303,6 +7345,11 @@ function settleChatAfterInputChange(options = {}) {
     if (!currentChatId || !container) return;
 
     const chatId = currentChatId;
+    const generation = ++chatMessagesGeneration;
+
+    // This DOM container belongs to exactly one chat generation.
+    container.dataset.activeChatId = chatId;
+    container.dataset.chatGeneration = String(generation);
     const desktopFeedTransition =
         window.innerWidth >= 768 &&
         !document.body.classList.contains('contegg-admin-workspace-open');
@@ -7310,7 +7357,13 @@ function settleChatAfterInputChange(options = {}) {
     const feedTransitionStartedAt = performance.now();
 
     if (desktopFeedTransition) {
-        container.classList.remove('contegg-feed-entering');
+        container.classList.remove(
+            'contegg-feed-entering',
+            'contegg-feed-visible'
+        );
+
+        // Force the browser to commit the old state before fading it.
+        void container.offsetWidth;
         container.classList.add('contegg-feed-switching');
     }
 
@@ -7335,7 +7388,12 @@ function settleChatAfterInputChange(options = {}) {
             .orderBy('timestamp', 'asc')
             .limitToLast(60)
             .onSnapshot(async snap => {
-                if (currentChatId !== chatId) {
+                if (
+                    generation !== chatMessagesGeneration ||
+                    currentChatId !== chatId ||
+                    container.dataset.activeChatId !== chatId ||
+                    container.dataset.chatGeneration !== String(generation)
+                ) {
                     resolve();
                     return;
                 }
@@ -7343,13 +7401,17 @@ function settleChatAfterInputChange(options = {}) {
                 if (firstLoad) {
                     if (desktopFeedTransition) {
                         const elapsed = performance.now() - feedTransitionStartedAt;
-                        const wait = Math.max(0, 72 - elapsed);
+                        const wait = Math.max(0, 54 - elapsed);
 
                         if (wait > 0) {
                             await new Promise(resolve => setTimeout(resolve, wait));
                         }
 
-                        if (currentChatId !== chatId) {
+                        if (
+                            generation !== chatMessagesGeneration ||
+                            currentChatId !== chatId ||
+                            container.dataset.activeChatId !== chatId
+                        ) {
                             resolve();
                             return;
                         }
@@ -7386,17 +7448,34 @@ function settleChatAfterInputChange(options = {}) {
                         container.classList.remove('contegg-feed-switching');
 
                         requestAnimationFrame(() => {
-                            container.classList.add('contegg-feed-entering');
+                            container.classList.add(
+                                'contegg-feed-entering',
+                                'contegg-feed-visible'
+                            );
 
                             setTimeout(() => {
-                                if (currentChatId === chatId) {
+                                if (
+                                    generation === chatMessagesGeneration &&
+                                    currentChatId === chatId
+                                ) {
                                     container.classList.remove('contegg-feed-entering');
                                 }
-                            }, 260);
+                            }, 190);
                         });
                     }
                 } else {
+                    if (
+                        generation !== chatMessagesGeneration ||
+                        currentChatId !== chatId ||
+                        container.dataset.activeChatId !== chatId
+                    ) return;
+
                     snap.docChanges().forEach(change => {
+                        if (
+                            generation !== chatMessagesGeneration ||
+                            currentChatId !== chatId ||
+                            container.dataset.activeChatId !== chatId
+                        ) return;
                         const msg = change.doc.data();
                         const msgEl = container.querySelector(`[data-msg-id="${change.doc.id}"]`);
 
@@ -7470,7 +7549,12 @@ function settleChatAfterInputChange(options = {}) {
                     });
 
                     setTimeout(() => {
-                        if (currentChatId === chatId && document.activeElement !== document.getElementById('chatInput')) {
+                        if (
+                            generation === chatMessagesGeneration &&
+                            currentChatId === chatId &&
+                            container.dataset.activeChatId === chatId &&
+                            document.activeElement !== document.getElementById('chatInput')
+                        ) {
                             scrollMessagesToBottom({ smooth: false });
                         }
                     }, 70);
@@ -7479,6 +7563,15 @@ function settleChatAfterInputChange(options = {}) {
                     resolve();
                 }
             }, error => {
+                if (
+                    generation !== chatMessagesGeneration ||
+                    currentChatId !== chatId ||
+                    container.dataset.activeChatId !== chatId
+                ) {
+                    resolve();
+                    return;
+                }
+
                 console.error('loadMessages listener error:', error);
 
                 container.innerHTML = `
@@ -8284,6 +8377,16 @@ div.addEventListener('touchend', (e) => {
         ignoreNextClick = false;
     }, 350);
 }, { passive: true });
+
+// Final ownership check: never append an element into a feed that has
+// already switched to another chat while this message was being prepared.
+if (
+    container.dataset.activeChatId &&
+    currentChatId &&
+    container.dataset.activeChatId !== currentChatId
+) {
+    return;
+}
 
 container.appendChild(div);
 
@@ -16442,22 +16545,26 @@ body.keyboard-no-transition .chat-input-bar {
         rightPanelInitialized = true;
 
         toggle.addEventListener('click', () => {
-            if (document.body.classList.contains('contegg-right-panel-moving')) return;
-
-            const willCollapse = !document.body.classList.contains('contegg-right-collapsed');
+            const willCollapse =
+                !document.body.classList.contains('contegg-right-collapsed');
 
             document.body.classList.add('contegg-right-panel-moving');
-            document.body.classList.toggle('contegg-right-collapsed', willCollapse);
+            document.body.classList.toggle(
+                'contegg-right-collapsed',
+                willCollapse
+            );
 
             toggle.setAttribute(
                 'aria-label',
-                willCollapse ? 'Открыть боковую панель' : 'Скрыть боковую панель'
+                willCollapse
+                    ? 'Открыть боковую панель'
+                    : 'Скрыть боковую панель'
             );
 
             clearTimeout(window.__conteggRightPanelTimer);
             window.__conteggRightPanelTimer = setTimeout(() => {
                 document.body.classList.remove('contegg-right-panel-moving');
-            }, 390);
+            }, 300);
         });
 
         tabs.forEach(tab => tab.addEventListener('click', () => {
@@ -16587,6 +16694,58 @@ body.keyboard-no-transition .chat-input-bar {
         });
     }
 
+
+    function repairPhoneChatSurface() {
+        if (!isPhone()) return;
+
+        const overlay = document.getElementById('chatOverlay');
+        const messages = document.getElementById('chatMessages');
+        const inputBar = document.getElementById('chatInputBar');
+        const navbar = document.getElementById('chatNavbar');
+
+        if (!overlay || !messages || !inputBar || !navbar) return;
+
+        ensurePhoneLayers();
+
+        if (!document.body.classList.contains('chat-open')) return;
+
+        const motion = document.getElementById('conteggPhoneChatMotionLayer');
+        const header = document.getElementById('conteggPhoneHeaderLayer');
+
+        overlay.classList.add('show');
+        overlay.style.removeProperty('display');
+        overlay.style.visibility = 'visible';
+        overlay.style.opacity = '1';
+
+        if (motion) {
+            motion.style.visibility = 'visible';
+            motion.style.opacity = '1';
+            motion.style.display = 'block';
+        }
+
+        messages.style.visibility = 'visible';
+        messages.style.opacity = '1';
+        messages.style.display = 'block';
+
+        inputBar.style.visibility = 'visible';
+        inputBar.style.opacity = '1';
+        inputBar.style.display = 'flex';
+
+        if (header) {
+            header.style.visibility = 'visible';
+            header.style.opacity = '1';
+        }
+
+        // Closed keyboard must NEVER leave a stale translated feed.
+        if (document.activeElement !== document.getElementById('chatInput')) {
+            document.documentElement.style.setProperty(
+                '--contegg-phone-keyboard-shift',
+                '0px'
+            );
+            document.body.classList.remove('keyboard-open');
+        }
+    }
+
     function arrangeForViewport() {
         if (isPhone()) {
             if (typeof closeInlinePostComments === 'function') closeInlinePostComments();
@@ -16621,6 +16780,10 @@ body.keyboard-no-transition .chat-input-bar {
             if (isPhone()) {
                 freezePhoneBaseHeight();
                 syncPhoneKeyboard();
+
+                requestAnimationFrame(repairPhoneChatSurface);
+                setTimeout(repairPhoneChatSurface, 90);
+                setTimeout(repairPhoneChatSurface, 260);
             }
 
             return result;
@@ -16668,9 +16831,24 @@ body.keyboard-no-transition .chat-input-bar {
             setTimeout(() => {
                 freezePhoneBaseHeight();
                 syncPhoneKeyboard();
+                repairPhoneChatSurface();
             }, 160);
         }, true);
     }
+
+
+    window.addEventListener('pageshow', () => {
+        if (isPhone()) {
+            requestAnimationFrame(repairPhoneChatSurface);
+        }
+    }, { passive: true });
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && isPhone()) {
+            requestAnimationFrame(repairPhoneChatSurface);
+            setTimeout(repairPhoneChatSurface, 80);
+        }
+    });
 
     /*
      * V7 CENTRAL LAYOUT ENGINE
@@ -19669,6 +19847,188 @@ body.contegg-tab-switching {
 
     body.contegg-right-collapsed #conteggDesktopRightToggle i {
         transform:rotate(180deg);
+    }
+}
+
+</style>
+
+
+<style id="CONTEGG-CONTROL-STABLE-V12">
+
+/* ---------------- PHONE: NEVER BLACK WHILE CHAT IS OPEN ---------------- */
+@media (max-width:767px) {
+    body.chat-open #chatOverlay.chat-overlay,
+    body.chat-open #conteggPhoneChatMotionLayer,
+    body.chat-open #chatMessages.chat-messages,
+    body.chat-open #chatInputBar.chat-input-bar {
+        visibility:visible !important;
+        opacity:1 !important;
+    }
+
+    body.chat-open #chatOverlay.chat-overlay {
+        display:block !important;
+        background:#000 !important;
+    }
+
+    body.chat-open #conteggPhoneChatMotionLayer {
+        display:block !important;
+    }
+
+    body.chat-open #chatMessages.chat-messages {
+        display:block !important;
+        min-height:0 !important;
+    }
+
+    body.chat-open #chatInputBar.chat-input-bar {
+        display:flex !important;
+    }
+
+    body.chat-open:not(.keyboard-open) #conteggPhoneChatMotionLayer {
+        transform:translate3d(0,0,0) !important;
+    }
+}
+
+
+/* ---------------- CHAT SWITCH: DESKTOP + TABLET ---------------- */
+@media (min-width:768px) {
+    #conteggDesktopChatPane #chatMessages.chat-messages {
+        opacity:1;
+        transform:translate3d(0,0,0);
+        transition:
+            opacity 90ms ease-out,
+            transform 105ms cubic-bezier(.22,.78,.22,1) !important;
+    }
+
+    #conteggDesktopChatPane #chatMessages.chat-messages.contegg-feed-switching {
+        opacity:.08 !important;
+        transform:translate3d(0,3px,0) !important;
+    }
+
+    #conteggDesktopChatPane #chatMessages.chat-messages.contegg-feed-entering {
+        animation:conteggV12FeedIn 155ms cubic-bezier(.18,.82,.22,1) both !important;
+    }
+
+    @keyframes conteggV12FeedIn {
+        from {
+            opacity:.08;
+            transform:translate3d(0,5px,0);
+        }
+        to {
+            opacity:1;
+            transform:translate3d(0,0,0);
+        }
+    }
+
+    #conteggDesktopChatPane #chatMessages .msg.contegg-msg-initial {
+        animation:
+            conteggV12MessageIn 150ms cubic-bezier(.18,.82,.22,1)
+            var(--contegg-msg-delay,0ms)
+            both !important;
+    }
+
+    #conteggDesktopChatPane #chatMessages .msg.contegg-msg-animate:not(.contegg-msg-initial) {
+        animation:conteggV12MessageIn 155ms cubic-bezier(.18,.82,.22,1) both !important;
+    }
+
+    @keyframes conteggV12MessageIn {
+        from {
+            opacity:0;
+            transform:translate3d(0,5px,0) scale(.995);
+        }
+        to {
+            opacity:1;
+            transform:none;
+        }
+    }
+}
+
+
+/* ---------------- RIGHT PANEL: ONE AUTHORITATIVE MOTION ---------------- */
+@media (min-width:1200px) {
+    #conteggDesktopChatPane {
+        right:var(--contegg-desktop-right) !important;
+        transition:right 285ms cubic-bezier(.22,.82,.22,1) !important;
+    }
+
+    body.contegg-right-collapsed #conteggDesktopChatPane {
+        right:0 !important;
+    }
+
+    #conteggDesktopRightPanel {
+        display:flex !important;
+        visibility:visible;
+        opacity:1;
+        transform:translate3d(0,0,0);
+        pointer-events:auto;
+
+        transition:
+            transform 285ms cubic-bezier(.22,.82,.22,1),
+            opacity 175ms ease,
+            visibility 0s linear 0s !important;
+    }
+
+    body.contegg-right-collapsed #conteggDesktopRightPanel {
+        transform:translate3d(100%,0,0) !important;
+        opacity:0 !important;
+        visibility:hidden !important;
+        pointer-events:none !important;
+
+        transition:
+            transform 285ms cubic-bezier(.22,.82,.22,1),
+            opacity 160ms ease,
+            visibility 0s linear 285ms !important;
+    }
+
+    #conteggDesktopRightToggle {
+        right:var(--contegg-desktop-right) !important;
+        transition:
+            right 285ms cubic-bezier(.22,.82,.22,1),
+            transform 165ms ease,
+            background 150ms ease !important;
+    }
+
+    body.contegg-right-collapsed #conteggDesktopRightToggle {
+        right:0 !important;
+    }
+
+    #conteggSidePanelContent,
+    .contegg-side-tabs {
+        transition:
+            opacity 160ms ease,
+            transform 220ms cubic-bezier(.22,.82,.22,1) !important;
+    }
+
+    body.contegg-right-collapsed #conteggSidePanelContent,
+    body.contegg-right-collapsed .contegg-side-tabs {
+        opacity:0 !important;
+        transform:translate3d(10px,0,0) !important;
+    }
+
+    body:not(.contegg-right-collapsed) #conteggSidePanelContent,
+    body:not(.contegg-right-collapsed) .contegg-side-tabs {
+        opacity:1 !important;
+        transform:none !important;
+    }
+
+    #conteggDesktopRightToggle i {
+        transition:transform 285ms cubic-bezier(.22,.82,.22,1) !important;
+    }
+
+    body.contegg-right-collapsed #conteggDesktopRightToggle i {
+        transform:rotate(180deg) !important;
+    }
+}
+
+
+/* Tablet: no right emoji panel at all; chat must own entire center area. */
+@media (min-width:768px) and (max-width:1199px) {
+    #conteggDesktopRightPanel,
+    #conteggDesktopRightToggle {
+        display:none !important;
+    }
+
+    #conteggDesktopChatPane {
+        right:0 !important;
     }
 }
 
