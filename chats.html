@@ -11074,20 +11074,38 @@ body.keyboard-no-transition .chat-input-bar {
     #conteggDesktopRightToggle {
         position: absolute;
         top: 50%;
-        right: calc(var(--contegg-desktop-right) - 18px);
-        width: 36px;
-        height: 56px;
-        margin-top: -28px;
-        border: 0.5px solid rgba(255,255,255,.12);
-        border-right: none;
-        border-radius: 18px 0 0 18px;
-        background: rgba(44,44,46,.88);
+        /* Button lives entirely on the chat side. Its RIGHT edge is exactly
+           the left boundary of the emoji panel, so it never covers emojis. */
+        right: var(--contegg-desktop-right);
+        width: 38px;
+        height: 62px;
+        margin-top: -31px;
+        border: 0.5px solid rgba(255,255,255,.16);
+        border-right: 0;
+        border-radius: 21px 0 0 21px;
+        background: rgba(44,44,46,.48);
         color: rgba(255,255,255,.78);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
+        backdrop-filter: blur(24px) saturate(155%);
+        -webkit-backdrop-filter: blur(24px) saturate(155%);
+        box-shadow:
+            -7px 0 20px rgba(0,0,0,.18),
+            inset 0 1px 0 rgba(255,255,255,.08);
         z-index: 30;
         cursor: pointer;
-        transition: right .28s cubic-bezier(.2,.8,.2,1), background .18s ease;
+        overflow: hidden;
+        transition:
+            right .28s cubic-bezier(.2,.8,.2,1),
+            background .18s ease,
+            border-color .18s ease;
+    }
+
+    #conteggDesktopRightToggle:hover {
+        background: rgba(58,58,60,.62);
+        border-color: rgba(255,255,255,.22);
+    }
+
+    #conteggDesktopRightToggle:active {
+        background: rgba(72,72,74,.68);
     }
 
     body.contegg-right-collapsed #conteggDesktopRightToggle {
