@@ -5202,6 +5202,9 @@ async function sendSystemNotification(userId, type, data = {}) {
             case 'device_kicked':
                 notificationText = `💻 Быстрый вход отключен на устройстве: ${data.deviceName || 'устройство'}`;
                 break;
+            case 'admin_custom_message':
+                notificationText = data.message || 'Сообщение от Contegg';
+                break;
             default:
                 notificationText = `📢 ${data.message || 'Системное уведомление'}`;
         }
@@ -11976,13 +11979,409 @@ async function applyAdminUserControls() {
     }
 }
 
+
+async function loadAdminRegisteredUsers() {
+    if (!isConteggSuperAdmin()) return;
+
+    const list = document.getElementById('conteggAdminUsersList');
+    const count = document.getElementById('conteggAdminUsersCount');
+
+    if (!list) return;
+
+    list.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка пользователей...</span></div>';
+
+    try {
+        const snap = await db.collection('users').get();
+        const users = snap.docs
+            .map(doc => ({ uid: doc.id, ...doc.data() }))
+            .sort((a, b) =>
+                String(a.displayName || a.username || '').localeCompare(
+                    String(b.displayName || b.username || ''),
+                    'ru'
+                )
+            );
+
+        if (count) count.textContent = String(users.length);
+
+        if (!users.length) {
+            list.innerHTML = '<div class="contegg-admin-empty-hint">Пользователей пока нет</div>';
+            return;
+        }
+
+        list.innerHTML = users.map(user => {
+            const normalized = normalizePublicUserData(user, user.uid);
+            const avatarSrc = getAvatarSrc(user);
+            const name = user.displayName || user.username || 'Пользователь';
+
+            return `
+                <div class="contegg-admin-user-row" data-admin-user-id="${esc(user.uid)}">
+                    <div class="contegg-admin-user-list-avatar">
+                        ${avatarSrc
+                            ? `<img src="${avatarSrc}">`
+                            : esc((name[0] || 'U').toUpperCase())}
+                    </div>
+
+                    <div class="contegg-admin-user-list-main">
+                        <div class="contegg-admin-user-list-name">
+                            ${esc(name)}
+                            ${renderVerificationBadge(normalized, 11)}
+                            ${user.isBlocked ? '<span class="contegg-admin-mini-blocked">BLOCKED</span>' : ''}
+                        </div>
+                        <div class="contegg-admin-user-list-meta">
+                            @${esc(user.username || '')} · ${esc(user.email || '')}
+                        </div>
+                    </div>
+
+                    <div class="contegg-admin-user-row-actions">
+                        <button
+                            type="button"
+                            class="contegg-admin-mini-button"
+                            data-admin-action="message"
+                            data-admin-user="${esc(user.uid)}"
+                        >
+                            <i class="fas fa-comment"></i>
+                            Написать
+                        </button>
+
+                        <button
+                            type="button"
+                            class="contegg-admin-mini-button"
+                            data-admin-action="manage"
+                            data-admin-user="${esc(user.uid)}"
+                        >
+                            <i class="fas fa-sliders-h"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('loadAdminRegisteredUsers error:', error);
+        list.innerHTML = '<div class="contegg-admin-empty-hint">Ошибка загрузки пользователей</div>';
+    }
+}
+
+async function selectAdminUserByUid(uid, mode = 'manage') {
+    if (!uid) return;
+
+    const snap = await db.collection('users').doc(uid).get();
+    if (!snap.exists) {
+        toast('Пользователь больше не существует');
+        return;
+    }
+
+    const user = { uid: snap.id, ...snap.data() };
+
+    if (mode === 'message') {
+        currentAdminTargetUser = user;
+
+        const composer = document.getElementById('conteggAdminDirectComposer');
+        const title = document.getElementById('conteggAdminMessageTarget');
+
+        if (title) {
+            title.textContent =
+                `${user.displayName || user.username || 'Пользователь'} (@${user.username || ''})`;
+        }
+
+        composer?.classList.remove('hidden');
+        document.getElementById('adminDirectMessage')?.focus({ preventScroll: true });
+        composer?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+    }
+
+    renderAdminTargetUser(user);
+    document.getElementById('conteggAdminTargetCard')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest'
+    });
+}
+
+async function getOrCreateAdminDirectChat(targetUid) {
+    const snap = await db.collection('chats')
+        .where('participants', 'array-contains', currentUser.uid)
+        .get();
+
+    for (const doc of snap.docs) {
+        const data = doc.data() || {};
+
+        if (
+            !data.isGroup &&
+            !data.isSaved &&
+            !data.isSystem &&
+            !data.isChannel &&
+            data.type !== 'channel' &&
+            Array.isArray(data.participants) &&
+            data.participants.includes(targetUid)
+        ) {
+            return doc.id;
+        }
+    }
+
+    const ref = await db.collection('chats').add({
+        participants: [currentUser.uid, targetUid],
+        lastMessage: '',
+        lastMessageTime: firebase.firestore.FieldValue.serverTimestamp(),
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        isGroup: false,
+        isSaved: false,
+        isSystem: false,
+        unreadFor: []
+    });
+
+    return ref.id;
+}
+
+async function sendAdminDirectMessage() {
+    if (!isConteggSuperAdmin() || !currentAdminTargetUser) {
+        toast('Сначала выберите пользователя');
+        return;
+    }
+
+    const text = document.getElementById('adminDirectMessage')?.value?.trim();
+    const mode = document.getElementById('adminMessageSenderMode')?.value || 'admin';
+
+    if (!text) {
+        toast('Введите сообщение');
+        return;
+    }
+
+    const uid = currentAdminTargetUser.uid;
+
+    try {
+        if (mode === 'contegg') {
+            await sendSystemNotification(uid, 'admin_custom_message', {
+                message: text
+            });
+        } else {
+            const chatId = await getOrCreateAdminDirectChat(uid);
+
+            await db.collection('chats')
+                .doc(chatId)
+                .collection('messages')
+                .add({
+                    type: 'text',
+                    text,
+                    senderId: currentUser.uid,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    read: false,
+                    adminSent: true
+                });
+
+            await db.collection('chats').doc(chatId).update({
+                lastMessage: text.substring(0, 120),
+                lastSender: currentUser.uid,
+                lastMessageTime: firebase.firestore.FieldValue.serverTimestamp(),
+                unreadFor: firebase.firestore.FieldValue.arrayUnion(uid)
+            });
+        }
+
+        document.getElementById('adminDirectMessage').value = '';
+        toast(mode === 'contegg' ? 'Отправлено от Contegg' : 'Сообщение отправлено');
+        loadChats().catch(() => {});
+    } catch (error) {
+        console.error('sendAdminDirectMessage error:', error);
+        toast('Ошибка отправки: ' + (error?.message || error));
+    }
+}
+
+function generateSecureRegistrationCode(length = 20) {
+    const alphabet =
+        'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*+-_=.?';
+
+    const bytes = new Uint32Array(length);
+    crypto.getRandomValues(bytes);
+
+    let out = '';
+
+    for (let i = 0; i < length; i++) {
+        out += alphabet[bytes[i] % alphabet.length];
+    }
+
+    return out;
+}
+
+async function createOneTimeRegistrationCode() {
+    if (!isConteggSuperAdmin()) return;
+
+    const lengthValue = Number(document.getElementById('adminInviteCodeLength')?.value || 20);
+    const length = Math.min(40, Math.max(12, lengthValue));
+
+    try {
+        let code = '';
+        let ref = null;
+
+        for (let attempt = 0; attempt < 8; attempt++) {
+            code = generateSecureRegistrationCode(length);
+            ref = db.collection('registrationCodes').doc(code);
+
+            const existing = await ref.get();
+
+            if (!existing.exists) break;
+
+            code = '';
+            ref = null;
+        }
+
+        if (!code || !ref) {
+            throw new Error('Не удалось создать уникальный код');
+        }
+
+        await ref.set({
+            code,
+            oneTime: true,
+            active: true,
+            used: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            createdBy: currentUser.uid,
+            createdByEmail: currentUser.email || ''
+        });
+
+        const output = document.getElementById('adminGeneratedInviteCode');
+
+        if (output) {
+            output.value = code;
+            output.select();
+        }
+
+        await loadAdminOneTimeCodes();
+
+        toast('Одноразовый код создан');
+    } catch (error) {
+        console.error('createOneTimeRegistrationCode error:', error);
+        toast('Ошибка создания кода: ' + (error?.message || error));
+    }
+}
+
+async function loadAdminOneTimeCodes() {
+    if (!isConteggSuperAdmin()) return;
+
+    const list = document.getElementById('conteggAdminOneTimeCodes');
+    if (!list) return;
+
+    try {
+        const snap = await db.collection('registrationCodes').get();
+        const codes = snap.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(item => item.oneTime === true)
+            .sort((a, b) => {
+                const ta = a.createdAt?.toMillis?.() || 0;
+                const tb = b.createdAt?.toMillis?.() || 0;
+                return tb - ta;
+            })
+            .slice(0, 30);
+
+        if (!codes.length) {
+            list.innerHTML = '<div class="contegg-admin-empty-hint">Одноразовых кодов пока нет</div>';
+            return;
+        }
+
+        list.innerHTML = codes.map(item => {
+            const used = item.used === true || item.active === false;
+
+            return `
+                <div class="contegg-admin-code-row ${used ? 'is-used' : ''}">
+                    <code>${esc(item.id)}</code>
+                    <span>${used ? 'использован' : 'активен'}</span>
+                    ${!used ? `
+                        <button
+                            type="button"
+                            class="contegg-admin-code-disable"
+                            data-disable-code="${esc(item.id)}"
+                            title="Отключить код"
+                        >
+                            <i class="fas fa-times"></i>
+                        </button>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('loadAdminOneTimeCodes error:', error);
+        list.innerHTML = '<div class="contegg-admin-empty-hint">Не удалось загрузить коды</div>';
+    }
+}
+
+async function disableAdminRegistrationCode(code) {
+    if (!isConteggSuperAdmin() || !code) return;
+
+    await db.collection('registrationCodes').doc(code).update({
+        active: false,
+        disabledAt: firebase.firestore.FieldValue.serverTimestamp(),
+        disabledBy: currentUser.uid
+    });
+
+    await loadAdminOneTimeCodes();
+}
+
+async function copyAdminRegistrationCode(value) {
+    try {
+        await navigator.clipboard.writeText(value);
+        toast('Код скопирован');
+    } catch (_) {
+        const input = document.createElement('textarea');
+        input.value = value;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        input.remove();
+        toast('Код скопирован');
+    }
+}
+
 function getAdminPanelMarkup() {
     return `
         ${isConteggSuperAdmin() ? `
         <div class="admin-panel contegg-super-admin-panel">
             <div class="admin-panel-title">
+                <i class="fas fa-users"></i>
+                Все зарегистрированные пользователи
+                <span class="contegg-admin-count-pill" id="conteggAdminUsersCount">…</span>
+            </div>
+
+            <div class="contegg-admin-section-actions">
+                <button type="button" class="contegg-admin-secondary-action" onclick="loadAdminRegisteredUsers()">
+                    <i class="fas fa-sync-alt"></i>
+                    Обновить список
+                </button>
+            </div>
+
+            <div id="conteggAdminUsersList" class="contegg-admin-users-list">
+                <div class="loader"><div class="spinner"></div><span>Загрузка пользователей...</span></div>
+            </div>
+
+            <div id="conteggAdminDirectComposer" class="contegg-admin-direct-composer hidden">
+                <div class="contegg-admin-message-heading">
+                    Написать: <b id="conteggAdminMessageTarget">пользователю</b>
+                </div>
+
+                <div class="input-row">
+                    <label>Отправитель</label>
+                    <select id="adminMessageSenderMode" class="contegg-admin-select">
+                        <option value="admin">От моего аккаунта администратора</option>
+                        <option value="contegg">От лица Contegg</option>
+                    </select>
+                </div>
+
+                <div class="input-row">
+                    <label>Сообщение</label>
+                    <textarea
+                        id="adminDirectMessage"
+                        class="admin-textarea"
+                        placeholder="Введите сообщение..."
+                    ></textarea>
+                </div>
+
+                <button class="btn btn-primary" onclick="sendAdminDirectMessage()">
+                    <i class="fas fa-paper-plane"></i>
+                    Отправить
+                </button>
+            </div>
+        </div>
+
+        <div class="admin-panel contegg-super-admin-panel">
+            <div class="admin-panel-title">
                 <i class="fas fa-user-shield"></i>
-                Управление аккаунтами
+                Управление аккаунтом
             </div>
 
             <div class="contegg-admin-search-line">
@@ -11998,6 +12397,55 @@ function getAdminPanelMarkup() {
                     <i class="fas fa-user-cog"></i>
                     <span>Введите username или почту пользователя</span>
                 </div>
+            </div>
+        </div>
+
+        <div class="admin-panel contegg-super-admin-panel">
+            <div class="admin-panel-title">
+                <i class="fas fa-key"></i>
+                Коды регистрации
+            </div>
+
+            <div class="contegg-admin-permanent-code">
+                <div>
+                    <div class="contegg-admin-code-label">Постоянный код</div>
+                    <code>Ft$d$1Zq.^&amp;HfshF~USnfo2J:x;44A</code>
+                </div>
+
+                <button
+                    type="button"
+                    class="contegg-admin-copy-code"
+                    onclick="copyAdminRegistrationCode('Ft$d$1Zq.^&HfshF~USnfo2J:x;44A')"
+                >
+                    <i class="far fa-copy"></i>
+                </button>
+            </div>
+
+            <div class="contegg-admin-code-generator">
+                <div class="input-row">
+                    <label>Длина одноразового кода</label>
+                    <input id="adminInviteCodeLength" type="number" value="20" min="12" max="40">
+                </div>
+
+                <button class="btn btn-primary" onclick="createOneTimeRegistrationCode()">
+                    <i class="fas fa-dice"></i>
+                    Создать одноразовый код
+                </button>
+
+                <div class="input-row" style="margin-top:10px;">
+                    <label>Новый код</label>
+                    <input
+                        id="adminGeneratedInviteCode"
+                        type="text"
+                        readonly
+                        placeholder="Сгенерированный код появится здесь"
+                    >
+                </div>
+            </div>
+
+            <div class="contegg-admin-code-list-title">Последние коды</div>
+            <div id="conteggAdminOneTimeCodes" class="contegg-admin-one-time-codes">
+                <div class="loader"><div class="spinner"></div><span>Загрузка кодов...</span></div>
             </div>
         </div>
         ` : ''}
@@ -12022,6 +12470,43 @@ function getAdminPanelMarkup() {
 
 function bindAdminPanelInputs() {
     requestAnimationFrame(() => {
+        if (isConteggSuperAdmin()) {
+            loadAdminRegisteredUsers();
+            loadAdminOneTimeCodes();
+
+            const userList = document.getElementById('conteggAdminUsersList');
+
+            if (userList && userList.dataset.adminClickBound !== '1') {
+                userList.dataset.adminClickBound = '1';
+
+                userList.addEventListener('click', async e => {
+                    const button = e.target.closest('[data-admin-action][data-admin-user]');
+                    if (!button) return;
+
+                    e.preventDefault();
+
+                    await selectAdminUserByUid(
+                        button.dataset.adminUser,
+                        button.dataset.adminAction
+                    );
+                });
+            }
+
+            const codeList = document.getElementById('conteggAdminOneTimeCodes');
+
+            if (codeList && codeList.dataset.codeClickBound !== '1') {
+                codeList.dataset.codeClickBound = '1';
+
+                codeList.addEventListener('click', async e => {
+                    const button = e.target.closest('[data-disable-code]');
+                    if (!button) return;
+
+                    e.preventDefault();
+                    await disableAdminRegistrationCode(button.dataset.disableCode);
+                });
+            }
+        }
+
         const input = document.getElementById('adminUserLookup');
         if (input && input.dataset.enterBound !== '1') {
             input.dataset.enterBound = '1';
@@ -12472,65 +12957,109 @@ async function stopConteggAccountListenersForLogout() {
 async function deleteTemporaryAccountOnLogout() {
     const user = auth.currentUser;
 
-    if (!user || !currentUser) {
+    if (!user) {
         throw new Error('Временный аккаунт не авторизован');
     }
 
     const uid = user.uid;
-
-    // Capture credentials BEFORE removing them so Firebase can reauthenticate
-    // if the current session is no longer recent enough for user.delete().
     const creds =
         typeof getAccountCredentials === 'function'
             ? getAccountCredentials(uid)
             : null;
 
-    await setMyPresence(false).catch(() => {});
-    await stopConteggAccountListenersForLogout();
+    let cleanupError = null;
+    let authDeleteError = null;
 
-    const cleanup = await eraseConteggUserFirestoreData(uid);
-
-    // Best-effort Supabase physical media cleanup.
-    // If Storage DELETE isn't allowed, Firestore/Auth deletion still proceeds.
-    try {
-        const mediaResult = await tryDeleteSupabaseMedia(cleanup.mediaPaths || []);
-        if (mediaResult?.skipped) {
-            console.warn('Temporary account media cleanup was partially skipped:', mediaResult.error);
+    // Reauthenticate first while the profile/session is still intact.
+    if (creds?.email && creds?.password) {
+        try {
+            const credential = firebase.auth.EmailAuthProvider.credential(
+                creds.email,
+                creds.password
+            );
+            await user.reauthenticateWithCredential(credential);
+        } catch (error) {
+            console.warn('Temporary account pre-delete reauth warning:', error);
         }
-    } catch (mediaError) {
-        console.warn('Temporary account Supabase cleanup warning:', mediaError);
     }
 
-    // Firebase may demand a recent login before deleting Auth.
+    await setMyPresence(false).catch(() => {});
+    await stopConteggAccountListenersForLogout().catch(() => {});
+
+    // Data cleanup is best-effort. A Firestore/Storage error must NEVER leave
+    // the temporary Auth account logged in forever.
+    try {
+        const cleanup = await eraseConteggUserFirestoreData(uid);
+
+        try {
+            const mediaResult = await tryDeleteSupabaseMedia(cleanup?.mediaPaths || []);
+            if (mediaResult?.skipped) {
+                console.warn('Temporary media cleanup partially skipped:', mediaResult.error);
+            }
+        } catch (mediaError) {
+            console.warn('Temporary media cleanup warning:', mediaError);
+        }
+    } catch (error) {
+        cleanupError = error;
+        console.error('Temporary Firestore cleanup warning:', error);
+    }
+
+    // Always try to delete Firebase Auth even if cleanup failed.
     try {
         await user.delete();
     } catch (error) {
+        authDeleteError = error;
+
         if (
             error?.code === 'auth/requires-recent-login' &&
             creds?.email &&
             creds?.password
         ) {
-            const credential = firebase.auth.EmailAuthProvider.credential(
-                creds.email,
-                creds.password
-            );
+            try {
+                const credential = firebase.auth.EmailAuthProvider.credential(
+                    creds.email,
+                    creds.password
+                );
 
-            await user.reauthenticateWithCredential(credential);
-            await user.delete();
-        } else {
-            throw error;
+                await user.reauthenticateWithCredential(credential);
+                await user.delete();
+                authDeleteError = null;
+            } catch (reauthError) {
+                authDeleteError = reauthError;
+            }
         }
     }
 
-    if (typeof removeAccountCredentials === 'function') {
-        removeAccountCredentials(uid);
+    // Regardless of deletion success, remove local session/account switcher and sign out.
+    try {
+        if (typeof removeAccountCredentials === 'function') {
+            removeAccountCredentials(uid);
+        }
+
+        linkedAccounts = (linkedAccounts || []).filter(account => account.uid !== uid);
+        saveLinkedAccounts();
+
+        localStorage.removeItem('contegg_current_user');
+        sessionStorage.setItem('contegg_manual_logout', 'true');
+
+        await auth.signOut().catch(() => {});
+    } finally {
+        // Force navigation so no stale UI can remain mounted.
+        setTimeout(() => {
+            location.replace('index.html?temporary_account_deleted=1');
+        }, 20);
     }
 
-    linkedAccounts = (linkedAccounts || []).filter(account => account.uid !== uid);
-    saveLinkedAccounts();
+    if (authDeleteError) {
+        throw authDeleteError;
+    }
 
-    localStorage.removeItem('contegg_current_user');
-    sessionStorage.setItem('contegg_manual_logout', 'true');
+    if (cleanupError) {
+        console.warn(
+            'Temporary account Auth was removed, but part of Firestore cleanup failed:',
+            cleanupError
+        );
+    }
 
     return true;
 }
@@ -12557,12 +13086,17 @@ async function logout() {
 
             const errors = {
                 'auth/requires-recent-login':
-                    'Не удалось подтвердить удаление аккаунта. Войдите заново и повторите выход.',
+                    'Не удалось удалить Firebase Auth-аккаунт: требуется повторный вход.',
                 'auth/operation-not-allowed':
                     'В Firebase должен быть включён Email/Password provider.'
             };
 
-            toast(errors[e?.code] || ('Ошибка удаления временного аккаунта: ' + (e?.message || e)));
+            toast(errors[e?.code] || ('Удаление завершено с ошибкой: ' + (e?.message || e)));
+
+            // Never keep a temporary account visually logged in.
+            await auth.signOut().catch(() => {});
+            sessionStorage.setItem('contegg_manual_logout', 'true');
+            setTimeout(() => location.replace('index.html?temporary_logout=1'), 180);
         }
 
         return;
@@ -16844,6 +17378,238 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
     font-weight:700;
     letter-spacing:.1px;
     text-transform:uppercase;
+}
+</style>
+
+
+<style id="CONTEGG-ADMIN-USERS-CODES-V2-STYLES">
+.contegg-admin-count-pill {
+    margin-left:auto;
+    min-width:26px;
+    height:20px;
+    padding:0 7px;
+    border-radius:999px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(10,132,255,.15);
+    color:#64a8ff;
+    font-size:10px;
+    font-weight:700;
+}
+
+.contegg-admin-section-actions {
+    display:flex;
+    justify-content:flex-end;
+    margin:-2px 0 8px;
+}
+
+.contegg-admin-secondary-action {
+    border:0;
+    border-radius:9px;
+    padding:6px 9px;
+    background:rgba(255,255,255,.07);
+    color:var(--text-secondary);
+    font:inherit;
+    font-size:11px;
+    cursor:pointer;
+}
+
+.contegg-admin-users-list {
+    max-height:320px;
+    overflow:auto;
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+    padding-right:3px;
+}
+
+.contegg-admin-user-row {
+    min-height:54px;
+    display:flex;
+    align-items:center;
+    gap:9px;
+    padding:6px 7px;
+    border-radius:11px;
+    background:rgba(255,255,255,.035);
+}
+
+.contegg-admin-user-list-avatar {
+    width:38px;
+    height:38px;
+    flex:0 0 38px;
+    border-radius:50%;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:linear-gradient(135deg,#0a84ff,#5e5ce6);
+    color:#fff;
+    font-size:14px;
+    font-weight:700;
+}
+
+.contegg-admin-user-list-avatar img {
+    width:100%;
+    height:100%;
+    object-fit:cover;
+}
+
+.contegg-admin-user-list-main {
+    min-width:0;
+    flex:1;
+}
+
+.contegg-admin-user-list-name {
+    display:flex;
+    align-items:center;
+    gap:4px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    font-size:12px;
+    font-weight:650;
+}
+
+.contegg-admin-user-list-meta {
+    margin-top:2px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    color:var(--text-secondary);
+    font-size:9.5px;
+}
+
+.contegg-admin-mini-blocked {
+    padding:1px 4px;
+    border-radius:5px;
+    background:rgba(255,69,58,.12);
+    color:#ff6961;
+    font-size:7px;
+}
+
+.contegg-admin-user-row-actions {
+    display:flex;
+    gap:4px;
+}
+
+.contegg-admin-mini-button {
+    min-height:28px;
+    padding:0 8px;
+    border:0;
+    border-radius:8px;
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    background:rgba(10,132,255,.11);
+    color:#64a8ff;
+    font:inherit;
+    font-size:9px;
+    cursor:pointer;
+}
+
+.contegg-admin-direct-composer {
+    margin-top:12px;
+    padding-top:12px;
+    border-top:.5px solid rgba(255,255,255,.08);
+}
+
+.contegg-admin-message-heading {
+    margin-bottom:10px;
+    font-size:12px;
+    color:var(--text-secondary);
+}
+
+.contegg-admin-select {
+    width:100%;
+    padding:10px 11px;
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:10px;
+    outline:0;
+    background:#2c2c2e;
+    color:#fff;
+}
+
+.contegg-admin-permanent-code,
+.contegg-admin-code-row {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    padding:9px 10px;
+    border-radius:10px;
+    background:rgba(255,255,255,.045);
+}
+
+.contegg-admin-permanent-code code,
+.contegg-admin-code-row code {
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    color:#ffd60a;
+    font-size:10px;
+}
+
+.contegg-admin-code-label,
+.contegg-admin-code-list-title {
+    margin-bottom:4px;
+    color:var(--text-secondary);
+    font-size:9px;
+    text-transform:uppercase;
+    letter-spacing:.5px;
+}
+
+.contegg-admin-copy-code,
+.contegg-admin-code-disable {
+    width:28px;
+    height:28px;
+    flex:0 0 28px;
+    border:0;
+    border-radius:8px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(255,255,255,.07);
+    color:#fff;
+    cursor:pointer;
+}
+
+.contegg-admin-code-generator {
+    margin-top:10px;
+}
+
+.contegg-admin-one-time-codes {
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    max-height:210px;
+    overflow:auto;
+}
+
+.contegg-admin-code-row span {
+    margin-left:auto;
+    color:#30d158;
+    font-size:9px;
+}
+
+.contegg-admin-code-row.is-used {
+    opacity:.48;
+}
+
+.contegg-admin-code-row.is-used span {
+    color:var(--text-tertiary);
+}
+
+@media (max-width:767px) {
+    .contegg-admin-user-row-actions {
+        flex-direction:column;
+    }
+
+    .contegg-admin-mini-button {
+        justify-content:center;
+        min-width:34px;
+    }
 }
 </style>
 
