@@ -1946,6 +1946,144 @@ body {
 }
     
     </style>
+
+<style id="CONTEGG-CHANNEL-ALBUM-STYLES">
+.channel-photo-album {
+    width: min(82vw, 520px);
+    max-width: 100%;
+    display: grid;
+    gap: 3px;
+    overflow: hidden;
+    border-radius: 18px;
+    background: #111;
+}
+.channel-photo-album .album-photo {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: #151515;
+    cursor: pointer;
+}
+.channel-photo-album .album-photo img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform .16s ease, opacity .16s ease;
+}
+.channel-photo-album .album-photo:active img { transform: scale(.985); opacity: .94; }
+.channel-photo-album.album-count-1 {
+    grid-template-columns: 1fr;
+    aspect-ratio: 4 / 3;
+}
+.channel-photo-album.album-count-2 {
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    aspect-ratio: 16 / 9;
+}
+.channel-photo-album.album-count-3 {
+    grid-template-columns: minmax(0, 2.15fr) minmax(0, .72fr);
+    grid-template-rows: repeat(2, minmax(0,1fr));
+    aspect-ratio: 1.12 / 1;
+}
+.channel-photo-album.album-count-3 .album-photo:first-child { grid-row: 1 / 3; }
+.channel-photo-album.album-count-4 {
+    grid-template-columns: repeat(2,minmax(0,1fr));
+    grid-template-rows: repeat(2,minmax(0,1fr));
+    aspect-ratio: 1.18 / 1;
+}
+.channel-photo-album.album-count-5 {
+    grid-template-columns: minmax(0, 1.55fr) repeat(2, minmax(0,.72fr));
+    grid-template-rows: repeat(2,minmax(0,1fr));
+    aspect-ratio: 1.28 / 1;
+}
+.channel-photo-album.album-count-5 .album-photo:first-child { grid-row: 1 / 3; }
+@media (max-width: 767px) {
+    .channel-photo-album { width: min(88vw, 430px); }
+}
+
+.contegg-album-viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 200500;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,.94);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    user-select: none;
+}
+.contegg-album-viewer.show { display: flex; }
+.contegg-album-stage {
+    width: min(92vw, 1400px);
+    height: min(88vh, 1000px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+#conteggAlbumImage {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 10px;
+    box-shadow: 0 18px 70px rgba(0,0,0,.5);
+}
+.contegg-album-close,
+.contegg-album-nav {
+    position: absolute;
+    border: .5px solid rgba(255,255,255,.14);
+    background: rgba(44,44,46,.58);
+    color: white;
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 24px rgba(0,0,0,.25);
+}
+.contegg-album-close {
+    top: max(16px, env(safe-area-inset-top, 0px));
+    right: 18px;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    font-size: 18px;
+}
+.contegg-album-nav {
+    top: 50%;
+    transform: translateY(-50%);
+    width: 46px;
+    height: 72px;
+    border-radius: 24px;
+    font-size: 22px;
+}
+.contegg-album-prev { left: 18px; }
+.contegg-album-next { right: 18px; }
+.contegg-album-counter {
+    position: absolute;
+    bottom: max(16px, env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(44,44,46,.62);
+    color: rgba(255,255,255,.9);
+    font-size: 13px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+}
+@media (max-width: 767px) {
+    .contegg-album-nav { width: 40px; height: 58px; opacity: .78; }
+    .contegg-album-prev { left: 8px; }
+    .contegg-album-next { right: 8px; }
+    .contegg-album-stage { width: 100vw; height: 86vh; }
+}
+</style>
+
 </head>
 <body>
 
@@ -3330,6 +3468,175 @@ function wrapPhotoText(ctx, text, x, y, maxWidth, lineHeight) {
         ctx.strokeText(lineText, x, lineY);
         ctx.fillText(lineText, x, lineY);
     });
+}
+
+
+window.__conteggChannelAlbums = window.__conteggChannelAlbums || {};
+let conteggAlbumItems = [];
+let conteggAlbumIndex = 0;
+let conteggAlbumTouchStartX = null;
+
+function normalizeChannelImages(msg) {
+    const raw = Array.isArray(msg?.images) ? msg.images : [];
+    const urls = raw.map(item => {
+        if (typeof item === 'string') return item;
+        return item?.url || item?.imageUrl || '';
+    }).filter(Boolean);
+    if (!urls.length && msg?.imageUrl) urls.push(msg.imageUrl);
+    return urls.slice(0, 5);
+}
+
+function buildChannelPhotoAlbum(messageId, images) {
+    const safe = (images || []).filter(Boolean).slice(0,5);
+    if (!safe.length) return '';
+    window.__conteggChannelAlbums[messageId] = safe;
+    return `<div class="channel-photo-album album-count-${safe.length}" data-album-id="${messageId}">` +
+        safe.map((url, index) => `
+            <div class="album-photo" onclick="event.stopPropagation(); openImageAlbumById('${messageId}', ${index})">
+                <img src="${url}" alt="Фото ${index + 1}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.closest('.album-photo')?.classList.add('load-error')">
+            </div>`).join('') +
+        `</div>`;
+}
+
+function openImageAlbumById(messageId, index = 0) {
+    const items = window.__conteggChannelAlbums?.[messageId] || [];
+    openImageAlbum(items, index);
+}
+window.openImageAlbumById = openImageAlbumById;
+
+function openImageAlbum(items, index = 0) {
+    const viewer = document.getElementById('conteggAlbumViewer');
+    if (!viewer || !Array.isArray(items) || !items.length) return;
+    conteggAlbumItems = items.filter(Boolean);
+    conteggAlbumIndex = Math.max(0, Math.min(index, conteggAlbumItems.length - 1));
+    viewer.classList.add('show');
+    viewer.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('contegg-album-open');
+    renderImageAlbum();
+}
+window.openImageAlbum = openImageAlbum;
+
+function renderImageAlbum() {
+    const img = document.getElementById('conteggAlbumImage');
+    const counter = document.getElementById('conteggAlbumCounter');
+    const prev = document.querySelector('.contegg-album-prev');
+    const next = document.querySelector('.contegg-album-next');
+    if (!img || !conteggAlbumItems.length) return;
+    img.src = conteggAlbumItems[conteggAlbumIndex];
+    if (counter) counter.textContent = `${conteggAlbumIndex + 1} / ${conteggAlbumItems.length}`;
+    if (prev) prev.style.display = conteggAlbumItems.length > 1 ? 'inline-flex' : 'none';
+    if (next) next.style.display = conteggAlbumItems.length > 1 ? 'inline-flex' : 'none';
+}
+
+function stepImageAlbum(delta) {
+    if (conteggAlbumItems.length < 2) return;
+    conteggAlbumIndex = (conteggAlbumIndex + delta + conteggAlbumItems.length) % conteggAlbumItems.length;
+    renderImageAlbum();
+}
+window.stepImageAlbum = stepImageAlbum;
+
+function closeImageAlbum() {
+    const viewer = document.getElementById('conteggAlbumViewer');
+    viewer?.classList.remove('show');
+    viewer?.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('contegg-album-open');
+    conteggAlbumItems = [];
+    conteggAlbumIndex = 0;
+}
+window.closeImageAlbum = closeImageAlbum;
+
+document.addEventListener('keydown', e => {
+    const viewer = document.getElementById('conteggAlbumViewer');
+    if (!viewer?.classList.contains('show')) return;
+    if (e.key === 'Escape') closeImageAlbum();
+    if (e.key === 'ArrowLeft') stepImageAlbum(-1);
+    if (e.key === 'ArrowRight') stepImageAlbum(1);
+});
+
+document.addEventListener('touchstart', e => {
+    const viewer = document.getElementById('conteggAlbumViewer');
+    if (!viewer?.classList.contains('show')) return;
+    conteggAlbumTouchStartX = e.touches?.[0]?.clientX ?? null;
+}, { passive: true });
+
+document.addEventListener('touchend', e => {
+    const viewer = document.getElementById('conteggAlbumViewer');
+    if (!viewer?.classList.contains('show') || conteggAlbumTouchStartX == null) return;
+    const x = e.changedTouches?.[0]?.clientX;
+    if (typeof x === 'number') {
+        const dx = x - conteggAlbumTouchStartX;
+        if (Math.abs(dx) > 45) stepImageAlbum(dx > 0 ? -1 : 1);
+    }
+    conteggAlbumTouchStartX = null;
+}, { passive: true });
+
+async function sendChannelPhotoAlbum(files) {
+    if (!currentChatId || !currentChatIsChannel) return false;
+    if (!(await canSendToCurrentChat())) {
+        toast('Нет права публиковать в канал');
+        return true;
+    }
+
+    const chosen = Array.from(files || []).filter(isProbablyImageFile).slice(0,5);
+    if (!chosen.length) {
+        toast('Фото не выбрано');
+        return true;
+    }
+    if ((files?.length || 0) > 5) toast('В один пост можно добавить максимум 5 фото');
+
+    const sendBtn = document.getElementById('sendBtn');
+    const uploadBtn = document.getElementById('imageUploadBtn');
+    if (sendBtn) sendBtn.disabled = true;
+    if (uploadBtn) uploadBtn.disabled = true;
+
+    try {
+        const uploaded = [];
+        for (const file of chosen) {
+            const blob = await imageFileToJpegBlob(file);
+            const url = await uploadImageBlobToStorage(blob);
+            uploaded.push(url);
+        }
+
+        const input = document.getElementById('chatInput');
+        const caption = input?.value?.trim() || '';
+        if (input) {
+            input.value = '';
+            input.style.height = 'auto';
+        }
+
+        await db.collection('chats').doc(currentChatId).collection('messages').add({
+            text: caption,
+            images: uploaded,
+            imageUrl: uploaded[0] || null,
+            senderId: currentUser.uid,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            read: false,
+            type: uploaded.length > 1 ? 'image_album' : 'image',
+            commentsCount: 0,
+            viewsCount: 0
+        });
+
+        await db.collection('chats').doc(currentChatId).update({
+            lastMessage: caption || (uploaded.length > 1 ? `📷 ${uploaded.length} фото` : '📷 Фото'),
+            lastSender: currentUser.uid,
+            lastMessageTime: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        toast(uploaded.length > 1 ? `Опубликовано фото: ${uploaded.length}` : 'Фото опубликовано');
+        settleChatAfterInputChange({ smooth: false });
+        return true;
+    } catch (e) {
+        console.error('sendChannelPhotoAlbum error:', e);
+        if (e?.code === 'storage/quota-exceeded' || String(e?.message || '').includes('quota')) {
+            toast('Firebase Storage недоступен: превышена квота / отключён billing');
+        } else {
+            toast('Ошибка загрузки фото');
+        }
+        return true;
+    } finally {
+        if (sendBtn) sendBtn.disabled = false;
+        if (uploadBtn) uploadBtn.disabled = false;
+    }
 }
 
 async function sendEditedPhoto() {
@@ -6324,21 +6631,26 @@ if (msg.videoUrl) {
     `;
 }
 
-    if (msg.imageUrl) {
-    html += `
-        <div class="media-card photo-card">
-            <img 
-                src="${msg.imageUrl}" 
-                class="msg-image" 
-                onclick="event.stopPropagation(); viewImage(this.src)" 
-                onload="fitChatMedia(this)"
-                decoding="async"
-                referrerpolicy="no-referrer"
-                alt="Photo"
-            >
-        </div>
-    `;
-}
+    const channelImages = normalizeChannelImages(msg);
+    if (currentChatIsChannel && channelImages.length > 1) {
+        html += buildChannelPhotoAlbum(id, channelImages);
+    } else if (msg.imageUrl || channelImages.length === 1) {
+        const singleImageUrl = msg.imageUrl || channelImages[0];
+        if (currentChatIsChannel) window.__conteggChannelAlbums[id] = [singleImageUrl];
+        html += `
+            <div class="media-card photo-card">
+                <img 
+                    src="${singleImageUrl}" 
+                    class="msg-image" 
+                    onclick="event.stopPropagation(); ${currentChatIsChannel ? `openImageAlbumById('${id}', 0)` : 'viewImage(this.src)'}" 
+                    onload="fitChatMedia(this)"
+                    decoding="async"
+                    referrerpolicy="no-referrer"
+                    alt="Photo"
+                >
+            </div>
+        `;
+    }
 
 if (msg.audioUrl) {
     const duration = msg.audioDuration || 0;
@@ -6884,7 +7196,8 @@ function updateCommentsSubtitle(count) {
 function buildDiscussionPostPreview(post, postId) {
     const safeTitle = esc(post?.title || '');
     const safeText = esc(post?.text || post?.caption || '');
-    const mediaSrc = post?.imageBase64 || post?.imageUrl || post?.mediaUrl || '';
+    const discussionImages = normalizeChannelImages(post);
+    const mediaSrc = discussionImages[0] || post?.imageBase64 || post?.mediaUrl || '';
     const time = timeFormat(post?.timestamp?.toDate?.() || new Date());
     const reactions = Array.isArray(post?.reactionsSummary)
         ? post.reactionsSummary
@@ -6892,9 +7205,13 @@ function buildDiscussionPostPreview(post, postId) {
     const reactionsHTML = reactions.length
         ? `<div class="contegg-discussion-post-reactions">${reactions.map(r => `<span><span>${esc(r.emoji)}</span><b>${r.count}</b></span>`).join('')}</div>`
         : '';
-    const mediaHTML = mediaSrc
-        ? `<div class="contegg-discussion-post-media"><img src="${mediaSrc}" alt="post media" onerror="this.closest('.contegg-discussion-post-media')?.remove()"></div>`
-        : '';
+    const discussionAlbumId = `discussion_${postId}`;
+    if (mediaSrc && discussionImages.length <= 1) {
+        window.__conteggChannelAlbums[discussionAlbumId] = discussionImages.length ? discussionImages : [mediaSrc];
+    }
+    const mediaHTML = discussionImages.length > 1
+        ? buildChannelPhotoAlbum(discussionAlbumId, discussionImages)
+        : (mediaSrc ? `<div class="contegg-discussion-post-media"><img src="${mediaSrc}" alt="post media" onclick="openImageAlbumById('${discussionAlbumId}', 0)" onerror="this.closest('.contegg-discussion-post-media')?.remove()"></div>` : '');
     return `
         <article class="contegg-discussion-post-card" data-post-id="${postId}">
             ${mediaHTML}
@@ -9848,10 +10165,14 @@ document.getElementById('imageInput').addEventListener('change', async function(
         return;
     }
 
+    if (currentChatIsChannel) {
+        await sendChannelPhotoAlbum(photos);
+        this.value = '';
+        return;
+    }
+
     photoEditQueue = photos.slice(1);
-
     await openPhotoEditor(photos[0]);
-
     this.value = '';
 });
 
@@ -12069,6 +12390,16 @@ body.keyboard-no-transition .chat-input-bar {
     arrangeForViewport();
 })();
 </script>
+
+<div id="conteggAlbumViewer" class="contegg-album-viewer" aria-hidden="true">
+    <button class="contegg-album-close" type="button" aria-label="Закрыть" onclick="closeImageAlbum()"><i class="fas fa-times"></i></button>
+    <button class="contegg-album-nav contegg-album-prev" type="button" aria-label="Предыдущее фото" onclick="stepImageAlbum(-1)"><i class="fas fa-chevron-left"></i></button>
+    <div class="contegg-album-stage" id="conteggAlbumStage">
+        <img id="conteggAlbumImage" alt="Фото">
+    </div>
+    <button class="contegg-album-nav contegg-album-next" type="button" aria-label="Следующее фото" onclick="stepImageAlbum(1)"><i class="fas fa-chevron-right"></i></button>
+    <div class="contegg-album-counter" id="conteggAlbumCounter"></div>
+</div>
 
 </body>
 </html>
