@@ -677,6 +677,94 @@
             return String(email || '').trim().toLowerCase() === CONTEGG_TEMP_TEST_EMAIL;
         }
 
+        function normalizeInviteCode(value) {
+            return String(value || '').trim();
+        }
+
+        async function getInviteCodeStatus(code) {
+            const normalized = normalizeInviteCode(code);
+
+            if (!normalized) {
+                return { valid: false, type: 'none' };
+            }
+
+            if (normalized === CONTEGG_REGISTRATION_ACCESS_CODE) {
+                return {
+                    valid: true,
+                    type: 'permanent',
+                    code: normalized
+                };
+            }
+
+            try {
+                const ref = db.collection('registrationCodes').doc(normalized);
+                const snap = await ref.get();
+
+                if (!snap.exists) {
+                    return { valid: false, type: 'one_time' };
+                }
+
+                const data = snap.data() || {};
+
+                if (
+                    data.active !== false &&
+                    data.used !== true &&
+                    data.oneTime === true
+                ) {
+                    return {
+                        valid: true,
+                        type: 'one_time',
+                        code: normalized,
+                        ref
+                    };
+                }
+
+                return {
+                    valid: false,
+                    type: 'one_time',
+                    reason: data.used === true ? 'used' : 'inactive'
+                };
+            } catch (error) {
+                console.error('getInviteCodeStatus error:', error);
+                return {
+                    valid: false,
+                    type: 'error',
+                    error
+                };
+            }
+        }
+
+        async function consumeOneTimeInviteCode(code, user) {
+            const normalized = normalizeInviteCode(code);
+            if (!normalized || normalized === CONTEGG_REGISTRATION_ACCESS_CODE) {
+                return;
+            }
+
+            const ref = db.collection('registrationCodes').doc(normalized);
+
+            await db.runTransaction(async transaction => {
+                const snap = await transaction.get(ref);
+
+                if (!snap.exists) {
+                    throw new Error('Код регистрации больше не существует');
+                }
+
+                const data = snap.data() || {};
+
+                if (data.oneTime !== true || data.active === false || data.used === true) {
+                    throw new Error('Одноразовый код уже использован или отключён');
+                }
+
+                transaction.update(ref, {
+                    used: true,
+                    active: false,
+                    usedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    usedByUid: user.uid,
+                    usedByEmail: user.email || ''
+                });
+            });
+        }
+
         window.togglePassword = function(inputId, icon) {
             const input = document.getElementById(inputId);
 
@@ -830,23 +918,44 @@
 
         document.getElementById('regPassword').addEventListener('input', updatePasswordStrength);
 
+        let inviteCodeCheckTimer = null;
+
         document.getElementById('regAccessCode').addEventListener('input', function () {
+            const input = this;
             const hint = document.querySelector('.access-code-hint');
+
             if (!hint) return;
 
+            clearTimeout(inviteCodeCheckTimer);
             hint.classList.remove('valid', 'invalid');
 
-            if (!this.value) {
+            const code = normalizeInviteCode(input.value);
+
+            if (!code) {
                 hint.textContent = 'Регистрация доступна только по приглашению';
                 return;
             }
 
-            if (this.value === CONTEGG_REGISTRATION_ACCESS_CODE) {
-                hint.textContent = 'Код доступа принят';
-                hint.classList.add('valid');
-            } else {
-                hint.textContent = 'Введите действующий код приглашения';
-            }
+            hint.textContent = 'Проверяем код…';
+
+            inviteCodeCheckTimer = setTimeout(async () => {
+                const result = await getInviteCodeStatus(code);
+
+                // Ignore stale result if user has already changed the input.
+                if (normalizeInviteCode(input.value) !== code) return;
+
+                if (result.valid) {
+                    hint.textContent = result.type === 'one_time'
+                        ? 'Одноразовый код принят'
+                        : 'Код доступа принят';
+                    hint.classList.add('valid');
+                } else {
+                    hint.textContent = result.reason === 'used'
+                        ? 'Этот одноразовый код уже использован'
+                        : 'Введите действующий код приглашения';
+                    hint.classList.add('invalid');
+                }
+            }, 240);
         });
 
         registerFormElement.addEventListener('submit', async (e) => {
@@ -863,16 +972,27 @@
                 return;
             }
 
-            if (accessCode !== CONTEGG_REGISTRATION_ACCESS_CODE) {
+            const inviteStatus = await getInviteCodeStatus(accessCode);
+
+            if (!inviteStatus.valid) {
                 const hint = document.querySelector('.access-code-hint');
+
                 if (hint) {
-                    hint.textContent = 'Неверный код доступа';
+                    hint.textContent = inviteStatus.reason === 'used'
+                        ? 'Этот одноразовый код уже использован'
+                        : 'Неверный код доступа';
                     hint.classList.remove('valid');
                     hint.classList.add('invalid');
                 }
 
                 document.getElementById('regAccessCode').focus();
-                showError(registerError, 'Неверный код доступа. Регистрация доступна только по приглашению.');
+
+                showError(
+                    registerError,
+                    inviteStatus.reason === 'used'
+                        ? 'Этот одноразовый код уже был использован.'
+                        : 'Неверный код доступа. Регистрация доступна только по приглашению.'
+                );
                 return;
             }
 
@@ -926,8 +1046,23 @@
                     registrationMethod: 'invite_code',
                     temporaryAccount: isConteggTemporaryTestEmail(email),
                     temporaryAccountType: isConteggTemporaryTestEmail(email) ? 'delete_on_logout' : '',
+                    inviteCodeType: inviteStatus.type,
                     createdAt: new Date()
                 });
+
+                if (inviteStatus.type === 'one_time') {
+                    try {
+                        await consumeOneTimeInviteCode(accessCode, user);
+                    } catch (inviteError) {
+                        console.error('consume invite code error:', inviteError);
+
+                        await db.collection('users').doc(user.uid).delete().catch(() => {});
+                        await user.delete().catch(() => {});
+                        await auth.signOut().catch(() => {});
+
+                        throw inviteError;
+                    }
+                }
 
                 setManualLogout(false);
 
@@ -953,7 +1088,11 @@
                         message = 'Слишком слабый пароль';
                         break;
                     default:
-                        message = error.message;
+                        message = error.message || 'Ошибка регистрации';
+                }
+
+                if (/одноразовый код|код регистрации/i.test(message)) {
+                    message = 'Одноразовый код уже использован или был отключён';
                 }
 
                 showError(registerError, message);
