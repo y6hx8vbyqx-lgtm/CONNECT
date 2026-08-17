@@ -6929,8 +6929,9 @@ if (msg.forwardedFromName || msg.forwardedFromChatId || msg.forwardedFromUserId)
     html += `
         <button
             type="button"
-            class="contegg-forwarded-from"
-            onclick="event.stopPropagation(); openForwardSource(${jsString(sourceChatId)}, ${jsString(sourceUserId)})"
+            class="contegg-forwarded-from contegg-profile-trigger"
+            data-forward-source-chat="${esc(sourceChatId)}"
+            data-forward-source-user="${esc(sourceUserId)}"
             title="Открыть исходный чат"
         >
             <span class="contegg-forwarded-label">Переслано от:</span>
@@ -6962,9 +6963,8 @@ if (msg.replyTo) {
         html += `
             <button
                 type="button"
-                class="contegg-group-sender"
+                class="contegg-group-sender contegg-profile-trigger"
                 data-group-sender-id="${esc(senderId)}"
-                onclick="event.stopPropagation(); openCommentUserProfile(${jsString(senderId)})"
                 aria-label="Открыть профиль пользователя"
             >
                 <span class="contegg-group-sender-avatar">
@@ -7136,7 +7136,50 @@ if (msg.notificationAction === 'terminate_device' && msg.actionDeviceId) {
         html += `<div class="msg-time ${hasVisualMedia && !hasCaption ? 'msg-time-overlay' : ''}">${buildMessageTimeText(msg, isOut, d)}</div>`;
     }
     div.innerHTML = html;
-    
+
+    // Profile/source controls must own the click completely.
+    // Never let these clicks bubble into the message reaction handler.
+    div.querySelectorAll('.contegg-group-sender[data-group-sender-id]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+
+            const userId = btn.dataset.groupSenderId;
+            if (userId) openCommentUserProfile(userId);
+        });
+
+        btn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const userId = btn.dataset.groupSenderId;
+            if (userId) openCommentUserProfile(userId);
+        }, { passive: false });
+    });
+
+    div.querySelectorAll('.contegg-forwarded-from').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+
+            openForwardSource(
+                btn.dataset.forwardSourceChat || '',
+                btn.dataset.forwardSourceUser || ''
+            );
+        });
+
+        btn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            openForwardSource(
+                btn.dataset.forwardSourceChat || '',
+                btn.dataset.forwardSourceUser || ''
+            );
+        }, { passive: false });
+    });
+
     // Привязываем события для аудио после добавления в DOM
     const audioElement = div.querySelector('.msg-audio');
     if (audioElement) {
@@ -7275,6 +7318,8 @@ let ignoreNextClick = false;
 div.addEventListener('click', (e) => {
     if (ignoreNextClick) return;
     if (e.target.closest('.reaction-badge')) return;
+    if (e.target.closest('.contegg-profile-trigger')) return;
+    if (e.target.closest('.contegg-forwarded-from')) return;
 
     if (
         e.target.closest('.audio-play-btn') ||
@@ -7327,6 +7372,8 @@ let touchStartY = 0;
 
 div.addEventListener('touchstart', (e) => {
     if (
+        e.target.closest('.contegg-profile-trigger') ||
+        e.target.closest('.contegg-forwarded-from') ||
         e.target.closest('.audio-play-btn') ||
         e.target.closest('.audio-waveform') ||
         e.target.closest('.audio-progress') ||
@@ -7370,6 +7417,18 @@ div.addEventListener('touchmove', (e) => {
 }, { passive: true });
 
 div.addEventListener('touchend', (e) => {
+    if (
+        e.target.closest('.contegg-profile-trigger') ||
+        e.target.closest('.contegg-forwarded-from')
+    ) {
+        if (touchTimer) {
+            clearTimeout(touchTimer);
+            touchTimer = null;
+        }
+        touchMoved = false;
+        return;
+    }
+
     if (touchTimer) {
         clearTimeout(touchTimer);
         touchTimer = null;
@@ -8331,7 +8390,7 @@ function renderForwardDestinationList(query = '') {
             <button
                 type="button"
                 class="contegg-forward-chat ${index === 0 && chat.isSaved ? 'is-saved' : ''}"
-                onclick="forwardSelectedMessageToChat(${jsString(chat.id)})"
+                data-forward-target-chat="${esc(chat.id)}"
             >
                 <span class="contegg-forward-avatar">${avatar}</span>
                 <span class="contegg-forward-chat-text">
@@ -8374,7 +8433,12 @@ function closeForwardMessageModal() {
     const modal = document.getElementById('forwardMessageModal');
     const active = document.activeElement;
     if (modal && active && modal.contains(active) && typeof active.blur === 'function') active.blur();
+
     modal?.classList.remove('show');
+    modal?.querySelectorAll('.contegg-forward-chat').forEach(btn => {
+        btn.disabled = false;
+        btn.classList.remove('is-sending');
+    });
 
     forwardSourceMessage = null;
     forwardSourceMessageId = null;
@@ -8464,7 +8528,7 @@ async function forwardSelectedMessageToChat(targetChatId) {
     }
 
     const button = [...document.querySelectorAll('.contegg-forward-chat')]
-        .find(el => el.getAttribute('onclick')?.includes(targetChatId));
+        .find(el => el.dataset.forwardTargetChat === targetChatId);
 
     button?.classList.add('is-sending');
     if (button) button.disabled = true;
@@ -8538,6 +8602,7 @@ async function forwardSelectedMessageToChat(targetChatId) {
             target;
 
         const display = getForwardChatDisplay(pickerTarget);
+        const completedSourceChatId = forwardSourceChatId;
 
         closeForwardMessageModal();
         toast(`Переслано: ${display.name}`);
@@ -8546,14 +8611,18 @@ async function forwardSelectedMessageToChat(targetChatId) {
         await loadChats();
 
         console.log('✅ Forwarded message', {
-            sourceChatId: forwardSourceChatId,
+            sourceChatId: completedSourceChatId,
             targetChatId,
             newMessageId: newMessageRef.id,
             type: payload.type
         });
     } catch (e) {
         console.error('forwardSelectedMessageToChat error:', e);
-        toast(`Ошибка пересылки${e?.message ? ': ' + e.message : ''}`);
+        const forwardErrorText =
+            e?.message ||
+            e?.code ||
+            (typeof e === 'string' ? e : 'неизвестная ошибка');
+        toast(`Ошибка пересылки: ${forwardErrorText}`);
         button?.classList.remove('is-sending');
         if (button) button.disabled = false;
     }
@@ -11405,6 +11474,19 @@ document.getElementById('chatInput')?.addEventListener('blur', () => {
 
 document.getElementById('forwardChatSearch')?.addEventListener('input', function() {
     renderForwardDestinationList(this.value);
+});
+
+document.getElementById('forwardChatList')?.addEventListener('click', async function(e) {
+    const button = e.target.closest('.contegg-forward-chat[data-forward-target-chat]');
+    if (!button || !this.contains(button)) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const targetChatId = button.dataset.forwardTargetChat;
+    if (!targetChatId) return;
+
+    await forwardSelectedMessageToChat(targetChatId);
 });
 
 document.getElementById('forwardMessageModal')?.addEventListener('click', function(e) {
@@ -14583,6 +14665,26 @@ body.photo-editor-open #conteggPhoneHeaderLayer {
 
 .comment-author:hover {
     text-decoration: underline;
+}
+</style>
+
+
+<style id="CONTEGG-V12-PROFILE-FORWARD-CLICK-FIX">
+.contegg-profile-trigger,
+.contegg-forwarded-from,
+.contegg-forward-chat {
+    touch-action: manipulation;
+}
+
+.contegg-group-sender,
+.contegg-forwarded-from {
+    position: relative;
+    z-index: 3;
+    pointer-events: auto;
+}
+
+.contegg-forward-chat.is-sending {
+    cursor: wait;
 }
 </style>
 
