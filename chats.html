@@ -3106,6 +3106,15 @@ let currentChatIsChannel = false;
 let currentChatUser = null;
 let currentChatParticipants = [];
 let chatMessagesListener = null;
+
+// Message feed lifecycle / lazy history
+const CHAT_MESSAGE_PAGE_SIZE = 10;
+let chatMessagesGeneration = 0;
+let chatHistoryOldestDoc = null;
+let chatHistoryHasMore = false;
+let chatHistoryLoadingOlder = false;
+let chatHistoryScrollBound = false;
+let chatHistoryActiveChatId = null;
 let chatsGlobalListener = null;
 let chatUserPresenceListener = null;
 let deviceControlListener = null;
@@ -7007,6 +7016,9 @@ async function openSystemChat(chatId) {
 }
 
 async function openChatUI(userId, name, isGroup, chatData = null) {
+    // Clear the previous chat synchronously before profile/network awaits.
+    prepareMessageViewportForChat(currentChatId);
+
     const avatar = document.getElementById('chatAvatar');
     avatar.innerHTML = '';
     avatar.style.background = '';
@@ -7133,9 +7145,21 @@ function closeChatUIOnly() {
 
     hideChatOverlay();
 
+    chatMessagesGeneration++;
+    chatHistoryActiveChatId = null;
+    chatHistoryOldestDoc = null;
+    chatHistoryHasMore = false;
+    chatHistoryLoadingOlder = false;
+
     if (chatMessagesListener) {
         chatMessagesListener();
         chatMessagesListener = null;
+    }
+
+    const messagesContainer = document.getElementById('chatMessages');
+    if (messagesContainer) {
+        messagesContainer.dataset.activeChatId = '';
+        messagesContainer.replaceChildren();
     }
 
     clearChatNavbarActions();
@@ -7298,23 +7322,191 @@ function settleChatAfterInputChange(options = {}) {
     }, 80);
 }
 
- async function loadMessages() {
+
+function prepareMessageViewportForChat(chatId) {
+    const container = document.getElementById('chatMessages');
+    if (!container || !chatId) return;
+
+    chatMessagesGeneration++;
+
+    if (chatMessagesListener) {
+        try { chatMessagesListener(); } catch (_) {}
+        chatMessagesListener = null;
+    }
+
+    chatHistoryActiveChatId = chatId;
+    chatHistoryOldestDoc = null;
+    chatHistoryHasMore = false;
+    chatHistoryLoadingOlder = false;
+
+    container.dataset.activeChatId = chatId;
+    container.dataset.lastDateKey = '';
+    container.replaceChildren();
+
+    const loader = document.createElement('div');
+    loader.className = 'contegg-chat-page-loader';
+    loader.innerHTML = `
+        <div class="spinner"></div>
+        <span>Загрузка сообщений…</span>
+    `;
+    container.appendChild(loader);
+}
+
+function rebuildLoadedDateDividers(container) {
+    if (!container) return;
+
+    container.querySelectorAll('.msg-date-divider').forEach(el => el.remove());
+
+    let lastKey = '';
+
+    [...container.querySelectorAll(':scope > .msg')].forEach(msgEl => {
+        const ms = Number(msgEl.dataset.timestampMs || 0);
+        if (!ms) return;
+
+        const d = new Date(ms);
+        const key = getDateKey(d);
+
+        if (key !== lastKey) {
+            const divider = document.createElement('div');
+            divider.className = 'msg-date-divider';
+            divider.dataset.dateKey = key;
+            divider.innerHTML = `<span>${dateDivider(d)}</span>`;
+            container.insertBefore(divider, msgEl);
+            lastKey = key;
+        }
+    });
+
+    container.dataset.lastDateKey = lastKey;
+}
+
+function bindLazyChatHistoryScroll() {
+    if (chatHistoryScrollBound) return;
+
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+
+    chatHistoryScrollBound = true;
+
+    container.addEventListener('scroll', () => {
+        if (container.scrollTop > 180) return;
+        if (!chatHistoryHasMore || chatHistoryLoadingOlder) return;
+        if (!currentChatId || currentChatId !== chatHistoryActiveChatId) return;
+
+        loadOlderMessages();
+    }, { passive: true });
+}
+
+async function loadOlderMessages() {
+    const container = document.getElementById('chatMessages');
+    const chatId = chatHistoryActiveChatId;
+    const generation = chatMessagesGeneration;
+
+    if (
+        !container ||
+        !chatId ||
+        currentChatId !== chatId ||
+        !chatHistoryOldestDoc ||
+        !chatHistoryHasMore ||
+        chatHistoryLoadingOlder
+    ) {
+        return;
+    }
+
+    chatHistoryLoadingOlder = true;
+
+    const oldScrollHeight = container.scrollHeight;
+    const oldScrollTop = container.scrollTop;
+
+    let topLoader = container.querySelector('.contegg-history-top-loader');
+
+    if (!topLoader) {
+        topLoader = document.createElement('div');
+        topLoader.className = 'contegg-history-top-loader';
+        topLoader.innerHTML = '<div class="spinner"></div>';
+        container.prepend(topLoader);
+    }
+
+    try {
+        const snap = await db.collection('chats')
+            .doc(chatId)
+            .collection('messages')
+            .orderBy('timestamp', 'asc')
+            .endBefore(chatHistoryOldestDoc)
+            .limitToLast(CHAT_MESSAGE_PAGE_SIZE)
+            .get();
+
+        if (
+            generation !== chatMessagesGeneration ||
+            currentChatId !== chatId ||
+            chatHistoryActiveChatId !== chatId ||
+            container.dataset.activeChatId !== chatId
+        ) {
+            return;
+        }
+
+        topLoader.remove();
+
+        if (snap.empty) {
+            chatHistoryHasMore = false;
+            return;
+        }
+
+        chatHistoryOldestDoc = snap.docs[0];
+        chatHistoryHasMore = snap.size === CHAT_MESSAGE_PAGE_SIZE;
+
+        const staging = document.createElement('div');
+
+        snap.docs.forEach(doc => {
+            const msg = doc.data();
+
+            if (msg.deletedFor?.includes(currentUser.uid)) return;
+
+            renderMessage(doc.id, msg, {
+                animate: false,
+                container: staging
+            });
+        });
+
+        const fragment = document.createDocumentFragment();
+        [...staging.children].forEach(child => fragment.appendChild(child));
+
+        container.prepend(fragment);
+        rebuildLoadedDateDividers(container);
+
+        if (currentChatIsChannel) {
+            container.querySelectorAll(':scope > .channel-post').forEach(post => {
+                const id = post.dataset.msgId;
+                if (id) observeChannelPostForView(post, id);
+            });
+        }
+
+        const newScrollHeight = container.scrollHeight;
+        container.scrollTop =
+            oldScrollTop + Math.max(0, newScrollHeight - oldScrollHeight);
+
+    } catch (error) {
+        console.error('loadOlderMessages error:', error);
+        topLoader?.remove();
+    } finally {
+        chatHistoryLoadingOlder = false;
+    }
+}
+
+async function loadMessages() {
     const container = document.getElementById('chatMessages');
     if (!currentChatId || !container) return;
 
     const chatId = currentChatId;
 
-    // Do not replace an already visible feed with a loader while listeners switch.
-    // That replacement caused a black/empty flash and random-looking disappearing.
-    if (!container.children.length) {
-        container.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка...</span></div>';
+    if (
+        chatHistoryActiveChatId !== chatId ||
+        container.dataset.activeChatId !== chatId
+    ) {
+        prepareMessageViewportForChat(chatId);
     }
-    container.dataset.lastDateKey = '';
 
-    if (chatMessagesListener) {
-        chatMessagesListener();
-        chatMessagesListener = null;
-    }
+    const generation = chatMessagesGeneration;
+    bindLazyChatHistoryScroll();
 
     return new Promise(resolve => {
         let firstLoad = true;
@@ -7323,113 +7515,178 @@ function settleChatAfterInputChange(options = {}) {
             .doc(chatId)
             .collection('messages')
             .orderBy('timestamp', 'asc')
-            .limitToLast(60)
+            .limitToLast(CHAT_MESSAGE_PAGE_SIZE)
             .onSnapshot(snap => {
-                if (currentChatId !== chatId) {
+                if (
+                    generation !== chatMessagesGeneration ||
+                    currentChatId !== chatId ||
+                    chatHistoryActiveChatId !== chatId ||
+                    container.dataset.activeChatId !== chatId
+                ) {
                     resolve();
                     return;
                 }
 
                 if (firstLoad) {
-                    container.innerHTML = '';
+                    container.replaceChildren();
                     container.dataset.lastDateKey = '';
+
+                    chatHistoryOldestDoc = snap.docs[0] || null;
+                    chatHistoryHasMore = snap.size === CHAT_MESSAGE_PAGE_SIZE;
 
                     snap.docs.forEach(doc => {
                         const msg = doc.data();
 
-                        if (msg.deletedFor?.includes(currentUser.uid)) {
-                            return;
-                        }
+                        if (msg.deletedFor?.includes(currentUser.uid)) return;
 
                         const d = msg.timestamp?.toDate?.() || new Date();
-
                         addDateDividerIfNeeded(container, d);
                         renderMessage(doc.id, msg, { animate: false });
                     });
-                } else {
-                    snap.docChanges().forEach(change => {
-                        const msg = change.doc.data();
-                        const msgEl = container.querySelector(`[data-msg-id="${change.doc.id}"]`);
 
-                        if (change.type === 'removed' || msg.deletedFor?.includes(currentUser.uid)) {
-                            if (msgEl) msgEl.remove();
-                            return;
-                        }
-
-                        if (change.type === 'added') {
-                            const d = msg.timestamp?.toDate?.() || new Date();
-
-                            addDateDividerIfNeeded(container, d);
-                            const shouldStickToBottom = isNearChatBottom(container);
-                            renderMessage(change.doc.id, msg, { animate: msg.senderId === currentUser.uid });
-
-                            if (shouldStickToBottom || msg.senderId === currentUser.uid) {
-                                requestAnimationFrame(() => {
-                                    scrollMessagesToBottom({ smooth: false });
-                                });
-                            }
-                            return;
-                        }
-
-                        if (change.type === 'modified') {
-                            let liveEl = msgEl;
-
-                            // Views, reactions and comment counters change often.
-                            // Never destroy/recreate the whole message for those fields.
-                            const nextSignature = getMessageRenderSignature(msg);
-                            const structuralChanged =
-                                !liveEl ||
-                                liveEl.dataset.renderSignature !== nextSignature;
-
-                            if (structuralChanged) {
-                                updateRenderedMessageStable(change.doc.id, msg);
-                                liveEl = container.querySelector(`[data-msg-id="${change.doc.id}"]`);
-                            }
-
-                            if (!liveEl) return;
-
-                            // Lightweight mutable fields.
-                            updateMessageReactions(change.doc.id, msg.reactions || {});
-
-                            const commentsCount = liveEl.querySelector(`#commentsCount_${change.doc.id}`);
-                            if (commentsCount) commentsCount.textContent = msg.commentsCount || 0;
-
-                            const commentsLabel = liveEl.querySelector(`#commentsLabel_${change.doc.id}`);
-                            if (commentsLabel) {
-                                const count = msg.commentsCount || 0;
-                                commentsLabel.textContent =
-                                    count > 0
-                                        ? `${count} ${formatCommentsWord(count)}`
-                                        : 'Прокомментировать';
-                            }
-
-                            const viewsCount = liveEl.querySelector(`#viewsCount_${change.doc.id}`);
-                            if (viewsCount) viewsCount.textContent = msg.viewsCount || 0;
-
-                            liveEl.dataset.renderSignature = nextSignature;
-                        }
-                    });
-                }
-
-                if (firstLoad) {
-                    // Initial open should show the newest message. Do it once after
-                    // DOM insertion and once after the browser has calculated layout.
                     scrollMessagesToBottom({ smooth: false });
 
                     requestAnimationFrame(() => {
-                        scrollMessagesToBottom({ smooth: false });
-                    });
-
-                    setTimeout(() => {
-                        if (currentChatId === chatId && document.activeElement !== document.getElementById('chatInput')) {
+                        if (
+                            generation === chatMessagesGeneration &&
+                            currentChatId === chatId
+                        ) {
                             scrollMessagesToBottom({ smooth: false });
                         }
-                    }, 70);
+                    });
 
                     firstLoad = false;
                     resolve();
+                    return;
                 }
+
+                snap.docChanges().forEach(change => {
+                    if (
+                        generation !== chatMessagesGeneration ||
+                        currentChatId !== chatId ||
+                        chatHistoryActiveChatId !== chatId ||
+                        container.dataset.activeChatId !== chatId
+                    ) {
+                        return;
+                    }
+
+                    const msg = change.doc.data();
+                    const msgEl =
+                        container.querySelector(`[data-msg-id="${change.doc.id}"]`);
+
+                    // In a limitToLast(10) listener, "removed" often means the
+                    // message only left the live window. Keep it in the DOM.
+                    if (change.type === 'removed') {
+                        if (msg.deletedFor?.includes(currentUser.uid) && msgEl) {
+                            msgEl.remove();
+                            rebuildLoadedDateDividers(container);
+                        }
+                        return;
+                    }
+
+                    if (msg.deletedFor?.includes(currentUser.uid)) {
+                        if (msgEl) {
+                            msgEl.remove();
+                            rebuildLoadedDateDividers(container);
+                        }
+                        return;
+                    }
+
+                    if (change.type === 'added') {
+                        if (msgEl) return;
+
+                        const shouldStickToBottom = isNearChatBottom(container);
+                        const d = msg.timestamp?.toDate?.() || new Date();
+
+                        addDateDividerIfNeeded(container, d);
+                        renderMessage(change.doc.id, msg, {
+                            animate: msg.senderId === currentUser.uid
+                        });
+
+                        if (
+                            shouldStickToBottom ||
+                            msg.senderId === currentUser.uid
+                        ) {
+                            requestAnimationFrame(() => {
+                                if (
+                                    generation === chatMessagesGeneration &&
+                                    currentChatId === chatId
+                                ) {
+                                    scrollMessagesToBottom({ smooth: false });
+                                }
+                            });
+                        }
+
+                        return;
+                    }
+
+                    if (change.type === 'modified') {
+                        let liveEl = msgEl;
+
+                        const nextSignature = getMessageRenderSignature(msg);
+                        const structuralChanged =
+                            !liveEl ||
+                            liveEl.dataset.renderSignature !== nextSignature;
+
+                        if (structuralChanged) {
+                            updateRenderedMessageStable(change.doc.id, msg);
+                            liveEl =
+                                container.querySelector(
+                                    `[data-msg-id="${change.doc.id}"]`
+                                );
+                        }
+
+                        if (!liveEl) return;
+
+                        updateMessageReactions(
+                            change.doc.id,
+                            msg.reactions || {}
+                        );
+
+                        const commentsCount =
+                            liveEl.querySelector(
+                                `#commentsCount_${change.doc.id}`
+                            );
+
+                        if (commentsCount) {
+                            commentsCount.textContent = msg.commentsCount || 0;
+                        }
+
+                        const commentsLabel =
+                            liveEl.querySelector(
+                                `#commentsLabel_${change.doc.id}`
+                            );
+
+                        if (commentsLabel) {
+                            const count = msg.commentsCount || 0;
+                            commentsLabel.textContent =
+                                count > 0
+                                    ? `${count} ${formatCommentsWord(count)}`
+                                    : 'Прокомментировать';
+                        }
+
+                        const viewsCount =
+                            liveEl.querySelector(
+                                `#viewsCount_${change.doc.id}`
+                            );
+
+                        if (viewsCount) {
+                            viewsCount.textContent = msg.viewsCount || 0;
+                        }
+
+                        liveEl.dataset.renderSignature = nextSignature;
+                    }
+                });
             }, error => {
+                if (
+                    generation !== chatMessagesGeneration ||
+                    currentChatId !== chatId ||
+                    chatHistoryActiveChatId !== chatId
+                ) {
+                    resolve();
+                    return;
+                }
+
                 console.error('loadMessages listener error:', error);
 
                 container.innerHTML = `
@@ -7443,7 +7700,6 @@ function settleChatAfterInputChange(options = {}) {
             });
     });
 }
-    
 
 // ========== ФУНКЦИИ ДЛЯ ГОЛОСОВЫХ СООБЩЕНИЙ (ДОБАВИТЬ) ==========
 
@@ -7655,7 +7911,8 @@ function getMessageRenderSignature(msg) {
 }
 
 function renderMessage(id, msg, options = {}) {
-    const container = document.getElementById('chatMessages');
+    const container = options.container || document.getElementById('chatMessages');
+    if (!container) return;
     if (msg.deletedFor?.includes(currentUser.uid)) return;
     const isOut = currentChatIsChannel ? false : msg.senderId === currentUser.uid;
     const d = msg.timestamp?.toDate?.() || new Date();
@@ -7665,7 +7922,7 @@ const hasAudio = !!msg.audioUrl;
 const hasVisualMedia = hasImage || hasVideo;
 const hasCaption = !!(msg.text && msg.text.trim());
     
-    const exists = document.querySelector(`[data-msg-id="${id}"]`);
+    const exists = container.querySelector?.(`[data-msg-id="${id}"]`);
     if (exists) return;
     
     const div = document.createElement('div');
@@ -7673,6 +7930,7 @@ const hasCaption = !!(msg.text && msg.text.trim());
     div.setAttribute('data-msg-id', id);
     div.setAttribute('data-sender-id', msg.senderId || '');
     div.dataset.renderSignature = getMessageRenderSignature(msg);
+    div.dataset.timestampMs = String(d.getTime());
     
     let html = '';
 
@@ -8227,7 +8485,10 @@ container.appendChild(div);
 
 if (currentChatIsChannel && !msg.isSystemMessage) {
     div.classList.add('channel-post');
-    observeChannelPostForView(div, id);
+
+    if (container.id === 'chatMessages') {
+        observeChannelPostForView(div, id);
+    }
 }
 }
 
@@ -19194,6 +19455,41 @@ body.contegg-layout-settling #conteggDesktopShell *,
     height:100dvh !important;
     max-width:none !important;
     max-height:none !important;
+}
+</style>
+
+
+<style id="CONTEGG-LAZY-MESSAGES-10">
+.contegg-chat-page-loader {
+    min-height:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:9px;
+    color:var(--text-secondary);
+    font-size:12px;
+}
+
+.contegg-chat-page-loader .spinner {
+    width:22px;
+    height:22px;
+    border-width:2px;
+}
+
+.contegg-history-top-loader {
+    width:100%;
+    min-height:34px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex:0 0 34px;
+}
+
+.contegg-history-top-loader .spinner {
+    width:18px;
+    height:18px;
+    border-width:2px;
 }
 </style>
 
