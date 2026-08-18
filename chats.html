@@ -3116,7 +3116,6 @@ let typingStatusListener = null;
 let typingClearTimer = null;
 let typingWriteTimer = null;
 let typingLastState = '';
-let typingOriginalStatusText = '';
 let pinnedChatListener = null;
 let activePinnedMessages = [];
 let draftListRefreshTimer = null;
@@ -3135,6 +3134,12 @@ let chatsGlobalListener = null;
 let chatUserPresenceListener = null;
 let deviceControlListener = null;
 let presenceInterval = null;
+
+// DM status: presence owns the normal text, typing is only a temporary overlay.
+let currentPresenceUserId = null;
+let currentPresenceUserData = null;
+let remoteTypingVisible = false;
+let remoteTypingExpiryTimer = null;
 let replyingTo = null;
 let selectedMsgId = null;
 let selectedMsgData = null;
@@ -4824,38 +4829,82 @@ async function setMyPresence(isOnline) {
     }
 }
 
-function watchChatUserPresence(userId) {
+function renderCurrentChatPresence() {
+    const statusEl = document.getElementById('chatStatus');
+
+    if (
+        !statusEl ||
+        !currentPresenceUserId ||
+        !currentChatUser?.uid ||
+        currentChatUser.uid !== currentPresenceUserId
+    ) {
+        return;
+    }
+
+    // Typing is only a temporary visual overlay.
+    if (remoteTypingVisible) {
+        statusEl.textContent = 'печатает…';
+        statusEl.style.color = 'var(--text-secondary)';
+        statusEl.classList.add('contegg-live-status');
+        return;
+    }
+
+    statusEl.classList.remove('contegg-live-status');
+
+    const user = currentPresenceUserData || {};
+    const lastSeenDate = user.lastSeen?.toDate?.();
+
+    const isOnline =
+        user.online === true &&
+        lastSeenDate &&
+        Date.now() - lastSeenDate.getTime() < 70000;
+
+    if (isOnline) {
+        statusEl.textContent = 'в сети';
+        statusEl.style.color = 'var(--online)';
+        return;
+    }
+
+    statusEl.textContent = formatLastSeen(lastSeenDate);
+    statusEl.style.color = 'var(--text-secondary)';
+}
+
+function watchChatUserPresence(userId, initialUser = null) {
     if (chatUserPresenceListener) {
-        chatUserPresenceListener();
+        try { chatUserPresenceListener(); } catch (_) {}
         chatUserPresenceListener = null;
     }
 
-    const statusEl = document.getElementById('chatStatus');
-    statusEl.textContent = 'загрузка...';
+    currentPresenceUserId = userId;
+    currentPresenceUserData = initialUser || null;
+    remoteTypingVisible = false;
+    clearTimeout(remoteTypingExpiryTimer);
+
+    // Render immediately from the user object already fetched for the header.
+    // Never flash "загрузка..." in the status line.
+    renderCurrentChatPresence();
 
     chatUserPresenceListener = db.collection('users').doc(userId).onSnapshot(doc => {
+        if (currentPresenceUserId !== userId) return;
+
         if (!doc.exists) {
-            statusEl.textContent = 'был(а) недавно';
-            return;
-        }
-
-       const user = doc.data();
-const lastSeenDate = user.lastSeen?.toDate?.();
-
-const isOnline =
-    user.online === true &&
-    lastSeenDate &&
-    Date.now() - lastSeenDate.getTime() < 70000;
-
-if (isOnline) {
-            statusEl.textContent = 'онлайн';
-            statusEl.style.color = 'var(--online)';
+            currentPresenceUserData = {
+                online: false,
+                lastSeen: null
+            };
         } else {
-            statusEl.textContent = formatLastSeen(lastSeenDate);
-            statusEl.style.color = 'var(--text-secondary)';
+            currentPresenceUserData = doc.data() || {};
         }
+
+        renderCurrentChatPresence();
+    }, error => {
+        console.warn('presence listener:', error);
+
+        // Keep the last known date instead of replacing it with a loading/error state.
+        renderCurrentChatPresence();
     });
 }
+
     
 function checkIsDeveloper() {
     if (currentUser && currentUser.email) {
@@ -5801,7 +5850,6 @@ async function setTypingState(state = '') {
         return;
     }
 
-    if (typingLastState === 'typing') return;
     typingLastState = 'typing';
 
     try {
@@ -5809,7 +5857,7 @@ async function setTypingState(state = '') {
             uid: currentUser.uid,
             state: 'typing',
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
+        }, { merge: true });
     } catch (e) {
         console.warn('typing write:', e);
     }
@@ -5839,13 +5887,16 @@ function scheduleTypingState() {
 
     typingClearTimer = setTimeout(() => {
         setTypingState('').catch(() => {});
-    }, 1500);
+    }, 1800);
 }
 
 function stopTypingListener() {
     clearTimeout(typingWriteTimer);
     clearTimeout(typingClearTimer);
+    clearTimeout(remoteTypingExpiryTimer);
+
     typingLastState = '';
+    remoteTypingVisible = false;
 
     if (typingStatusListener) {
         try {
@@ -5855,14 +5906,8 @@ function stopTypingListener() {
         typingStatusListener = null;
     }
 
-    const statusEl = document.getElementById('chatStatus');
-
-    if (statusEl && typingOriginalStatusText) {
-        statusEl.textContent = typingOriginalStatusText;
-        statusEl.classList.remove('contegg-live-status');
-    }
-
-    typingOriginalStatusText = '';
+    // Presence owns the normal status text.
+    renderCurrentChatPresence();
 }
 
 function startTypingListener(chatId) {
@@ -5874,29 +5919,31 @@ function startTypingListener(chatId) {
         typingStatusListener = null;
     }
 
-    clearTimeout(typingClearTimer);
-
-    const statusEl = document.getElementById('chatStatus');
+    clearTimeout(remoteTypingExpiryTimer);
+    remoteTypingVisible = false;
 
     if (
-        !statusEl ||
         !chatId ||
         currentChatIsSystem ||
         currentChatIsSaved ||
-        currentChatIsChannel
+        currentChatIsChannel ||
+        !currentChatUser?.uid
     ) {
+        renderCurrentChatPresence();
         return;
     }
 
-    // Preserve exactly the status produced by the old Contegg logic.
-    // Typing only temporarily overlays it.
-    typingOriginalStatusText = statusEl.textContent || '';
-
+    // Listen ONLY while this DM is actually open.
     typingStatusListener = db.collection('chats')
         .doc(chatId)
         .collection('typing')
         .onSnapshot(snap => {
-            if (currentChatId !== chatId) return;
+            if (
+                currentChatId !== chatId ||
+                !document.body.classList.contains('chat-open')
+            ) {
+                return;
+            }
 
             const now = Date.now();
 
@@ -5908,27 +5955,30 @@ function startTypingListener(chatId) {
 
                 const updatedMs = data.updatedAt?.toMillis?.();
 
-                // Server timestamps can briefly be null immediately after write.
-                // Treat that as fresh instead of leaving the UI in a weird state.
+                // A pending serverTimestamp immediately after a real keypress is fresh.
                 if (!updatedMs) return true;
 
-                return (now - updatedMs) < 5000;
+                return now - updatedMs < 3500;
             });
 
+            remoteTypingVisible = someoneTyping;
+            clearTimeout(remoteTypingExpiryTimer);
+
             if (someoneTyping) {
-                statusEl.textContent = 'печатает…';
-                statusEl.classList.add('contegg-live-status');
-            } else {
-                statusEl.textContent = typingOriginalStatusText;
-                statusEl.classList.remove('contegg-live-status');
+                // Even if the remote tab crashes before deleting its typing doc,
+                // never leave "печатает…" stuck forever.
+                remoteTypingExpiryTimer = setTimeout(() => {
+                    if (currentChatId !== chatId) return;
+                    remoteTypingVisible = false;
+                    renderCurrentChatPresence();
+                }, 2200);
             }
+
+            renderCurrentChatPresence();
         }, error => {
             console.warn('typing listener:', error);
-
-            if (currentChatId === chatId) {
-                statusEl.textContent = typingOriginalStatusText;
-                statusEl.classList.remove('contegg-live-status');
-            }
+            remoteTypingVisible = false;
+            renderCurrentChatPresence();
         });
 }
 
@@ -7676,8 +7726,14 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
         const directNameEl = document.getElementById('chatName');
         directNameEl.innerHTML = `${esc(user.displayName || user.username)} ${renderVerificationBadge(user, 13)} ${renderBlockedAccountMark(user)}`;
 
-       watchChatUserPresence(userId);
-        currentChatUser = { uid: userId, username: name };
+        currentChatUser = {
+            uid: userId,
+            username: user.username || name,
+            displayName: user.displayName || user.username || name
+        };
+
+        watchChatUserPresence(userId, user);
+
         document.getElementById('chatInputBar').style.display = 'flex';
         document.getElementById('chatInput').disabled = false;
         document.getElementById('sendBtn').disabled = false;
@@ -7716,6 +7772,11 @@ function closeChatUIOnly() {
         chatUserPresenceListener();
         chatUserPresenceListener = null;
     }
+
+    currentPresenceUserId = null;
+    currentPresenceUserData = null;
+    remoteTypingVisible = false;
+    clearTimeout(remoteTypingExpiryTimer);
 
     const statusEl = document.getElementById('chatStatus');
     if (statusEl) {
