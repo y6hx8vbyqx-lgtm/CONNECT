@@ -3170,6 +3170,13 @@ let selectedMsgData = null;
 let editingMessage = null;
 let selectedChatContext = null;
 let allUsers = [];
+
+// ===== CONTACTS V11 =====
+let contactsCache = {};
+let contactsLoaded = false;
+let contactsListener = null;
+let activeContactEditUid = null;
+
 let selectedGroupUsers = new Set();
 let groupAvatarBase64 = null;
 let channelAvatarBase64 = null;
@@ -6366,6 +6373,13 @@ auth.onAuthStateChanged(async user => {
             deviceControlListener = null;
         }
 
+        if (contactsListener) {
+            try { contactsListener(); } catch (_) {}
+            contactsListener = null;
+        }
+        contactsCache = {};
+        contactsLoaded = false;
+
         if (!isSwitchingAccount) {
             const returnTo = location.pathname + location.search;
             location.href = `index.html?next=${encodeURIComponent(returnTo)}`;
@@ -6389,6 +6403,10 @@ auth.onAuthStateChanged(async user => {
     }
 
 checkIsDeveloper();
+
+await loadContacts();
+startContactsListener();
+
 startPresenceTracking();
 startUsersDirectoryListener();
 
@@ -6508,6 +6526,522 @@ function isConteggSuperAdmin() {
         currentUser?.email &&
         currentUser.email.toLowerCase() === CONTEGG_SUPER_ADMIN_EMAIL
     );
+}
+
+
+function getContactEntry(uid) {
+    return uid ? (contactsCache[uid] || null) : null;
+}
+
+function isContact(uid) {
+    return !!getContactEntry(uid);
+}
+
+function getPublicDisplayName(user) {
+    if (!user) return 'Пользователь';
+    return user.publicDisplayName || user.originalDisplayName || user.displayName || user.username || 'Пользователь';
+}
+
+function applyContactOverlay(user) {
+    if (!user || !user.uid || user.uid === currentUser?.uid || user.uid === 'system') {
+        return user;
+    }
+
+    const contact = getContactEntry(user.uid);
+
+    if (!contact) {
+        if (user.publicDisplayName && user.displayName !== user.publicDisplayName) {
+            return {
+                ...user,
+                displayName: user.publicDisplayName,
+                contactName: '',
+                contactNote: '',
+                isContact: false
+            };
+        }
+
+        return {
+            ...user,
+            publicDisplayName: user.publicDisplayName || user.displayName || '',
+            contactName: '',
+            contactNote: '',
+            isContact: false
+        };
+    }
+
+    const publicName = user.publicDisplayName || user.displayName || user.username || 'Пользователь';
+    const localName = String(contact.customName || '').trim();
+
+    return {
+        ...user,
+        publicDisplayName: publicName,
+        displayName: localName || publicName,
+        contactName: localName,
+        contactNote: String(contact.note || ''),
+        isContact: true
+    };
+}
+
+function getUserNameForMe(user) {
+    return applyContactOverlay(user)?.displayName || 'Пользователь';
+}
+
+async function loadContacts() {
+    if (!currentUser?.uid) return;
+
+    try {
+        const snap = await db.collection('users')
+            .doc(currentUser.uid)
+            .collection('contacts')
+            .get();
+
+        contactsCache = {};
+
+        snap.forEach(doc => {
+            contactsCache[doc.id] = {
+                uid: doc.id,
+                ...doc.data()
+            };
+        });
+
+        contactsLoaded = true;
+        invalidateUserCaches();
+
+    } catch (e) {
+        console.error('loadContacts:', e);
+        contactsCache = {};
+        contactsLoaded = true;
+    }
+}
+
+function startContactsListener() {
+    if (!currentUser?.uid) return;
+
+    if (contactsListener) {
+        try { contactsListener(); } catch (_) {}
+        contactsListener = null;
+    }
+
+    contactsListener = db.collection('users')
+        .doc(currentUser.uid)
+        .collection('contacts')
+        .onSnapshot(snap => {
+            const next = {};
+
+            snap.forEach(doc => {
+                next[doc.id] = {
+                    uid: doc.id,
+                    ...doc.data()
+                };
+            });
+
+            contactsCache = next;
+            contactsLoaded = true;
+
+            // Public user data stays intact; only our local presentation changes.
+            Object.keys(usersCache || {}).forEach(uid => {
+                usersCache[uid] = applyContactOverlay(usersCache[uid]);
+            });
+
+            allUsers = (allUsers || []).map(u => applyContactOverlay(u));
+
+            if (document.getElementById('pageProfile')?.classList.contains('active')) {
+                renderProfile();
+            }
+
+            if (typeof loadChats === 'function') {
+                loadChats().catch(console.error);
+            }
+
+            if (currentChatUser?.uid && currentChatId) {
+                getUserInfo(currentChatUser.uid).then(u => {
+                    currentChatUser = { ...currentChatUser, ...u };
+                    const nameEl = document.getElementById('chatName');
+                    if (nameEl && !currentChatIsGroup && !currentChatIsChannel && !currentChatIsSystem && !currentChatIsSaved) {
+                        nameEl.innerHTML = `${esc(getUserNameForMe(u))} ${renderVerificationBadge(u, 13)} ${renderBlockedAccountMark(u)}`;
+                    }
+                }).catch(() => {});
+            }
+        }, e => console.error('contacts listener:', e));
+}
+
+function buildContactPrivateNoteHtml(userId) {
+    const contact = getContactEntry(userId);
+    const note = String(contact?.note || '').trim();
+    if (!note) return '';
+
+    return `
+        <div class="contegg-contact-private-note">
+            <div class="contegg-contact-private-note-label">
+                <i class="fas fa-lock"></i>
+                Ваша заметка
+            </div>
+            <div class="contegg-contact-private-note-text">${esc(note)}</div>
+        </div>
+    `;
+}
+
+function buildContactActionButton(userId) {
+    if (!userId || userId === currentUser?.uid || userId === 'system') return '';
+
+    const contact = getContactEntry(userId);
+
+    return `
+        <button
+            type="button"
+            class="btn ${contact ? 'btn-secondary' : 'btn-primary'} contegg-contact-action-btn"
+            onclick="openContactEditor('${esc(userId)}')"
+            style="margin-top:8px;"
+        >
+            <i class="fas ${contact ? 'fa-address-book' : 'fa-user-plus'}" style="margin-right:7px;"></i>
+            ${contact ? 'Управление контактом' : 'Добавить в контакты'}
+        </button>
+    `;
+}
+
+async function openContactEditor(userId) {
+    if (!userId || userId === currentUser?.uid || userId === 'system') return;
+
+    const user = await getUserInfo(userId);
+    const contact = getContactEntry(userId);
+
+    activeContactEditUid = userId;
+
+    let modal = document.getElementById('conteggContactEditModal');
+
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'conteggContactEditModal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-sheet contegg-contact-edit-sheet">
+                <div class="modal-handle"></div>
+                <div class="modal-title">Контакт</div>
+                <div id="conteggContactEditContent" class="modal-content"></div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    const content = document.getElementById('conteggContactEditContent');
+    const publicName = getPublicDisplayName(user);
+
+    content.innerHTML = `
+        <div class="contegg-contact-editor-head">
+            <div class="contegg-contact-editor-avatar">
+                ${getAvatarSrc(user)
+                    ? `<img src="${esc(getAvatarSrc(user))}" alt="">`
+                    : esc((publicName || user.username || 'U')[0].toUpperCase())
+                }
+            </div>
+            <div>
+                <div class="contegg-contact-editor-public-name">${esc(publicName)}</div>
+                <div class="contegg-contact-editor-username">@${esc(user.username || '')}</div>
+            </div>
+        </div>
+
+        <label class="contegg-contact-field">
+            <span>Имя для вас</span>
+            <input
+                id="conteggContactCustomName"
+                type="text"
+                maxlength="80"
+                value="${esc(contact?.customName || '')}"
+                placeholder="${esc(publicName)}"
+            >
+        </label>
+
+        <label class="contegg-contact-field">
+            <span>Заметка</span>
+            <textarea
+                id="conteggContactNote"
+                maxlength="600"
+                placeholder="Видна только вам"
+            >${esc(contact?.note || '')}</textarea>
+        </label>
+
+        <div class="contegg-contact-private-hint">
+            <i class="fas fa-lock"></i>
+            Имя и заметка видны только вам.
+        </div>
+
+        <button class="btn btn-primary" onclick="saveContactEditor()">
+            ${contact ? 'Сохранить изменения' : 'Добавить в контакты'}
+        </button>
+
+        ${contact ? `
+            <button class="btn btn-danger" onclick="removeCurrentContact()" style="margin-top:8px;">
+                Удалить из контактов
+            </button>
+        ` : ''}
+
+        <button class="btn btn-secondary" onclick="closeContactEditor()" style="margin-top:8px;">
+            Отмена
+        </button>
+    `;
+
+    modal.classList.add('show');
+}
+
+function closeContactEditor() {
+    document.getElementById('conteggContactEditModal')?.classList.remove('show');
+    activeContactEditUid = null;
+}
+
+async function saveContactEditor() {
+    if (!activeContactEditUid || !currentUser?.uid) return;
+
+    const customName = document.getElementById('conteggContactCustomName')?.value.trim() || '';
+    const note = document.getElementById('conteggContactNote')?.value.trim() || '';
+
+    try {
+        await db.collection('users')
+            .doc(currentUser.uid)
+            .collection('contacts')
+            .doc(activeContactEditUid)
+            .set({
+                customName,
+                note,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                createdAt: getContactEntry(activeContactEditUid)?.createdAt ||
+                    firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+        contactsCache[activeContactEditUid] = {
+            ...(contactsCache[activeContactEditUid] || {}),
+            uid: activeContactEditUid,
+            customName,
+            note
+        };
+
+        invalidateUserCaches(activeContactEditUid);
+        await refreshContactDependentUi(activeContactEditUid);
+
+        closeContactEditor();
+        closeUserProfile();
+        toast('Контакт сохранён');
+
+    } catch (e) {
+        console.error('saveContactEditor:', e);
+        toast('Не удалось сохранить контакт');
+    }
+}
+
+async function removeCurrentContact() {
+    if (!activeContactEditUid || !currentUser?.uid) return;
+    if (!confirm('Удалить пользователя из контактов? Ваше имя и заметка будут удалены.')) return;
+
+    const uid = activeContactEditUid;
+
+    try {
+        await db.collection('users')
+            .doc(currentUser.uid)
+            .collection('contacts')
+            .doc(uid)
+            .delete();
+
+        delete contactsCache[uid];
+        invalidateUserCaches(uid);
+
+        await refreshContactDependentUi(uid);
+
+        closeContactEditor();
+        closeUserProfile();
+        toast('Удалено из контактов');
+
+    } catch (e) {
+        console.error('removeCurrentContact:', e);
+        toast('Не удалось удалить контакт');
+    }
+}
+
+async function refreshContactDependentUi(uid = '') {
+    if (uid) {
+        try {
+            const fresh = await db.collection('users').doc(uid).get();
+            if (fresh.exists) {
+                usersCache[uid] = applyContactOverlay(
+                    normalizePublicUserData({ uid, ...fresh.data() }, uid)
+                );
+            }
+        } catch (_) {}
+    }
+
+    allUsers = (allUsers || []).map(u => {
+        if (!uid || u.uid === uid) {
+            const base = {
+                ...u,
+                displayName: u.publicDisplayName || u.originalDisplayName || u.displayName || ''
+            };
+            return applyContactOverlay(base);
+        }
+        return u;
+    });
+
+    if (typeof loadChats === 'function') {
+        await loadChats().catch(() => {});
+    }
+
+    if (document.getElementById('pageProfile')?.classList.contains('active')) {
+        renderProfile();
+    }
+
+    const search = document.getElementById('searchInput');
+    if (search?.value?.trim()?.length >= 2) {
+        searchUsersAndChats(search.value.trim()).catch(() => {});
+    }
+}
+
+function getSelectableUsers(query = '', excludedIds = []) {
+    const excluded = new Set(excludedIds || []);
+    const qRaw = String(query || '').trim();
+    const q = qRaw.replace(/^@/, '').toLowerCase();
+
+    const byUid = new Map();
+
+    // Default list: contacts only.
+    for (const uid of Object.keys(contactsCache || {})) {
+        if (excluded.has(uid) || uid === currentUser?.uid) continue;
+
+        const user = (allUsers || []).find(u => u.uid === uid) || usersCache[uid];
+        if (!user || user.accountBlocked) continue;
+
+        const overlaid = applyContactOverlay(user);
+
+        if (!qRaw) {
+            byUid.set(uid, overlaid);
+            continue;
+        }
+
+        const localName = (overlaid.displayName || '').toLowerCase();
+        const publicName = (overlaid.publicDisplayName || '').toLowerCase();
+        const username = (overlaid.username || '').toLowerCase();
+
+        if (
+            localName.includes(q) ||
+            publicName.includes(q) ||
+            username.includes(q)
+        ) {
+            byUid.set(uid, overlaid);
+        }
+    }
+
+    // Any user can be found by their username even if they are not a contact.
+    if (qRaw) {
+        for (const user of (allUsers || [])) {
+            if (!user || user.uid === currentUser?.uid || excluded.has(user.uid) || user.accountBlocked) continue;
+
+            const username = String(user.username || '').toLowerCase();
+            if (!username || !username.includes(q)) continue;
+
+            byUid.set(user.uid, applyContactOverlay(user));
+        }
+    }
+
+    return [...byUid.values()].sort((a, b) =>
+        String(a.displayName || '').localeCompare(String(b.displayName || ''), 'ru')
+    );
+}
+
+async function openContactsManager() {
+    let modal = document.getElementById('conteggContactsManagerModal');
+
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'conteggContactsManagerModal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-sheet contegg-contacts-manager-sheet">
+                <div class="modal-handle"></div>
+                <div class="modal-title">Контакты</div>
+                <div class="contegg-contacts-toolbar">
+                    <input
+                        id="conteggContactsSearch"
+                        type="text"
+                        placeholder="Поиск по имени или @username"
+                    >
+                </div>
+                <div id="conteggContactsManagerList" class="contegg-contacts-manager-list"></div>
+                <div class="modal-content" style="padding-top:10px;">
+                    <button class="btn btn-secondary" onclick="closeContactsManager()">Закрыть</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        modal.querySelector('#conteggContactsSearch')?.addEventListener('input', e => {
+            renderContactsManager(e.target.value);
+        });
+    }
+
+    renderContactsManager('');
+    modal.classList.add('show');
+}
+
+function closeContactsManager() {
+    document.getElementById('conteggContactsManagerModal')?.classList.remove('show');
+}
+
+function renderContactsManager(filter = '') {
+    const list = document.getElementById('conteggContactsManagerList');
+    if (!list) return;
+
+    const q = String(filter || '').trim().toLowerCase();
+
+    const users = Object.keys(contactsCache || {})
+        .map(uid => {
+            const user = (allUsers || []).find(u => u.uid === uid) || usersCache[uid];
+            return user ? applyContactOverlay(user) : null;
+        })
+        .filter(Boolean)
+        .filter(user => {
+            if (!q) return true;
+            return (
+                String(user.displayName || '').toLowerCase().includes(q) ||
+                String(user.username || '').toLowerCase().includes(q) ||
+                String(user.publicDisplayName || '').toLowerCase().includes(q)
+            );
+        })
+        .sort((a, b) =>
+            String(a.displayName || '').localeCompare(String(b.displayName || ''), 'ru')
+        );
+
+    if (!users.length) {
+        list.innerHTML = `
+            <div class="contegg-contacts-empty">
+                <i class="far fa-address-book"></i>
+                <div>${q ? 'Ничего не найдено' : 'Контактов пока нет'}</div>
+                <span>Откройте профиль пользователя и добавьте его в контакты.</span>
+            </div>
+        `;
+        return;
+    }
+
+    list.innerHTML = users.map(user => {
+        const note = String(getContactEntry(user.uid)?.note || '').trim();
+        const avatar = getAvatarSrc(user);
+
+        return `
+            <button
+                type="button"
+                class="contegg-contact-row"
+                onclick="openContactEditor('${esc(user.uid)}')"
+            >
+                <span class="contegg-contact-row-avatar">
+                    ${avatar
+                        ? `<img src="${esc(avatar)}" alt="">`
+                        : esc((user.displayName || user.username || 'U')[0].toUpperCase())
+                    }
+                </span>
+                <span class="contegg-contact-row-main">
+                    <span class="contegg-contact-row-name">${esc(user.displayName || 'Пользователь')}</span>
+                    <span class="contegg-contact-row-user">@${esc(user.username || '')}</span>
+                    ${note ? `<span class="contegg-contact-row-note">${esc(note)}</span>` : ''}
+                </span>
+                <i class="fas fa-chevron-right"></i>
+            </button>
+        `;
+    }).join('');
 }
 
 function normalizePublicUserData(data, uid = '') {
@@ -6663,7 +7197,7 @@ function startUsersDirectoryListener() {
 
         for (const doc of snap.docs) {
             const raw = { uid: doc.id, ...doc.data() };
-            const normalized = normalizePublicUserData(raw, doc.id);
+            const normalized = applyContactOverlay(normalizePublicUserData(raw, doc.id));
 
             if (doc.id !== currentUser?.uid) {
                 allUsers.push(normalized);
@@ -6710,6 +7244,7 @@ async function getUserInfo(uid) {
     }
 
     if (usersCache[uid]) {
+        usersCache[uid] = applyContactOverlay(usersCache[uid]);
         return usersCache[uid];
     }
 
@@ -6734,7 +7269,7 @@ const data = snap.exists ? {
     deletedAccount: true
 };
 
-            const normalized = normalizePublicUserData(data, uid);
+            const normalized = applyContactOverlay(normalizePublicUserData(data, uid));
 
             usersCache[uid] = normalized;
             delete usersCachePromises[uid];
@@ -6766,7 +7301,7 @@ async function loadAllUsers() {
     allUsers = [];
     snap.forEach(doc => {
         if (doc.id !== currentUser.uid) {
-            allUsers.push(normalizePublicUserData({ uid: doc.id, ...doc.data() }, doc.id));
+            allUsers.push(applyContactOverlay(normalizePublicUserData({ uid: doc.id, ...doc.data() }, doc.id)));
         }
     });
 }
@@ -9915,6 +10450,8 @@ async function openCommentUserProfile(userId) {
                 ${esc(user.bio || 'Нет описания')}
             </div>
 
+            ${buildContactPrivateNoteHtml(userId)}
+
             <div style="font-size:13px;color:var(--text-tertiary);margin-top:8px;">
                 ID: ${(user.uid || userId).slice(-8)}
             </div>
@@ -9940,6 +10477,7 @@ async function openCommentUserProfile(userId) {
                     <i class="fas fa-comment" style="margin-right:7px;"></i>
                     Открыть чат
                 </button>
+                ${buildContactActionButton(userId)}
             ` : ''}
 
             <button class="btn btn-secondary" onclick="closeUserProfile()" style="margin-top:8px;">
@@ -11204,6 +11742,21 @@ const avHTML = myAvatarSrc
             <div class="profile-bio">${esc(userData.bio || 'Нет описания')}</div>
         </div>
         
+        <div class="profile-section">
+            <div class="profile-cell" onclick="openContactsManager()">
+                <div class="profile-cell-icon" style="background:rgba(10,132,255,0.15);color:#0a84ff;">
+                    <i class="fas fa-address-book"></i>
+                </div>
+                <div class="profile-cell-content">
+                    <span class="profile-cell-title">Контакты</span>
+                    <span class="profile-cell-value" style="display:flex;align-items:center;gap:7px;">
+                        ${Object.keys(contactsCache || {}).length}
+                        <i class="fas fa-chevron-right profile-cell-arrow"></i>
+                    </span>
+                </div>
+            </div>
+        </div>
+
         <div class="profile-section">
             <div class="profile-cell" onclick="openSavedChat()">
                 <div class="profile-cell-icon" style="background:rgba(255,159,10,0.15);color:#ff9f0a;">
@@ -12712,21 +13265,17 @@ function setupChannelSettingsSearches(chat) {
         adminSearch.addEventListener('input', function () {
             const q = this.value.trim().toLowerCase();
 
-            if (q.length < 2) {
+            if (q.length === 1 && !this.value.trim().startsWith('@')) {
                 adminResults.innerHTML = '';
                 return;
             }
 
             const admins = chat.admins || [];
 
-            const users = allUsers.filter(u =>
-                u.uid !== chat.ownerId &&
-                !admins.includes(u.uid) &&
-                (
-                    (u.displayName || '').toLowerCase().includes(q) ||
-                    (u.username || '').toLowerCase().includes(q)
-                )
-            );
+            const users = getSelectableUsers(this.value, [
+                chat.ownerId,
+                ...(admins || [])
+            ]);
 
             adminResults.innerHTML = users.map(u => `
                 <div class="add-participant-item channel-admin-result" data-user-id="${u.uid}">
@@ -12753,20 +13302,14 @@ function setupChannelSettingsSearches(chat) {
         subSearch.addEventListener('input', function () {
             const q = this.value.trim().toLowerCase();
 
-            if (q.length < 2) {
+            if (q.length === 1 && !this.value.trim().startsWith('@')) {
                 subResults.innerHTML = '';
                 return;
             }
 
             const subscribers = chat.subscribers || [];
 
-            const users = allUsers.filter(u =>
-                !subscribers.includes(u.uid) &&
-                (
-                    (u.displayName || '').toLowerCase().includes(q) ||
-                    (u.username || '').toLowerCase().includes(q)
-                )
-            );
+            const users = getSelectableUsers(this.value, subscribers || []);
 
             subResults.innerHTML = users.map(u => `
                 <div class="add-participant-item channel-subscriber-result" data-user-id="${u.uid}">
@@ -13191,21 +13734,35 @@ function closeGroupModal() {
 
 function renderGroupUsersList(filter = '') {
     const container = document.getElementById('groupUsersList');
-    const q = filter.toLowerCase();
-    const filtered = allUsers.filter(u =>
-        (u.displayName || '').toLowerCase().includes(q) ||
-        (u.username || '').toLowerCase().includes(q)
-    );
-    
+    if (!container) return;
+
+    const filtered = getSelectableUsers(filter, [currentUser.uid]);
+
+    if (!filtered.length) {
+        container.innerHTML = `
+            <div class="contegg-contact-picker-empty">
+                ${filter.trim()
+                    ? 'Ничего не найдено. Для любого пользователя ищите по @username.'
+                    : 'Добавьте людей в контакты — они появятся здесь.'
+                }
+            </div>
+        `;
+        return;
+    }
+
     container.innerHTML = filtered.map(u => {
         const sel = selectedGroupUsers.has(u.uid);
-        const avHTML = u.avatarBase64 ? `<img src="${u.avatarBase64}">` : (u.displayName?.[0] || 'U');
+        const avatar = getAvatarSrc(u);
+        const avHTML = avatar
+            ? `<img src="${esc(avatar)}">`
+            : esc((u.displayName?.[0] || u.username?.[0] || 'U').toUpperCase());
+
         return `
             <div class="user-select-item ${sel ? 'selected' : ''}" onclick="toggleGroupUser('${u.uid}')" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;cursor:pointer;${sel ? 'background:rgba(0,122,255,0.1);' : ''}">
                 <div class="chat-avatar" style="width:36px;height:36px;font-size:14px;">${avHTML}</div>
-                <div style="flex:1;">
-                    <div style="font-size:15px;">${esc(u.displayName || 'Пользователь')}</div>
-                    <div style="font-size:13px;color:var(--text-secondary);">@${esc(u.username)}</div>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(u.displayName || 'Пользователь')}</div>
+                    <div style="font-size:13px;color:var(--text-secondary);">@${esc(u.username || '')}</div>
                 </div>
                 <div class="check-circle" style="width:22px;height:22px;border-radius:50%;border:2px solid var(--separator);display:flex;align-items:center;justify-content:center;font-size:12px;${sel ? 'background:var(--accent);border-color:var(--accent);color:white;' : ''}">${sel ? '<i class="fas fa-check"></i>' : ''}</div>
             </div>
@@ -13336,6 +13893,7 @@ async function viewChatUserProfile() {
             </div>
             <div style="font-size:15px;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;gap:5px;">@${esc(user.username || '')} ${renderVerificationBadge(user, 13)}</div>
             <div style="font-size:14px;color:var(--text-secondary);margin-top:8px;line-height:1.4;">${esc(user.bio || 'Нет описания')}</div>
+            ${buildContactPrivateNoteHtml(currentChatUser.uid)}
             <div style="font-size:13px;color:var(--text-tertiary);margin-top:8px;">ID: ${(user.uid || currentChatUser.uid).slice(-8)}</div>
 
             <button
@@ -13359,6 +13917,7 @@ async function viewChatUserProfile() {
                     <i class="fas fa-comment" style="margin-right:7px;"></i>
                     Открыть чат
                 </button>
+                ${buildContactActionButton(currentChatUser.uid)}
             ` : ''}
 
             <button class="btn btn-secondary" onclick="closeUserProfile()" style="margin-top:8px;">Закрыть</button>
@@ -13472,16 +14031,12 @@ const isAdmin = isOwner || (chat.admins || []).includes(currentUser.uid);
     if (addSearch) {
         addSearch.addEventListener('input', async function() {
             const q = this.value.trim().toLowerCase();
-            if (q.length < 2) {
+            if (q.length === 1 && !this.value.trim().startsWith('@')) {
                 document.getElementById('addParticipantResults').innerHTML = '';
                 return;
             }
             
-            const users = allUsers.filter(u => 
-                !chat.participants.includes(u.uid) &&
-                ((u.displayName || '').toLowerCase().includes(q) || 
-                 (u.username || '').toLowerCase().includes(q))
-            );
+            const users = getSelectableUsers(this.value, chat.participants || []);
             
             document.getElementById('addParticipantResults').innerHTML = users.map(u => `
                 <div onclick="addGroupParticipant('${u.uid}')" class="add-participant-item">
@@ -21854,6 +22409,237 @@ body.contegg-has-pinned-message #chatMessages {
     document.addEventListener('pointercancel', endDrag, { passive:true });
 })();
 </script>
+
+
+<style id="CONTEGG-CONTACTS-V11">
+.contegg-contact-private-note {
+    margin:12px auto 4px;
+    max-width:320px;
+    padding:10px 11px;
+    border-radius:12px;
+    background:rgba(10,132,255,.08);
+    border:.5px solid rgba(10,132,255,.15);
+    text-align:left;
+}
+
+.contegg-contact-private-note-label {
+    display:flex;
+    align-items:center;
+    gap:6px;
+    color:var(--accent);
+    font-size:10px;
+    font-weight:700;
+    margin-bottom:4px;
+}
+
+.contegg-contact-private-note-text {
+    color:var(--text-secondary);
+    font-size:12px;
+    line-height:1.4;
+    white-space:pre-wrap;
+}
+
+.contegg-contact-edit-sheet,
+.contegg-contacts-manager-sheet {
+    max-height:min(84dvh,760px);
+    overflow:hidden;
+}
+
+.contegg-contact-edit-sheet .modal-content {
+    overflow-y:auto;
+    max-height:calc(84dvh - 70px);
+}
+
+.contegg-contact-editor-head {
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:4px 0 8px;
+}
+
+.contegg-contact-editor-avatar {
+    width:48px;
+    height:48px;
+    flex:0 0 48px;
+    border-radius:50%;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:linear-gradient(135deg,#0a84ff,#5e5ce6);
+    color:#fff;
+    font-size:18px;
+    font-weight:700;
+}
+
+.contegg-contact-editor-avatar img {
+    width:100%;
+    height:100%;
+    object-fit:cover;
+}
+
+.contegg-contact-editor-public-name {
+    font-size:15px;
+    font-weight:650;
+}
+
+.contegg-contact-editor-username {
+    margin-top:2px;
+    color:var(--text-secondary);
+    font-size:12px;
+}
+
+.contegg-contact-field {
+    display:block;
+    text-align:left;
+    margin-top:12px;
+}
+
+.contegg-contact-field > span {
+    display:block;
+    margin:0 0 5px 2px;
+    color:var(--text-secondary);
+    font-size:11px;
+}
+
+.contegg-contact-field input,
+.contegg-contact-field textarea,
+.contegg-contacts-toolbar input {
+    width:100%;
+    border:.5px solid rgba(255,255,255,.10);
+    border-radius:11px;
+    outline:none;
+    background:var(--bg-tertiary);
+    color:var(--text-primary);
+    font:inherit;
+    font-size:14px;
+}
+
+.contegg-contact-field input,
+.contegg-contacts-toolbar input {
+    height:42px;
+    padding:0 11px;
+}
+
+.contegg-contact-field textarea {
+    min-height:90px;
+    max-height:180px;
+    padding:10px 11px;
+    resize:vertical;
+}
+
+.contegg-contact-private-hint {
+    display:flex;
+    align-items:center;
+    gap:6px;
+    margin:9px 2px 4px;
+    color:var(--text-tertiary);
+    font-size:10px;
+}
+
+.contegg-contacts-toolbar {
+    padding:0 16px 10px;
+}
+
+.contegg-contacts-manager-list {
+    min-height:90px;
+    max-height:56dvh;
+    overflow-y:auto;
+    padding:0 10px;
+}
+
+.contegg-contact-row {
+    width:100%;
+    display:flex;
+    align-items:center;
+    gap:11px;
+    padding:10px 8px;
+    border:0;
+    border-bottom:.5px solid var(--separator);
+    background:transparent;
+    color:inherit;
+    text-align:left;
+    cursor:pointer;
+}
+
+.contegg-contact-row-avatar {
+    width:42px;
+    height:42px;
+    flex:0 0 42px;
+    border-radius:50%;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:linear-gradient(135deg,#0a84ff,#5e5ce6);
+    color:#fff;
+    font-size:16px;
+}
+
+.contegg-contact-row-avatar img {
+    width:100%;
+    height:100%;
+    object-fit:cover;
+}
+
+.contegg-contact-row-main {
+    min-width:0;
+    flex:1;
+    display:flex;
+    flex-direction:column;
+}
+
+.contegg-contact-row-name {
+    font-size:14px;
+    font-weight:600;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+.contegg-contact-row-user {
+    margin-top:1px;
+    color:var(--text-secondary);
+    font-size:11px;
+}
+
+.contegg-contact-row-note {
+    margin-top:3px;
+    color:var(--text-tertiary);
+    font-size:10px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+.contegg-contact-row > i {
+    color:var(--text-tertiary);
+    font-size:11px;
+}
+
+.contegg-contacts-empty,
+.contegg-contact-picker-empty {
+    padding:24px 16px;
+    text-align:center;
+    color:var(--text-secondary);
+    font-size:12px;
+    line-height:1.45;
+}
+
+.contegg-contacts-empty i {
+    display:block;
+    margin-bottom:8px;
+    font-size:24px;
+    color:var(--text-tertiary);
+}
+
+.contegg-contacts-empty span {
+    display:block;
+    margin-top:4px;
+    color:var(--text-tertiary);
+    font-size:10px;
+}
+</style>
 
 </body>
 </html>
