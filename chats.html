@@ -2433,8 +2433,8 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
 </div>
 
 <div class="modal-overlay" id="createMenuModal">
-    <div class="modal-sheet">
-        <div class="modal-handle"></div>
+    <div class="modal-sheet contegg-create-menu-sheet" id="createMenuSheet">
+        <div class="modal-handle contegg-create-menu-handle"></div>
         <div class="modal-title">Создать</div>
         <div class="modal-content">
             <button class="btn btn-primary" onclick="showCreateGroupFromMenu()">
@@ -12269,12 +12269,59 @@ function saveGroupCropSettings() {
     saveGroupSettings();
 }
 
-    function showCreateMenu() {
-    document.getElementById('createMenuModal').classList.add('show');
+function resetCreateMenuDragStyles() {
+    const modal = document.getElementById('createMenuModal');
+    const sheet = document.getElementById('createMenuSheet');
+
+    if (sheet) {
+        sheet.style.removeProperty('transition');
+        sheet.style.removeProperty('transform');
+    }
+
+    if (modal) {
+        modal.style.removeProperty('transition');
+        modal.style.removeProperty('opacity');
+    }
 }
 
-function closeCreateMenu() {
-    document.getElementById('createMenuModal').classList.remove('show');
+function showCreateMenu() {
+    const modal = document.getElementById('createMenuModal');
+    if (!modal) return;
+
+    resetCreateMenuDragStyles();
+    modal.classList.add('show');
+}
+
+function closeCreateMenu(options = {}) {
+    const modal = document.getElementById('createMenuModal');
+    const sheet = document.getElementById('createMenuSheet');
+
+    if (!modal) return;
+
+    if (options.animateDown && sheet) {
+        const height = Math.max(sheet.offsetHeight, 280);
+
+        sheet.style.transition = 'transform 220ms cubic-bezier(.22,.8,.3,1)';
+        sheet.style.transform = `translate3d(0, ${height + 36}px, 0)`;
+
+        modal.style.transition = 'opacity 200ms ease';
+        modal.style.opacity = '0';
+
+        setTimeout(() => {
+            modal.classList.remove('show');
+            resetCreateMenuDragStyles();
+        }, 220);
+
+        return;
+    }
+
+    modal.classList.remove('show');
+
+    setTimeout(() => {
+        if (!modal.classList.contains('show')) {
+            resetCreateMenuDragStyles();
+        }
+    }, 320);
 }
 
 function showCreateGroupFromMenu() {
@@ -21596,6 +21643,217 @@ body.contegg-has-pinned-message #chatMessages {
     }
 }
 </style>
+
+
+<style id="CONTEGG-CREATE-MENU-SWIPE-V10">
+/* Create menu only — keep every other modal untouched. */
+#createMenuModal .contegg-create-menu-sheet {
+    overflow:hidden;
+    touch-action:none;
+    will-change:transform;
+}
+
+#createMenuModal .contegg-create-menu-handle {
+    cursor:grab;
+    touch-action:none;
+}
+
+#createMenuModal .contegg-create-menu-handle:active {
+    cursor:grabbing;
+}
+
+/* The two blue actions must read as two separate buttons, not one block. */
+#createMenuModal .modal-content {
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+}
+
+#createMenuModal .modal-content > .btn {
+    margin-top:0 !important;
+    flex:0 0 auto;
+}
+
+#createMenuModal .modal-content > .btn-secondary {
+    margin-top:2px !important;
+}
+
+/* Slightly soften the menu actions to match the rest of Contegg UI. */
+#createMenuModal .btn-primary {
+    min-height:48px;
+}
+
+#createMenuModal .btn-primary + .btn-primary {
+    margin-top:0 !important;
+}
+
+#createMenuModal.contegg-create-dragging {
+    transition:none !important;
+}
+
+#createMenuModal.contegg-create-dragging .contegg-create-menu-sheet {
+    transition:none !important;
+}
+
+@media (max-width:767px) {
+    #createMenuModal .contegg-create-menu-handle {
+        width:40px;
+        height:5px;
+        margin-top:9px;
+        margin-bottom:15px;
+    }
+}
+</style>
+
+
+<script id="CONTEGG-CREATE-MENU-SWIPE-CONTROLLER-V10">
+(() => {
+    if (window.__conteggCreateMenuSwipeV10) return;
+    window.__conteggCreateMenuSwipeV10 = true;
+
+    let dragging = false;
+    let pointerId = null;
+    let startY = 0;
+    let currentY = 0;
+    let startedAt = 0;
+
+    function getParts() {
+        return {
+            modal: document.getElementById('createMenuModal'),
+            sheet: document.getElementById('createMenuSheet')
+        };
+    }
+
+    function canStartDrag(event, sheet) {
+        if (!sheet) return false;
+
+        // Allow dragging from the handle/title/top area.
+        // Buttons and form controls must keep their normal click behavior.
+        if (event.target.closest('button, input, textarea, select, a')) return false;
+
+        const rect = sheet.getBoundingClientRect();
+        const localY = event.clientY - rect.top;
+
+        return localY >= 0 && localY <= 86;
+    }
+
+    function beginDrag(event) {
+        const { modal, sheet } = getParts();
+
+        if (
+            !modal?.classList.contains('show') ||
+            !sheet ||
+            !canStartDrag(event, sheet)
+        ) {
+            return;
+        }
+
+        dragging = true;
+        pointerId = event.pointerId;
+        startY = event.clientY;
+        currentY = 0;
+        startedAt = performance.now();
+
+        modal.classList.add('contegg-create-dragging');
+
+        sheet.style.transition = 'none';
+        modal.style.transition = 'none';
+
+        try {
+            sheet.setPointerCapture(pointerId);
+        } catch (_) {}
+    }
+
+    function moveDrag(event) {
+        if (!dragging || event.pointerId !== pointerId) return;
+
+        const { modal, sheet } = getParts();
+        if (!modal || !sheet) return;
+
+        let delta = event.clientY - startY;
+
+        // Upward movement gets strong resistance.
+        if (delta < 0) {
+            delta *= 0.12;
+        }
+
+        currentY = Math.max(-10, delta);
+
+        if (currentY > 0) {
+            event.preventDefault();
+        }
+
+        sheet.style.transform = `translate3d(0, ${currentY}px, 0)`;
+
+        const progress = Math.min(1, Math.max(0, currentY / Math.max(sheet.offsetHeight, 320)));
+        modal.style.opacity = String(1 - progress * 0.58);
+    }
+
+    function endDrag(event) {
+        if (!dragging || event.pointerId !== pointerId) return;
+
+        const { modal, sheet } = getParts();
+
+        dragging = false;
+
+        try {
+            sheet?.releasePointerCapture(pointerId);
+        } catch (_) {}
+
+        pointerId = null;
+
+        if (!modal || !sheet) return;
+
+        modal.classList.remove('contegg-create-dragging');
+
+        const elapsed = Math.max(1, performance.now() - startedAt);
+        const velocity = currentY / elapsed;
+
+        const distanceThreshold = Math.min(
+            150,
+            Math.max(86, sheet.offsetHeight * 0.25)
+        );
+
+        const shouldClose =
+            currentY >= distanceThreshold ||
+            (currentY > 38 && velocity > 0.65);
+
+        if (shouldClose) {
+            closeCreateMenu({ animateDown:true });
+            currentY = 0;
+            return;
+        }
+
+        // Not far enough: spring neatly back into place.
+        sheet.style.transition = 'transform 260ms cubic-bezier(.22,1,.36,1)';
+        sheet.style.transform = 'translate3d(0,0,0)';
+
+        modal.style.transition = 'opacity 220ms ease';
+        modal.style.opacity = '1';
+
+        setTimeout(() => {
+            if (modal.classList.contains('show')) {
+                resetCreateMenuDragStyles();
+            }
+        }, 270);
+
+        currentY = 0;
+    }
+
+    document.addEventListener('pointerdown', event => {
+        if (event.button !== undefined && event.button !== 0) return;
+
+        const sheet = event.target.closest('#createMenuSheet');
+        if (!sheet) return;
+
+        beginDrag(event);
+    }, { passive:false });
+
+    document.addEventListener('pointermove', moveDrag, { passive:false });
+    document.addEventListener('pointerup', endDrag, { passive:true });
+    document.addEventListener('pointercancel', endDrag, { passive:true });
+})();
+</script>
 
 </body>
 </html>
