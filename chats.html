@@ -2931,6 +2931,10 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
         <i class="fas fa-share"></i><span>Переслать</span><i class="fas fa-chevron-right context-chevron"></i>
     </div>
 
+    <div class="context-item" onclick="ctxPinMessage()" id="ctxPinMessageItem">
+        <i class="fas fa-thumbtack"></i><span>Закрепить / открепить</span>
+    </div>
+
     <div class="context-item" onclick="ctxDeleteForMe()" id="ctxDeleteForMeItem">
         <i class="far fa-circle-check"></i><span>Удалить у себя</span>
     </div>
@@ -3106,6 +3110,18 @@ let currentChatIsChannel = false;
 let currentChatUser = null;
 let currentChatParticipants = [];
 let chatMessagesListener = null;
+
+// ===== LIVE CHAT FEATURES V2 =====
+let typingStatusListener = null;
+let typingClearTimer = null;
+let typingWriteTimer = null;
+let typingLastState = '';
+let chatBaseStatusText = '';
+let pinnedChatListener = null;
+let activePinnedMessages = [];
+let draftListRefreshTimer = null;
+const CONTEGG_DRAFT_PREFIX = 'contegg_draft_v2_';
+
 
 // Message feed lifecycle / lazy history
 const CHAT_MESSAGE_PAGE_SIZE = 10;
@@ -4432,7 +4448,15 @@ async function sendImageBlobToChat(blob) {
             updateData.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
         }
 
+        if (mentionedUserIds.length > 0) {
+            updateData.mentionUnreadFor = firebase.firestore.FieldValue.arrayUnion(...mentionedUserIds);
+        }
+
+        updateData.lastMessageId = createdMessageRef.id;
+
         await db.collection('chats').doc(currentChatId).update(updateData);
+        clearCurrentChatDraft();
+        setTypingState('').catch(() => {});
 
         toast('Фото отправлено');
 
@@ -4665,6 +4689,7 @@ async function startRecording() {
 
         mediaRecorder.start(250);
         isRecording = true;
+        setTypingState('recording').catch(() => {});
 
         const btn = document.getElementById('audioRecordBtn');
 
@@ -4699,6 +4724,7 @@ function stopRecording() {
     }
 
     isRecording = false;
+    setTypingState('').catch(() => {});
 
     const btn = document.getElementById('audioRecordBtn');
 
@@ -4754,7 +4780,7 @@ function timeAgo(d) {
 }
 
 function buildMessageTimeText(msg, isOut, d) {
-    return `${timeFormat(d)}${getEditedLabel(msg)}${isOut ? ' · ✓✓' : ''}`;
+    return `${timeFormat(d)}${getEditedLabel(msg)}${getMessageReceiptLabel(msg, isOut)}`;
 }
 
 function timeFormat(d) {
@@ -5686,6 +5712,440 @@ function ctxSaveToFavorites() {
     saveMessageToFavorites(selectedMsgId, selectedMsgData);
 }
 
+
+function getDraftStorageKey(chatId = currentChatId) {
+    if (!currentUser?.uid || !chatId) return '';
+    return `${CONTEGG_DRAFT_PREFIX}${currentUser.uid}_${chatId}`;
+}
+
+function getChatDraft(chatId) {
+    const key = getDraftStorageKey(chatId);
+    if (!key) return '';
+    try { return localStorage.getItem(key) || ''; } catch (_) { return ''; }
+}
+
+function saveCurrentChatDraft(value) {
+    if (!currentChatId || currentChatIsSystem) return;
+
+    const key = getDraftStorageKey(currentChatId);
+    if (!key) return;
+
+    const valueString = String(value || '');
+
+    try {
+        if (valueString.trim()) {
+            localStorage.setItem(key, valueString);
+        } else {
+            localStorage.removeItem(key);
+        }
+    } catch (_) {}
+
+    const cell = document.querySelector(`.chat-cell[data-chat-id="${CSS.escape(currentChatId)}"]`);
+    const preview = cell?.querySelector('.chat-preview');
+
+    if (preview) {
+        if (valueString.trim()) {
+            preview.innerHTML = `<span class="contegg-draft-label">Черновик:</span> ${esc(valueString.trim().replace(/\s+/g, ' ').slice(0, 80))}`;
+        } else {
+            clearTimeout(draftListRefreshTimer);
+            draftListRefreshTimer = setTimeout(() => {
+                if (typeof loadChats === 'function') loadChats().catch(console.error);
+            }, 120);
+        }
+    }
+}
+
+function restoreCurrentChatDraft() {
+    const input = document.getElementById('chatInput');
+    if (!input || !currentChatId || currentChatIsSystem) return;
+
+    const draft = getChatDraft(currentChatId);
+    input.value = draft;
+
+    try {
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    } catch (_) {}
+}
+
+function clearCurrentChatDraft() {
+    if (!currentChatId) return;
+
+    const key = getDraftStorageKey(currentChatId);
+    try { if (key) localStorage.removeItem(key); } catch (_) {}
+}
+
+async function setTypingState(state = '') {
+    if (!currentUser?.uid || !currentChatId || currentChatIsSystem || currentChatIsSaved || currentChatIsChannel) return;
+
+    const chatId = currentChatId;
+    const ref = db.collection('chats')
+        .doc(chatId)
+        .collection('typing')
+        .doc(currentUser.uid);
+
+    if (!state) {
+        typingLastState = '';
+        try { await ref.delete(); } catch (_) {}
+        return;
+    }
+
+    if (typingLastState === state) return;
+    typingLastState = state;
+
+    try {
+        await ref.set({
+            state,
+            uid: currentUser.uid,
+            username: userData?.username || '',
+            displayName: userData?.displayName || userData?.username || 'Пользователь',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+    } catch (e) {
+        console.warn('typing state write:', e);
+    }
+}
+
+function scheduleTypingState() {
+    if (!currentChatId || currentChatIsSystem || currentChatIsSaved || currentChatIsChannel) return;
+
+    clearTimeout(typingWriteTimer);
+    clearTimeout(typingClearTimer);
+
+    typingWriteTimer = setTimeout(() => {
+        setTypingState('typing').catch(() => {});
+    }, 80);
+
+    typingClearTimer = setTimeout(() => {
+        setTypingState('').catch(() => {});
+    }, 1500);
+}
+
+function stopTypingListener() {
+    clearTimeout(typingWriteTimer);
+    clearTimeout(typingClearTimer);
+    typingLastState = '';
+
+    if (typingStatusListener) {
+        try { typingStatusListener(); } catch (_) {}
+        typingStatusListener = null;
+    }
+}
+
+function startTypingListener(chatId) {
+    stopTypingListener();
+
+    const statusEl = document.getElementById('chatStatus');
+    if (!statusEl || !chatId || currentChatIsSystem || currentChatIsSaved || currentChatIsChannel) return;
+
+    typingStatusListener = db.collection('chats')
+        .doc(chatId)
+        .collection('typing')
+        .onSnapshot(snap => {
+            if (currentChatId !== chatId) return;
+
+            const now = Date.now();
+            const others = snap.docs
+                .map(doc => doc.data() || {})
+                .filter(item => item.uid && item.uid !== currentUser.uid)
+                .filter(item => {
+                    const ms = item.updatedAt?.toMillis?.() || now;
+                    return now - ms < 7000;
+                });
+
+            if (!others.length) {
+                statusEl.textContent = chatBaseStatusText || statusEl.dataset.baseStatus || '';
+                statusEl.classList.remove('contegg-live-status');
+                return;
+            }
+
+            const recording = others.find(x => x.state === 'recording');
+
+            if (!currentChatIsGroup) {
+                statusEl.textContent = recording ? 'записывает голосовое…' : 'печатает…';
+            } else {
+                const names = others
+                    .slice(0, 2)
+                    .map(x => x.displayName || x.username || 'Кто-то');
+
+                const suffix = recording ? 'записывает голосовое…' : 'печатает…';
+                statusEl.textContent =
+                    names.length === 1
+                        ? `${names[0]} ${suffix}`
+                        : `${names.join(', ')} печатают…`;
+            }
+
+            statusEl.classList.add('contegg-live-status');
+        }, error => {
+            console.warn('typing listener:', error);
+        });
+}
+
+function formatMentionedText(rawText) {
+    const escaped = esc(rawText || '');
+
+    return escaped.replace(
+        /(^|[\s>])@([A-Za-z0-9_.-]{2,32})/g,
+        (full, prefix, username) =>
+            `${prefix}<button type="button" class="contegg-mention" data-mention-username="${username}">@${username}</button>`
+    );
+}
+
+function resolveMentionedUserIds(text) {
+    if (!currentChatIsGroup) return [];
+
+    const matches = [...String(text || '').matchAll(/(^|\s)@([A-Za-z0-9_.-]{2,32})/g)]
+        .map(m => String(m[2] || '').toLowerCase());
+
+    if (!matches.length) return [];
+
+    const unique = new Set(matches);
+    const ids = [];
+
+    for (const [uid, user] of Object.entries(usersCache || {})) {
+        const username = String(user?.username || '').toLowerCase();
+        if (username && unique.has(username) && uid !== currentUser.uid) {
+            ids.push(uid);
+        }
+    }
+
+    return [...new Set(ids)];
+}
+
+function getMessageReceiptLabel(msg, isOut) {
+    if (!isOut || currentChatIsChannel) return '';
+
+    const deliveredTo = Array.isArray(msg.deliveredTo) ? msg.deliveredTo : [];
+    const readBy = Array.isArray(msg.readBy) ? msg.readBy : [];
+
+    if (currentChatIsGroup) {
+        const readers = readBy.filter(uid => uid !== currentUser.uid);
+        if (readers.length) return ` · прочитано ${readers.length}`;
+
+        const delivered = deliveredTo.filter(uid => uid !== currentUser.uid);
+        return delivered.length ? ` · доставлено ${delivered.length}` : ' · ✓';
+    }
+
+    const hasRead = readBy.some(uid => uid !== currentUser.uid);
+    if (hasRead) return ' · прочитано';
+
+    const hasDelivered = deliveredTo.some(uid => uid !== currentUser.uid);
+    if (hasDelivered) return ' · ✓✓';
+
+    return ' · ✓';
+}
+
+async function acknowledgeMessageDocs(docs, { read = true } = {}) {
+    if (!currentUser?.uid || !Array.isArray(docs) || !docs.length) return;
+
+    const batch = db.batch();
+    let writes = 0;
+
+    docs.forEach(doc => {
+        const msg = doc.data?.() || {};
+        if (!msg.senderId || msg.senderId === currentUser.uid || msg.senderId === 'system') return;
+
+        const update = {};
+        const delivered = Array.isArray(msg.deliveredTo) ? msg.deliveredTo : [];
+        const readers = Array.isArray(msg.readBy) ? msg.readBy : [];
+
+        if (!delivered.includes(currentUser.uid)) {
+            update.deliveredTo = firebase.firestore.FieldValue.arrayUnion(currentUser.uid);
+        }
+
+        if (read && document.visibilityState === 'visible' && !readers.includes(currentUser.uid)) {
+            update.readBy = firebase.firestore.FieldValue.arrayUnion(currentUser.uid);
+        }
+
+        if (Object.keys(update).length) {
+            batch.update(doc.ref, update);
+            writes++;
+        }
+    });
+
+    if (writes) {
+        try { await batch.commit(); } catch (e) { console.warn('receipt ack:', e); }
+    }
+}
+
+async function acknowledgeLastUnreadMessageDelivered(chatId) {
+    if (!chatId || !currentUser?.uid) return;
+
+    try {
+        const snap = await db.collection('chats')
+            .doc(chatId)
+            .collection('messages')
+            .orderBy('timestamp', 'desc')
+            .limit(1)
+            .get();
+
+        if (!snap.empty) {
+            await acknowledgeMessageDocs([snap.docs[0]], { read: false });
+        }
+    } catch (_) {}
+}
+
+function ensurePinnedBar() {
+    let bar = document.getElementById('chatPinnedBar');
+    if (bar) return bar;
+
+    const overlay = document.getElementById('chatOverlay');
+    if (!overlay) return null;
+
+    bar = document.createElement('button');
+    bar.type = 'button';
+    bar.id = 'chatPinnedBar';
+    bar.className = 'contegg-pinned-bar';
+    bar.style.display = 'none';
+    bar.innerHTML = `
+        <span class="contegg-pinned-icon"><i class="fas fa-thumbtack"></i></span>
+        <span class="contegg-pinned-main">
+            <span class="contegg-pinned-title">Закреплённое сообщение</span>
+            <span class="contegg-pinned-text" id="chatPinnedText"></span>
+        </span>
+        <span class="contegg-pinned-count" id="chatPinnedCount"></span>
+    `;
+
+    bar.addEventListener('click', () => {
+        const latest = activePinnedMessages[activePinnedMessages.length - 1];
+        if (latest?.id) scrollToPinnedMessage(latest.id);
+    });
+
+    overlay.appendChild(bar);
+    return bar;
+}
+
+function renderPinnedBar() {
+    const bar = ensurePinnedBar();
+    if (!bar) return;
+
+    if (!activePinnedMessages.length || currentChatIsSystem || currentChatIsSaved) {
+        bar.style.display = 'none';
+        document.body.classList.remove('contegg-has-pinned-message');
+        return;
+    }
+
+    const latest = activePinnedMessages[activePinnedMessages.length - 1];
+    const text = latest.text || 'Сообщение';
+
+    const textEl = document.getElementById('chatPinnedText');
+    const countEl = document.getElementById('chatPinnedCount');
+
+    if (textEl) textEl.textContent = text;
+    if (countEl) countEl.textContent =
+        activePinnedMessages.length > 1 ? String(activePinnedMessages.length) : '';
+
+    bar.style.display = 'flex';
+    document.body.classList.add('contegg-has-pinned-message');
+}
+
+function stopPinnedListener() {
+    if (pinnedChatListener) {
+        try { pinnedChatListener(); } catch (_) {}
+        pinnedChatListener = null;
+    }
+
+    activePinnedMessages = [];
+    renderPinnedBar();
+}
+
+function startPinnedListener(chatId) {
+    stopPinnedListener();
+    if (!chatId) return;
+
+    pinnedChatListener = db.collection('chats').doc(chatId).onSnapshot(doc => {
+        if (currentChatId !== chatId) return;
+        activePinnedMessages = Array.isArray(doc.data()?.pinnedMessages)
+            ? doc.data().pinnedMessages
+            : [];
+        renderPinnedBar();
+    }, error => console.warn('pinned listener:', error));
+}
+
+async function scrollToPinnedMessage(messageId) {
+    const container = document.getElementById('chatMessages');
+    if (!container || !messageId) return;
+
+    let target = container.querySelector(`[data-msg-id="${CSS.escape(messageId)}"]`);
+
+    let attempts = 0;
+    while (!target && chatHistoryHasMore && attempts < 30) {
+        attempts++;
+        await loadOlderMessages();
+        target = container.querySelector(`[data-msg-id="${CSS.escape(messageId)}"]`);
+    }
+
+    if (!target) {
+        toast('Сообщение слишком старое или удалено');
+        return;
+    }
+
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.add('contegg-pin-flash');
+    setTimeout(() => target.classList.remove('contegg-pin-flash'), 900);
+}
+
+async function ctxPinMessage() {
+    document.getElementById('msgContextMenu').style.display = 'none';
+
+    if (!currentChatId || !selectedMsgId || !selectedMsgData || currentChatIsSystem || currentChatIsSaved) return;
+
+    try {
+        const ref = db.collection('chats').doc(currentChatId);
+        const snap = await ref.get();
+        const current = Array.isArray(snap.data()?.pinnedMessages)
+            ? snap.data().pinnedMessages
+            : [];
+
+        const existing = current.find(item => item.id === selectedMsgId);
+        let next;
+
+        if (existing) {
+            next = current.filter(item => item.id !== selectedMsgId);
+            toast('Сообщение откреплено');
+        } else {
+            next = [
+                ...current,
+                {
+                    id: selectedMsgId,
+                    text: String(selectedMsgData.text || 'Медиа').slice(0, 160),
+                    senderId: selectedMsgData.senderId || '',
+                    pinnedBy: currentUser.uid,
+                    pinnedAt: Date.now()
+                }
+            ].slice(-20);
+            toast('Сообщение закреплено');
+        }
+
+        await ref.set({ pinnedMessages: next }, { merge: true });
+    } catch (e) {
+        console.error('ctxPinMessage:', e);
+        toast('Не удалось изменить закрепление');
+    }
+}
+
+function bindLiveChatFeatures() {
+    const input = document.getElementById('chatInput');
+    if (!input || input.dataset.liveFeaturesBound === '1') return;
+
+    input.dataset.liveFeaturesBound = '1';
+
+    input.addEventListener('input', () => {
+        saveCurrentChatDraft(input.value);
+
+        if (input.value.trim()) {
+            scheduleTypingState();
+        } else {
+            clearTimeout(typingClearTimer);
+            setTypingState('').catch(() => {});
+        }
+    });
+
+    input.addEventListener('blur', () => {
+        setTypingState('').catch(() => {});
+    });
+}
+
+
 function startPresenceTracking() {
     if (!currentUser) return;
 
@@ -6412,7 +6872,7 @@ if (chat.type === 'adminpanel') {
                     <span class="chat-time">${timeStr}</span>
                 </div>
 
-                <div class="chat-preview">${esc(chat.lastMessage || 'Сохранённые сообщения')}</div>
+                <div class="chat-preview">${getChatDraft(chat.id) ? `<span class="contegg-draft-label">Черновик:</span> ${esc(getChatDraft(chat.id).trim().replace(/\s+/g,' ').slice(0,80))}` : esc(chat.lastMessage || 'Сохранённые сообщения')}</div>
             </div>
 
             ${isUnread ? '<div class="unread-dot"></div>' : ''}
@@ -6446,7 +6906,7 @@ if (chat.type === 'adminpanel') {
                     <span class="chat-time">${timeStr}</span>
                 </div>
 
-                <div class="chat-preview">${esc(chat.lastMessage || 'Канал')}</div>
+                <div class="chat-preview">${getChatDraft(chat.id) ? `<span class="contegg-draft-label">Черновик:</span> ${esc(getChatDraft(chat.id).trim().replace(/\s+/g,' ').slice(0,80))}` : esc(chat.lastMessage || 'Канал')}</div>
             </div>
 
             ${isUnread ? '<div class="unread-dot"></div>' : ''}
@@ -6458,16 +6918,19 @@ if (chat.type === 'adminpanel') {
 const avHTML = groupAvatarSrc ? `<img src="${groupAvatarSrc}">` : '👥';
                 const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
                 const isPinned = pinnedChats.includes(chat.id);
+                const groupDraft = getChatDraft(chat.id);
+                const hasMention = chat.mentionUnreadFor?.includes(currentUser.uid);
                 return `
-                    <div class="chat-cell" onclick="openGroupChat('${chat.id}')" data-chat-id="${chat.id}" data-chat-type="group">
+                    <div class="chat-cell ${hasMention ? 'has-mention' : ''}" onclick="openGroupChat('${chat.id}')" data-chat-id="${chat.id}" data-chat-type="group">
                         <div class="chat-avatar group">${avHTML}</div>
                         <div class="chat-content">
                             <div class="chat-top">
                                 <span class="chat-name"><i class="fas fa-users group-icon"></i> ${esc(chat.name)}${isPinned ? ' <i class="fas fa-thumbtack pinned-icon"></i>' : ''}</span>
                                 <span class="chat-time">${timeStr}</span>
                             </div>
-                            <div class="chat-preview">${esc(chat.lastMessage || '')}</div>
+                            <div class="chat-preview">${groupDraft ? `<span class="contegg-draft-label">Черновик:</span> ${esc(groupDraft.trim().replace(/\s+/g,' ').slice(0,80))}` : esc(chat.lastMessage || '')}</div>
                         </div>
+                        ${hasMention ? '<div class="contegg-mention-badge">@</div>' : ''}
                     </div>`;
             } else if (chat.type === 'system') {
                 const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
@@ -6496,6 +6959,7 @@ const avHTML = userAvatarSrc ? `<img src="${userAvatarSrc}">` : (u.displayName?.
                 const timeStr = timeAgo(chat.lastMessageTime?.toDate?.());
                 const isUnread = chat.unreadFor?.includes(currentUser.uid);
                 const isPinned = pinnedChats.includes(chat.id);
+                const dmDraft = getChatDraft(chat.id);
                 return `
                     <div class="chat-cell ${isUnread ? 'unread' : ''} ${isPinned ? 'pinned' : ''}" 
                          onclick="openDirectChat('${chat.otherId}', '${esc(u.username || '')}', '${chat.id}')"  data-chat-id="${chat.id}" data-chat-type="dm">
@@ -6505,7 +6969,7 @@ const avHTML = userAvatarSrc ? `<img src="${userAvatarSrc}">` : (u.displayName?.
                                 <span class="chat-name">${esc(u.displayName || u.username)} ${renderVerificationBadge(u, 12)} ${renderBlockedAccountMark(u)}${isPinned ? ' <i class="fas fa-thumbtack pinned-icon"></i>' : ''}</span>
                                 <span class="chat-time">${timeStr}</span>
                             </div>
-                            <div class="chat-preview">${chat.lastSender === currentUser.uid ? 'Вы: ' : ''}${esc(chat.lastMessage || '')}</div>
+                            <div class="chat-preview">${dmDraft ? `<span class="contegg-draft-label">Черновик:</span> ${esc(dmDraft.trim().replace(/\s+/g,' ').slice(0,80))}` : `${chat.lastSender === currentUser.uid ? 'Вы: ' : ''}${esc(chat.lastMessage || '')}`}</div>
                         </div>
                         ${isUnread ? '<div class="unread-dot"></div>' : ''}
                     </div>`;
@@ -6555,11 +7019,22 @@ function startGlobalChatsListener() {
 
     chatsGlobalListener = db.collection('chats')
         .where('participants', 'array-contains', currentUser.uid)
-        .onSnapshot(() => {
+        .onSnapshot(snap => {
             if (firstSnapshot) {
                 firstSnapshot = false;
                 return;
             }
+
+            snap.docChanges().forEach(change => {
+                const chat = change.doc.data() || {};
+                if (
+                    change.type !== 'removed' &&
+                    chat.unreadFor?.includes(currentUser.uid) &&
+                    change.doc.id !== currentChatId
+                ) {
+                    acknowledgeLastUnreadMessageDelivered(change.doc.id).catch(() => {});
+                }
+            });
 
             clearTimeout(loadChatsTimer);
             loadChatsTimer = setTimeout(loadChats, 250);
@@ -7008,8 +7483,19 @@ async function openSystemChat(chatId) {
         const btn = document.createElement('button');
         btn.className = 'group-settings-btn';
         btn.innerHTML = '<i class="fas fa-shield-alt"></i>';
+        btn.title = 'Админ-панель';
         btn.onclick = openAdminPanel;
         container.appendChild(btn);
+
+        const broadcastBtn = document.createElement('button');
+        broadcastBtn.className = 'group-settings-btn';
+        broadcastBtn.innerHTML = '<i class="fas fa-bullhorn"></i>';
+        broadcastBtn.title = 'Перейти к строке рассылки';
+        broadcastBtn.onclick = () => {
+            const input = document.getElementById('chatInput');
+            input?.focus({ preventScroll: true });
+        };
+        container.appendChild(broadcastBtn);
     }
     
     await openChatUI(null, chat.name, false, chat);
@@ -7020,6 +7506,12 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
     prepareMessageViewportForChat(currentChatId);
 
     const avatar = document.getElementById('chatAvatar');
+    const inputBarModeReset = document.getElementById('chatInputBar');
+    const inputModeReset = document.getElementById('chatInput');
+
+    if (inputBarModeReset) inputBarModeReset.dataset.systemBroadcastMode = '0';
+    if (inputModeReset) inputModeReset.placeholder = 'Сообщение';
+
     avatar.innerHTML = '';
     avatar.style.background = '';
     avatar.style.display = 'flex';
@@ -7074,12 +7566,27 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
         const nameEl = document.getElementById('chatName');
         nameEl.innerHTML = `${esc(name)} <i class="fas fa-check-circle verified-icon"></i>`;
         
-        document.getElementById('chatInputBar').style.display = 'none';
-        document.getElementById('chatInput').disabled = true;
-        document.getElementById('sendBtn').disabled = true;
-        document.getElementById('imageUploadBtn').disabled = true;
-        document.getElementById('videoUploadBtn').disabled = true;
-        document.getElementById('audioRecordBtn').disabled = true;
+        const sysInputBar = document.getElementById('chatInputBar');
+        const sysInput = document.getElementById('chatInput');
+        const sysSend = document.getElementById('sendBtn');
+        const sysImage = document.getElementById('imageUploadBtn');
+        const sysVideo = document.getElementById('videoUploadBtn');
+        const sysAudio = document.getElementById('audioRecordBtn');
+
+        const canBroadcast = isCurrentUserDeveloper === true;
+
+        sysInputBar.style.display = canBroadcast ? 'flex' : 'none';
+        sysInput.disabled = !canBroadcast;
+        sysSend.disabled = !canBroadcast;
+        sysImage.disabled = true;
+        sysVideo.disabled = true;
+        sysAudio.disabled = true;
+
+        sysInputBar.dataset.systemBroadcastMode = canBroadcast ? '1' : '0';
+        sysInput.placeholder = canBroadcast
+            ? 'Рассылка от Contegg…'
+            : 'Сообщение';
+
         currentChatUser = null;
     } else if (chatData?.isSaved) {
         avatar.innerHTML = '<i class="fas fa-bookmark" style="font-size:20px;"></i>';
@@ -7117,9 +7624,18 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
         document.getElementById('audioRecordBtn').disabled = false;
     }
     
+    const statusEl = document.getElementById('chatStatus');
+    chatBaseStatusText = statusEl?.textContent || '';
+    if (statusEl) statusEl.dataset.baseStatus = chatBaseStatusText;
+
+    startTypingListener(currentChatId);
+    startPinnedListener(currentChatId);
+    bindLiveChatFeatures();
+
    showChatOverlay();
 await loadMessages();
-markAsRead();
+await markAsRead();
+restoreCurrentChatDraft();
 
 if (!chatData?.isSystem) {
     setTimeout(() => {
@@ -7133,6 +7649,11 @@ if (!chatData?.isSystem) {
 }
 
 function closeChatUIOnly() {
+    saveCurrentChatDraft(document.getElementById('chatInput')?.value || '');
+    setTypingState('').catch(() => {});
+    stopTypingListener();
+    stopPinnedListener();
+
     if (chatUserPresenceListener) {
         chatUserPresenceListener();
         chatUserPresenceListener = null;
@@ -7237,11 +7758,33 @@ window.addEventListener('popstate', () => {
 });
 
 async function markAsRead() {
-    if (!currentChatId) return;
-    const ref = db.collection('chats').doc(currentChatId);
-    const doc = await ref.get();
-    if (doc.data()?.unreadFor?.includes(currentUser.uid)) {
-        await ref.update({ unreadFor: firebase.firestore.FieldValue.arrayRemove(currentUser.uid) });
+    if (!currentChatId || !currentUser?.uid) return;
+
+    const chatId = currentChatId;
+    const ref = db.collection('chats').doc(chatId);
+
+    try {
+        await ref.set({
+            unreadFor: firebase.firestore.FieldValue.arrayRemove(currentUser.uid),
+            mentionUnreadFor: firebase.firestore.FieldValue.arrayRemove(currentUser.uid)
+        }, { merge: true });
+    } catch (e) {
+        console.warn('mark chat read:', e);
+    }
+
+    if (document.visibilityState !== 'visible') return;
+
+    try {
+        const snap = await ref.collection('messages')
+            .orderBy('timestamp', 'desc')
+            .limit(CHAT_MESSAGE_PAGE_SIZE)
+            .get();
+
+        if (currentChatId === chatId) {
+            await acknowledgeMessageDocs(snap.docs, { read: true });
+        }
+    } catch (e) {
+        console.warn('mark messages read:', e);
     }
 }
 
@@ -7454,6 +7997,8 @@ async function loadOlderMessages() {
         chatHistoryOldestDoc = snap.docs[0];
         chatHistoryHasMore = snap.size === CHAT_MESSAGE_PAGE_SIZE;
 
+        acknowledgeMessageDocs(snap.docs, { read: true }).catch(() => {});
+
         const staging = document.createElement('div');
 
         snap.docs.forEach(doc => {
@@ -7533,6 +8078,8 @@ async function loadMessages() {
 
                     chatHistoryOldestDoc = snap.docs[0] || null;
                     chatHistoryHasMore = snap.size === CHAT_MESSAGE_PAGE_SIZE;
+
+                    acknowledgeMessageDocs(snap.docs, { read: true }).catch(() => {});
 
                     snap.docs.forEach(doc => {
                         const msg = doc.data();
@@ -8082,7 +8629,7 @@ if (msg.audioUrl) {
 }
 
 if (msg.text) {
-    html += `<div class="${hasVisualMedia ? 'msg-caption' : 'msg-text'}">${esc(msg.text)}</div>`;
+    html += `<div class="${hasVisualMedia ? 'msg-caption' : 'msg-text'}">${formatMentionedText(msg.text)}</div>`;
 }
 
 if (msg.notificationAction === 'terminate_device' && msg.actionDeviceId) {
@@ -8149,6 +8696,25 @@ if (msg.notificationAction === 'terminate_device' && msg.actionDeviceId) {
         html += `<div class="msg-time ${hasVisualMedia && !hasCaption ? 'msg-time-overlay' : ''}">${buildMessageTimeText(msg, isOut, d)}</div>`;
     }
     div.innerHTML = html;
+
+    div.querySelectorAll('.contegg-mention[data-mention-username]').forEach(btn => {
+        btn.addEventListener('click', async e => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+
+            const username = String(btn.dataset.mentionUsername || '').toLowerCase();
+            const entry = Object.entries(usersCache || {}).find(
+                ([, u]) => String(u?.username || '').toLowerCase() === username
+            );
+
+            if (entry?.[0]) {
+                openCommentUserProfile(entry[0]);
+            } else {
+                toast('Пользователь не найден');
+            }
+        });
+    });
 
     // Profile/source controls must own the click completely.
     // Never let these clicks bubble into the message reaction handler.
@@ -9074,6 +9640,23 @@ async function sendMessage() {
     const text = input.value.trim();
 
     if (!text || !currentChatId) return;
+
+    const inputBar = document.getElementById('chatInputBar');
+    if (
+        currentChatIsSystem &&
+        isCurrentUserDeveloper === true &&
+        inputBar?.dataset.systemBroadcastMode === '1'
+    ) {
+        if (!confirm('Отправить это сообщение всем пользователям от Contegg?')) return;
+
+        input.value = '';
+        input.style.height = 'auto';
+
+        await sendBroadcast(text);
+        clearCurrentChatDraft();
+        return;
+    }
+
     if (!(await canSendToCurrentChat())) {
     toast('Нет права публиковать в канал');
     return;
@@ -9098,12 +9681,17 @@ async function sendMessage() {
     input.style.height = 'auto';
     settleChatAfterInputChange({ smooth: false });
 
+    const mentionedUserIds = resolveMentionedUserIds(text);
+
     const msgData = {
         text,
         senderId: currentUser.uid,
-timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
         read: false,
-        type: 'text'
+        type: 'text',
+        deliveredTo: [currentUser.uid],
+        readBy: [currentUser.uid],
+        mentionedUserIds
     };
 
 if (replyingTo) {
@@ -9118,7 +9706,7 @@ if (replyingTo) {
 }
 
     try {
-        await db.collection('chats').doc(currentChatId)
+        const createdMessageRef = await db.collection('chats').doc(currentChatId)
             .collection('messages')
             .add(msgData);
 
@@ -13341,10 +13929,9 @@ function openAdminPanel() {
     }
 
     currentAdminTargetUser = null;
+    const markup = getAdminPanelMarkup();
 
     if (window.innerWidth >= 768) {
-        // Build the desktop/tablet shell first. The admin panel then lives in
-        // exactly the same central pane as an ordinary chat.
         if (typeof ensureChatNavbarInOverlay === 'function') {
             ensureChatNavbarInOverlay();
         }
@@ -13361,29 +13948,49 @@ function openAdminPanel() {
             closeInlinePostComments();
         }
 
-        // Keep the desktop chat shell in its normal open state.
-        // Removing chat-open made responsive/viewport handlers tear the center pane apart.
-        document.body.classList.add('chat-open');
-        document.body.classList.add('contegg-admin-workspace-open');
-        workspace.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('chat-open', 'contegg-admin-workspace-open');
 
-        if (content.dataset.adminMounted !== '1') {
-            content.innerHTML = getAdminPanelMarkup();
-            content.dataset.adminMounted = '1';
-            bindAdminPanelInputs();
-        } else {
-            // Keep existing DOM exactly as-is. Replacing list innerHTML on every
-            // open/live event was one of the causes of visible blinking.
-            bindAdminPanelInputs();
-        }
+        workspace.setAttribute('aria-hidden', 'false');
+        workspace.style.display = 'flex';
+        workspace.style.visibility = 'visible';
+        workspace.style.opacity = '1';
+        workspace.style.pointerEvents = 'auto';
+
+        // Always remount. A stale "adminMounted=1" with emptied DOM caused the blank panel.
+        content.innerHTML = markup;
+        content.dataset.adminMounted = '1';
+        content.style.display = 'block';
+        content.style.visibility = 'visible';
+        content.style.opacity = '1';
+        content.style.pointerEvents = 'auto';
+
+        bindAdminPanelInputs();
+
+        requestAnimationFrame(() => {
+            workspace.classList.add('contegg-admin-visible');
+        });
 
         return;
     }
 
-    // Phone: use a full-height sheet, because there is no split chat pane.
+    const modal = document.getElementById('adminPanelModal');
     const content = document.getElementById('adminPanelContent');
-    content.innerHTML = getAdminPanelMarkup();
-    document.getElementById('adminPanelModal').classList.add('show');
+
+    if (!modal || !content) {
+        toast('Не удалось открыть админ панель');
+        return;
+    }
+
+    content.innerHTML = markup;
+    content.style.display = 'block';
+    content.style.visibility = 'visible';
+    content.style.opacity = '1';
+
+    modal.classList.add('show');
+    modal.style.visibility = 'visible';
+    modal.style.opacity = '1';
+    modal.style.pointerEvents = 'auto';
+
     bindAdminPanelInputs();
 }
 
@@ -19492,6 +20099,211 @@ body.contegg-layout-settling #conteggDesktopShell *,
     border-width:2px;
 }
 </style>
+
+
+<style id="CONTEGG-LIVE-FEATURES-ADMIN-FIX-V2">
+.contegg-live-status {
+    color:#34c759 !important;
+    transition:color .14s ease, opacity .14s ease;
+}
+
+.contegg-draft-label {
+    color:#ff3b30;
+    font-weight:650;
+}
+
+.contegg-mention {
+    display:inline;
+    padding:0;
+    margin:0;
+    border:0;
+    background:transparent;
+    color:#64a8ff;
+    font:inherit;
+    font-weight:650;
+    cursor:pointer;
+}
+
+.contegg-mention-badge {
+    position:absolute;
+    right:14px;
+    bottom:10px;
+    min-width:20px;
+    height:20px;
+    padding:0 5px;
+    border-radius:999px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#0a84ff;
+    color:#fff;
+    font-size:11px;
+    font-weight:750;
+    box-shadow:0 2px 8px rgba(10,132,255,.25);
+}
+
+.contegg-pinned-bar {
+    position:absolute;
+    left:10px;
+    right:10px;
+    top:calc(var(--navbar-height,44px) + 7px);
+    z-index:420;
+
+    display:none;
+    align-items:center;
+    gap:9px;
+
+    min-height:42px;
+    padding:6px 10px;
+
+    border:0.5px solid rgba(255,255,255,.10);
+    border-radius:12px;
+
+    background:rgba(28,28,30,.94);
+    color:var(--text-primary);
+    backdrop-filter:blur(18px);
+    -webkit-backdrop-filter:blur(18px);
+
+    text-align:left;
+    cursor:pointer;
+}
+
+.contegg-pinned-icon {
+    color:var(--accent);
+    flex:0 0 auto;
+}
+
+.contegg-pinned-main {
+    min-width:0;
+    flex:1;
+    display:flex;
+    flex-direction:column;
+}
+
+.contegg-pinned-title {
+    color:var(--accent);
+    font-size:10px;
+    font-weight:700;
+}
+
+.contegg-pinned-text {
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    font-size:12px;
+    color:var(--text-secondary);
+}
+
+.contegg-pinned-count {
+    color:var(--text-tertiary);
+    font-size:10px;
+}
+
+body.contegg-has-pinned-message #chatMessages {
+    padding-top:58px !important;
+}
+
+.contegg-pin-flash {
+    animation:conteggPinFlash .9s ease;
+}
+
+@keyframes conteggPinFlash {
+    0%,100% { filter:none; }
+    25%,65% { filter:brightness(1.35); }
+}
+
+/* Receipt status should stay compact even on desktop density overrides. */
+.msg-time {
+    white-space:nowrap;
+}
+
+/* Admin panel: final authoritative visibility */
+#adminPanelModal.show {
+    opacity:1 !important;
+    visibility:visible !important;
+    pointer-events:auto !important;
+}
+
+#adminPanelModal.show .modal-sheet,
+#adminPanelContent {
+    visibility:visible !important;
+    opacity:1 !important;
+}
+
+@media (max-width:767px) {
+    #adminPanelModal .modal-sheet {
+        height:min(92dvh, 900px) !important;
+        max-height:92dvh !important;
+        overflow:hidden !important;
+    }
+
+    #adminPanelContent {
+        display:block !important;
+        height:calc(92dvh - 58px) !important;
+        overflow-y:auto !important;
+        -webkit-overflow-scrolling:touch;
+        padding-bottom:max(26px, env(safe-area-inset-bottom,0px)) !important;
+    }
+
+    .contegg-pinned-bar {
+        top:calc(var(--contegg-phone-header-h, 64px) + 6px);
+        left:8px;
+        right:8px;
+    }
+}
+
+@media (min-width:768px) {
+    body.contegg-admin-workspace-open #conteggAdminWorkspace {
+        display:flex !important;
+        visibility:visible !important;
+        opacity:1 !important;
+        pointer-events:auto !important;
+        z-index:999 !important;
+    }
+
+    body.contegg-admin-workspace-open #conteggAdminWorkspaceContent {
+        display:block !important;
+        visibility:visible !important;
+        opacity:1 !important;
+        pointer-events:auto !important;
+        overflow-y:auto !important;
+        min-height:0 !important;
+    }
+
+    body.contegg-admin-workspace-open #conteggAdminWorkspaceContent > .admin-panel {
+        display:block !important;
+        visibility:visible !important;
+        opacity:1 !important;
+    }
+}
+</style>
+
+
+<script id="CONTEGG-LIVE-FEATURES-INIT-V2">
+(() => {
+    function init() {
+        if (typeof bindLiveChatFeatures === 'function') {
+            bindLiveChatFeatures();
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init, { once:true });
+    } else {
+        init();
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (
+            document.visibilityState === 'visible' &&
+            currentChatId &&
+            document.body.classList.contains('chat-open')
+        ) {
+            markAsRead().catch(() => {});
+        }
+    });
+})();
+</script>
 
 </body>
 </html>
