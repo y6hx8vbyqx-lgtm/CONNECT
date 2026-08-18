@@ -3116,7 +3116,7 @@ let typingStatusListener = null;
 let typingClearTimer = null;
 let typingWriteTimer = null;
 let typingLastState = '';
-let chatBaseStatusText = '';
+let typingOriginalStatusText = '';
 let pinnedChatListener = null;
 let activePinnedMessages = [];
 let draftListRefreshTimer = null;
@@ -4689,7 +4689,6 @@ async function startRecording() {
 
         mediaRecorder.start(250);
         isRecording = true;
-        setTypingState('recording').catch(() => {});
 
         const btn = document.getElementById('audioRecordBtn');
 
@@ -4724,7 +4723,6 @@ function stopRecording() {
     }
 
     isRecording = false;
-    setTypingState('').catch(() => {});
 
     const btn = document.getElementById('audioRecordBtn');
 
@@ -5618,6 +5616,8 @@ async function getOrCreateSavedChat() {
 }
 
 async function openSavedChat() {
+    closeAdminWorkspaceBeforeOpeningChat();
+
     currentChatIsSaved = true;
     currentChatIsGroup = false;
     currentChatIsSystem = false;
@@ -5774,46 +5774,68 @@ function clearCurrentChatDraft() {
     try { if (key) localStorage.removeItem(key); } catch (_) {}
 }
 
-async function setTypingState(state = '') {
-    if (!currentUser?.uid || !currentChatId || currentChatIsSystem || currentChatIsSaved || currentChatIsChannel) return;
 
-    const chatId = currentChatId;
+async function setTypingState(state = '') {
+    if (
+        !currentUser?.uid ||
+        !currentChatId ||
+        currentChatIsSystem ||
+        currentChatIsSaved ||
+        currentChatIsChannel
+    ) {
+        return;
+    }
+
     const ref = db.collection('chats')
-        .doc(chatId)
+        .doc(currentChatId)
         .collection('typing')
         .doc(currentUser.uid);
 
     if (!state) {
         typingLastState = '';
-        try { await ref.delete(); } catch (_) {}
+
+        try {
+            await ref.delete();
+        } catch (_) {}
+
         return;
     }
 
-    if (typingLastState === state) return;
-    typingLastState = state;
+    if (typingLastState === 'typing') return;
+    typingLastState = 'typing';
 
     try {
         await ref.set({
-            state,
             uid: currentUser.uid,
-            username: userData?.username || '',
-            displayName: userData?.displayName || userData?.username || 'Пользователь',
+            state: 'typing',
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        });
     } catch (e) {
-        console.warn('typing state write:', e);
+        console.warn('typing write:', e);
     }
 }
 
 function scheduleTypingState() {
-    if (!currentChatId || currentChatIsSystem || currentChatIsSaved || currentChatIsChannel) return;
+    const input = document.getElementById('chatInput');
+
+    if (
+        !input ||
+        !input.value.trim() ||
+        !currentChatId ||
+        currentChatIsSystem ||
+        currentChatIsSaved ||
+        currentChatIsChannel
+    ) {
+        setTypingState('').catch(() => {});
+        return;
+    }
 
     clearTimeout(typingWriteTimer);
     clearTimeout(typingClearTimer);
 
     typingWriteTimer = setTimeout(() => {
         setTypingState('typing').catch(() => {});
-    }, 80);
+    }, 60);
 
     typingClearTimer = setTimeout(() => {
         setTypingState('').catch(() => {});
@@ -5826,16 +5848,49 @@ function stopTypingListener() {
     typingLastState = '';
 
     if (typingStatusListener) {
-        try { typingStatusListener(); } catch (_) {}
+        try {
+            typingStatusListener();
+        } catch (_) {}
+
         typingStatusListener = null;
     }
+
+    const statusEl = document.getElementById('chatStatus');
+
+    if (statusEl && typingOriginalStatusText) {
+        statusEl.textContent = typingOriginalStatusText;
+        statusEl.classList.remove('contegg-live-status');
+    }
+
+    typingOriginalStatusText = '';
 }
 
 function startTypingListener(chatId) {
-    stopTypingListener();
+    if (typingStatusListener) {
+        try {
+            typingStatusListener();
+        } catch (_) {}
+
+        typingStatusListener = null;
+    }
+
+    clearTimeout(typingClearTimer);
 
     const statusEl = document.getElementById('chatStatus');
-    if (!statusEl || !chatId || currentChatIsSystem || currentChatIsSaved || currentChatIsChannel) return;
+
+    if (
+        !statusEl ||
+        !chatId ||
+        currentChatIsSystem ||
+        currentChatIsSaved ||
+        currentChatIsChannel
+    ) {
+        return;
+    }
+
+    // Preserve exactly the status produced by the old Contegg logic.
+    // Typing only temporarily overlays it.
+    typingOriginalStatusText = statusEl.textContent || '';
 
     typingStatusListener = db.collection('chats')
         .doc(chatId)
@@ -5844,39 +5899,36 @@ function startTypingListener(chatId) {
             if (currentChatId !== chatId) return;
 
             const now = Date.now();
-            const others = snap.docs
-                .map(doc => doc.data() || {})
-                .filter(item => item.uid && item.uid !== currentUser.uid)
-                .filter(item => {
-                    const ms = item.updatedAt?.toMillis?.() || now;
-                    return now - ms < 7000;
-                });
 
-            if (!others.length) {
-                statusEl.textContent = chatBaseStatusText || statusEl.dataset.baseStatus || '';
-                statusEl.classList.remove('contegg-live-status');
-                return;
-            }
+            const someoneTyping = snap.docs.some(doc => {
+                const data = doc.data() || {};
 
-            const recording = others.find(x => x.state === 'recording');
+                if (!data.uid || data.uid === currentUser.uid) return false;
+                if (data.state !== 'typing') return false;
 
-            if (!currentChatIsGroup) {
-                statusEl.textContent = recording ? 'записывает голосовое…' : 'печатает…';
+                const updatedMs = data.updatedAt?.toMillis?.();
+
+                // Server timestamps can briefly be null immediately after write.
+                // Treat that as fresh instead of leaving the UI in a weird state.
+                if (!updatedMs) return true;
+
+                return (now - updatedMs) < 5000;
+            });
+
+            if (someoneTyping) {
+                statusEl.textContent = 'печатает…';
+                statusEl.classList.add('contegg-live-status');
             } else {
-                const names = others
-                    .slice(0, 2)
-                    .map(x => x.displayName || x.username || 'Кто-то');
-
-                const suffix = recording ? 'записывает голосовое…' : 'печатает…';
-                statusEl.textContent =
-                    names.length === 1
-                        ? `${names[0]} ${suffix}`
-                        : `${names.join(', ')} печатают…`;
+                statusEl.textContent = typingOriginalStatusText;
+                statusEl.classList.remove('contegg-live-status');
             }
-
-            statusEl.classList.add('contegg-live-status');
         }, error => {
             console.warn('typing listener:', error);
+
+            if (currentChatId === chatId) {
+                statusEl.textContent = typingOriginalStatusText;
+                statusEl.classList.remove('contegg-live-status');
+            }
         });
 }
 
@@ -6135,12 +6187,15 @@ function bindLiveChatFeatures() {
         if (input.value.trim()) {
             scheduleTypingState();
         } else {
+            clearTimeout(typingWriteTimer);
             clearTimeout(typingClearTimer);
             setTypingState('').catch(() => {});
         }
     });
 
     input.addEventListener('blur', () => {
+        clearTimeout(typingWriteTimer);
+        clearTimeout(typingClearTimer);
         setTypingState('').catch(() => {});
     });
 }
@@ -7140,6 +7195,8 @@ async function ctxDeleteChat() {
 }
 
 async function openDirectChat(userId, username, knownChatId = null) {
+    closeAdminWorkspaceBeforeOpeningChat();
+
     currentChatUser = { uid: userId, username };
     currentChatIsGroup = false;
     currentChatIsSaved = false;
@@ -7255,9 +7312,8 @@ function clearStaleChatHistoryState() {
 clearStaleChatHistoryState();
 
 function showChatOverlay() {
-    document.body.classList.remove('contegg-admin-workspace-open');
-    const adminWorkspace = document.getElementById('conteggAdminWorkspace');
-    if (adminWorkspace) adminWorkspace.setAttribute('aria-hidden', 'true');
+    // Strict invariant: chat and admin workspace are mutually exclusive.
+    closeAdminWorkspaceBeforeOpeningChat();
 
     const overlay = document.getElementById('chatOverlay');
     if (!overlay) return;
@@ -7404,6 +7460,8 @@ async function canSendToCurrentChat() {
 }
     
 async function openChannel(chatId) {
+    closeAdminWorkspaceBeforeOpeningChat();
+
     currentChatId = chatId;
     currentChatIsChannel = true;
     currentChatIsGroup = false;
@@ -7427,6 +7485,8 @@ async function openChannel(chatId) {
 }
     
 async function openGroupChat(chatId) {
+    closeAdminWorkspaceBeforeOpeningChat();
+
     const token = ++openChatToken;
 
     currentChatId = chatId;
@@ -7468,6 +7528,8 @@ const isAdmin = isOwner || (chat.admins || []).includes(currentUser.uid);
 }
 
 async function openSystemChat(chatId) {
+    closeAdminWorkspaceBeforeOpeningChat();
+
     currentChatId = chatId;
     currentChatIsGroup = false;
     currentChatIsSaved = false;
@@ -7624,10 +7686,6 @@ async function openChatUI(userId, name, isGroup, chatData = null) {
         document.getElementById('audioRecordBtn').disabled = false;
     }
     
-    const statusEl = document.getElementById('chatStatus');
-    chatBaseStatusText = statusEl?.textContent || '';
-    if (statusEl) statusEl.dataset.baseStatus = chatBaseStatusText;
-
     startTypingListener(currentChatId);
     startPinnedListener(currentChatId);
     bindLiveChatFeatures();
@@ -13156,6 +13214,12 @@ function openConteggAdminWorkspace() {
         return;
     }
 
+    // The synthetic "Админ панель" row is a workspace launcher, not a chat.
+    // Nothing from the previously opened Contegg/system chat should survive.
+    if (currentChatId || document.body.classList.contains('chat-open')) {
+        closeChatUIOnly();
+    }
+
     openAdminPanel();
 }
 window.openConteggAdminWorkspace = openConteggAdminWorkspace;
@@ -13928,6 +13992,13 @@ function openAdminPanel() {
         return;
     }
 
+    // Admin workspace is NOT a chat. Stop the current chat feed, typing,
+    // receipts and mobile overlay before mounting admin UI.
+    if (currentChatId || document.body.classList.contains('chat-open')) {
+        closeChatUIOnly();
+    }
+
+    closeAdminPanel({ keepChatState: true });
     currentAdminTargetUser = null;
     const markup = getAdminPanelMarkup();
 
@@ -13994,14 +14065,58 @@ function openAdminPanel() {
     bindAdminPanelInputs();
 }
 
-function closeAdminPanel() {
+function closeAdminPanel(options = {}) {
+    const keepChatState = options.keepChatState === true;
+
     document.body.classList.remove('contegg-admin-workspace-open');
 
     const workspace = document.getElementById('conteggAdminWorkspace');
-    if (workspace) workspace.setAttribute('aria-hidden', 'true');
+    if (workspace) {
+        workspace.setAttribute('aria-hidden', 'true');
+        workspace.classList.remove('contegg-admin-visible');
 
-    document.getElementById('adminPanelModal')?.classList.remove('show');
+        // openAdminPanel uses inline styles. Merely removing the body class is
+        // not enough — those inline values kept the admin workspace above chats.
+        workspace.style.display = 'none';
+        workspace.style.visibility = 'hidden';
+        workspace.style.opacity = '0';
+        workspace.style.pointerEvents = 'none';
+    }
+
+    const desktopContent = document.getElementById('conteggAdminWorkspaceContent');
+    if (desktopContent) {
+        desktopContent.style.removeProperty('display');
+        desktopContent.style.removeProperty('visibility');
+        desktopContent.style.removeProperty('opacity');
+        desktopContent.style.removeProperty('pointer-events');
+    }
+
+    const modal = document.getElementById('adminPanelModal');
+    if (modal) {
+        modal.classList.remove('show');
+        modal.style.removeProperty('visibility');
+        modal.style.removeProperty('opacity');
+        modal.style.removeProperty('pointer-events');
+    }
+
+    const mobileContent = document.getElementById('adminPanelContent');
+    if (mobileContent) {
+        mobileContent.style.removeProperty('display');
+        mobileContent.style.removeProperty('visibility');
+        mobileContent.style.removeProperty('opacity');
+    }
+
     currentAdminTargetUser = null;
+
+    // When explicitly leaving the admin workspace for a normal chat, the
+    // normal chat opener owns the chat-open state from this point onward.
+    if (!keepChatState && !currentChatId) {
+        document.body.classList.remove('chat-open');
+    }
+}
+
+function closeAdminWorkspaceBeforeOpeningChat() {
+    closeAdminPanel({ keepChatState: true });
 }
 
 async function sendBroadcastFromPanel() {
@@ -20103,8 +20218,8 @@ body.contegg-layout-settling #conteggDesktopShell *,
 
 <style id="CONTEGG-LIVE-FEATURES-ADMIN-FIX-V2">
 .contegg-live-status {
-    color:#34c759 !important;
-    transition:color .14s ease, opacity .14s ease;
+    color:var(--text-secondary) !important;
+    transition:opacity .12s ease;
 }
 
 .contegg-draft-label {
@@ -20302,6 +20417,80 @@ body.contegg-has-pinned-message #chatMessages {
             markAsRead().catch(() => {});
         }
     });
+})();
+</script>
+
+
+<style id="CONTEGG-ADMIN-LIFECYCLE-V3">
+/* The admin workspace must never remain above a normal chat after its state
+   class is removed. This rule intentionally beats earlier admin CSS layers. */
+@media (min-width:768px) {
+    body:not(.contegg-admin-workspace-open) #conteggAdminWorkspace {
+        display:none !important;
+        visibility:hidden !important;
+        opacity:0 !important;
+        pointer-events:none !important;
+    }
+
+    body.contegg-admin-workspace-open #conteggAdminWorkspace {
+        display:flex !important;
+        visibility:visible !important;
+        opacity:1 !important;
+        pointer-events:auto !important;
+    }
+
+    body.contegg-admin-workspace-open #chatOverlay {
+        visibility:hidden !important;
+        opacity:0 !important;
+        pointer-events:none !important;
+    }
+
+    body.chat-open:not(.contegg-admin-workspace-open) #chatOverlay.show {
+        visibility:visible !important;
+        opacity:1 !important;
+        pointer-events:auto !important;
+    }
+}
+
+@media (max-width:767px) {
+    #adminPanelModal:not(.show) {
+        visibility:hidden !important;
+        opacity:0 !important;
+        pointer-events:none !important;
+    }
+
+    #adminPanelModal.show {
+        visibility:visible !important;
+        opacity:1 !important;
+        pointer-events:auto !important;
+    }
+}
+</style>
+
+
+<script id="CONTEGG-SIMPLE-TYPING-CLEANUP-V4">
+(() => {
+    const clearTyping = () => {
+        clearTimeout(typingWriteTimer);
+        clearTimeout(typingClearTimer);
+
+        if (
+            currentUser?.uid &&
+            currentChatId &&
+            !currentChatIsSystem &&
+            !currentChatIsSaved &&
+            !currentChatIsChannel
+        ) {
+            db.collection('chats')
+                .doc(currentChatId)
+                .collection('typing')
+                .doc(currentUser.uid)
+                .delete()
+                .catch(() => {});
+        }
+    };
+
+    window.addEventListener('pagehide', clearTyping, { passive:true });
 })();
 </script>
 
