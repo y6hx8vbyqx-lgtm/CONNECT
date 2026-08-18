@@ -2522,13 +2522,31 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
         <div class="modal-content">
             <div id="postCommentsList" class="comments-list"></div>
 
-            <div class="comments-input-wrap">
+            <div class="comments-input-wrap contegg-comment-composer">
+                <button
+                    class="contegg-comment-media-btn contegg-comment-attach"
+                    type="button"
+                    aria-label="Фото или видео"
+                    title="Фото или видео"
+                >
+                    <i class="fas fa-paperclip"></i>
+                </button>
+
                 <textarea 
                     class="chat-input" 
                     id="postCommentInput" 
                     placeholder="Комментарий" 
                     rows="1"
                 ></textarea>
+
+                <button
+                    class="contegg-comment-media-btn contegg-comment-voice"
+                    type="button"
+                    aria-label="Голосовое сообщение"
+                    title="Голосовое сообщение"
+                >
+                    <i class="fas fa-microphone"></i>
+                </button>
 
                 <button class="chat-send" type="button" onclick="sendPostComment()">
                     <i class="fas fa-arrow-up"></i>
@@ -9397,6 +9415,7 @@ function openInlineDiscussionShell() {
 }
 
 function closeInlinePostComments() {
+    cleanupPostCommentMediaState();
     document.body.classList.remove('contegg-discussion-open');
     const pane = document.getElementById('conteggDiscussionPane');
     if (pane) pane.setAttribute('aria-hidden', 'true');
@@ -9499,6 +9518,7 @@ window.closeInlinePostComments = closeInlinePostComments;
 }
 
 function closePostComments() {
+    cleanupPostCommentMediaState();
     document.getElementById('postCommentsModal')?.classList.remove('show');
 
     if (commentsListener) {
@@ -9541,7 +9561,33 @@ const avatarHTML = avatarSrc
                 ${renderVerificationBadge(user, 12)}
             </div>
 
-            <div class="comment-text">${esc(comment.text || '')}</div>
+            ${comment.imageUrl ? `
+                <button type="button" class="contegg-comment-image-wrap" data-comment-image="${esc(comment.imageUrl)}">
+                    <img class="contegg-comment-image" src="${esc(comment.imageUrl)}" alt="Фото">
+                </button>
+            ` : ''}
+
+            ${comment.videoUrl ? `
+                <video
+                    class="contegg-comment-video"
+                    src="${esc(comment.videoUrl)}"
+                    controls
+                    preload="metadata"
+                    playsinline
+                ></video>
+            ` : ''}
+
+            ${comment.audioUrl ? `
+                <div class="contegg-comment-audio">
+                    <audio
+                        src="${esc(comment.audioUrl)}"
+                        controls
+                        preload="metadata"
+                    ></audio>
+                </div>
+            ` : ''}
+
+            ${comment.text ? `<div class="comment-text">${esc(comment.text)}</div>` : ''}
             <div class="comment-time">${timeFormat(d)}</div>
         </div>
     `;
@@ -9549,32 +9595,274 @@ const avatarHTML = avatarSrc
     list.appendChild(div);
 }
     
+
+let commentMediaRecorder = null;
+let commentMediaStream = null;
+let commentAudioChunks = [];
+let commentVoiceRecording = false;
+
+async function addPostCommentDocument(payload = {}) {
+    if (!currentCommentsChatId || !currentCommentsPostId) {
+        throw new Error('Комментарии не открыты');
+    }
+
+    const postRef = db.collection('chats')
+        .doc(currentCommentsChatId)
+        .collection('messages')
+        .doc(currentCommentsPostId);
+
+    await postRef.collection('comments').add({
+        text: String(payload.text || ''),
+        imageUrl: payload.imageUrl || null,
+        videoUrl: payload.videoUrl || null,
+        audioUrl: payload.audioUrl || null,
+        audioDuration: Number(payload.audioDuration || 0),
+        storageProvider: payload.storageProvider || null,
+        senderId: currentUser.uid,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    await postRef.update({
+        commentsCount: firebase.firestore.FieldValue.increment(1)
+    });
+}
+
+function clearActiveCommentInput() {
+    const input = getActivePostCommentInput();
+    if (!input) return;
+
+    input.value = '';
+    input.style.height = 'auto';
+    input.closest('.contegg-discussion-composer')?.classList.remove('has-text');
+}
+
+async function sendPostCommentMedia(file) {
+    if (!file || !currentCommentsChatId || !currentCommentsPostId) return;
+
+    const isImage = file.type?.startsWith('image/');
+    const isVideo = file.type?.startsWith('video/');
+
+    if (!isImage && !isVideo) {
+        toast('Можно выбрать фото или видео');
+        return;
+    }
+
+    if (isVideo && file.size > 50 * 1024 * 1024) {
+        toast('Видео не более 50 MB');
+        return;
+    }
+
+    const text = getActivePostCommentInput()?.value?.trim() || '';
+    const buttons = document.querySelectorAll(
+        '.contegg-comment-attach, .contegg-comment-voice'
+    );
+
+    buttons.forEach(btn => btn.disabled = true);
+
+    try {
+        const folder = isImage ? 'comment-images' : 'comment-videos';
+        const uploaded = await uploadToSupabaseStorage(file, folder, {
+            prefix: `${currentUser.uid}_${currentCommentsChatId}_${currentCommentsPostId}`,
+            cacheControl: '31536000'
+        });
+
+        await addPostCommentDocument({
+            text,
+            imageUrl: isImage ? uploaded.url : null,
+            videoUrl: isVideo ? uploaded.url : null,
+            storageProvider: 'supabase'
+        });
+
+        clearActiveCommentInput();
+        toast(isImage ? 'Фото отправлено' : 'Видео отправлено');
+
+    } catch (e) {
+        console.error('sendPostCommentMedia:', e);
+        toast(isImage ? 'Ошибка отправки фото' : 'Ошибка отправки видео');
+    } finally {
+        buttons.forEach(btn => btn.disabled = false);
+    }
+}
+
+async function startPostCommentVoice() {
+    if (commentVoiceRecording) return;
+    if (!currentCommentsChatId || !currentCommentsPostId) return;
+
+    try {
+        commentMediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: true
+        });
+
+        let mimeType = '';
+
+        if (
+            window.MediaRecorder &&
+            MediaRecorder.isTypeSupported('audio/mp4')
+        ) {
+            mimeType = 'audio/mp4';
+        } else if (
+            window.MediaRecorder &&
+            MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ) {
+            mimeType = 'audio/webm;codecs=opus';
+        } else if (
+            window.MediaRecorder &&
+            MediaRecorder.isTypeSupported('audio/webm')
+        ) {
+            mimeType = 'audio/webm';
+        }
+
+        commentMediaRecorder = mimeType
+            ? new MediaRecorder(commentMediaStream, { mimeType })
+            : new MediaRecorder(commentMediaStream);
+
+        commentAudioChunks = [];
+
+        commentMediaRecorder.ondataavailable = event => {
+            if (event.data?.size > 0) {
+                commentAudioChunks.push(event.data);
+            }
+        };
+
+        commentMediaRecorder.onstop = async () => {
+            const type =
+                commentMediaRecorder?.mimeType ||
+                mimeType ||
+                'audio/webm';
+
+            const blob = new Blob(commentAudioChunks, { type });
+
+            commentMediaStream?.getTracks().forEach(track => track.stop());
+            commentMediaStream = null;
+            commentVoiceRecording = false;
+
+            document.querySelectorAll('.contegg-comment-voice').forEach(btn => {
+                btn.classList.remove('recording');
+                btn.innerHTML = '<i class="fas fa-microphone"></i>';
+            });
+
+            if (!blob.size) {
+                toast('Голосовое пустое');
+                return;
+            }
+
+            try {
+                const ext = type.includes('mp4') ? 'm4a' : 'webm';
+                const file = new File(
+                    [blob],
+                    `comment_voice_${Date.now()}.${ext}`,
+                    { type }
+                );
+
+                const uploaded = await uploadToSupabaseStorage(
+                    file,
+                    'comment-audio',
+                    {
+                        prefix: `${currentUser.uid}_${currentCommentsChatId}_${currentCommentsPostId}`,
+                        cacheControl: '31536000'
+                    }
+                );
+
+                const duration = await getAudioDuration(blob);
+                const text = getActivePostCommentInput()?.value?.trim() || '';
+
+                await addPostCommentDocument({
+                    text,
+                    audioUrl: uploaded.url,
+                    audioDuration: duration,
+                    storageProvider: 'supabase'
+                });
+
+                clearActiveCommentInput();
+                toast('Голосовое отправлено');
+
+            } catch (e) {
+                console.error('comment voice upload:', e);
+                toast('Ошибка отправки голосового');
+            }
+        };
+
+        commentMediaRecorder.start(250);
+        commentVoiceRecording = true;
+
+        document.querySelectorAll('.contegg-comment-voice').forEach(btn => {
+            btn.classList.add('recording');
+            btn.innerHTML = '<i class="fas fa-stop"></i>';
+        });
+
+        toast('Запись голосового…');
+
+        setTimeout(() => {
+            if (commentVoiceRecording) {
+                stopPostCommentVoice();
+            }
+        }, 60000);
+
+    } catch (e) {
+        console.error('startPostCommentVoice:', e);
+        commentMediaStream?.getTracks().forEach(track => track.stop());
+        commentMediaStream = null;
+        commentVoiceRecording = false;
+        toast('Нет доступа к микрофону');
+    }
+}
+
+function stopPostCommentVoice() {
+    if (!commentVoiceRecording || !commentMediaRecorder) return;
+
+    try {
+        commentMediaRecorder.stop();
+    } catch (e) {
+        console.error('stopPostCommentVoice:', e);
+    }
+}
+
+function togglePostCommentVoice() {
+    if (commentVoiceRecording) {
+        stopPostCommentVoice();
+    } else {
+        startPostCommentVoice();
+    }
+}
+
+function cleanupPostCommentMediaState() {
+    if (commentVoiceRecording && commentMediaRecorder) {
+        try {
+            commentMediaRecorder.onstop = null;
+            commentMediaRecorder.stop();
+        } catch (_) {}
+    }
+
+    commentMediaStream?.getTracks().forEach(track => track.stop());
+    commentMediaStream = null;
+    commentMediaRecorder = null;
+    commentAudioChunks = [];
+    commentVoiceRecording = false;
+
+    document.querySelectorAll('.contegg-comment-voice').forEach(btn => {
+        btn.classList.remove('recording');
+        btn.innerHTML = '<i class="fas fa-microphone"></i>';
+    });
+
+    const input = document.getElementById('conteggCommentMediaInput');
+    if (input) input.value = '';
+}
+
+
 async function sendPostComment() {
     if (!currentCommentsChatId || !currentCommentsPostId) return;
 
     const input = getActivePostCommentInput();
     if (!input) return;
-    const text = input.value.trim();
 
+    const text = input.value.trim();
     if (!text) return;
 
     try {
-        input.value = '';
-        input.style.height = 'auto';
+        clearActiveCommentInput();
 
-        const postRef = db.collection('chats')
-            .doc(currentCommentsChatId)
-            .collection('messages')
-            .doc(currentCommentsPostId);
-
-        await postRef.collection('comments').add({
-            text,
-            senderId: currentUser.uid,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        });
-
-        await postRef.update({
-            commentsCount: firebase.firestore.FieldValue.increment(1)
+        await addPostCommentDocument({
+            text
         });
 
     } catch (e) {
@@ -9684,24 +9972,29 @@ async function openChatFromCommentProfile(userId, username = '') {
 }
 window.openChatFromCommentProfile = openChatFromCommentProfile;
 
-function bindCommentProfileDelegation(container) {
-    if (!container || container.dataset.profileDelegationBound === '1') return;
-    container.dataset.profileDelegationBound = '1';
+function bindCommentProfileDelegation() {
+    if (window.__conteggCommentProfileDelegationBound) return;
+    window.__conteggCommentProfileDelegationBound = true;
 
-    container.addEventListener('click', (e) => {
-        const trigger = e.target.closest('.contegg-comment-profile-trigger[data-comment-user-id]');
-        if (!trigger || !container.contains(trigger)) return;
+    document.addEventListener('click', e => {
+        const trigger = e.target.closest(
+            '.contegg-comment-profile-trigger[data-comment-user-id]'
+        );
+
+        if (!trigger) return;
 
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
 
         const userId = trigger.dataset.commentUserId || '';
-        if (userId) openCommentUserProfile(userId);
-    });
+        if (userId) {
+            openCommentUserProfile(userId).catch(console.error);
+        }
+    }, true);
 }
 
-bindCommentProfileDelegation(document.getElementById('postCommentsList'));
-bindCommentProfileDelegation(document.getElementById('conteggDiscussionCommentsList'));
+bindCommentProfileDelegation();
 
 
 window.openUserProfile = openCommentUserProfile;
@@ -17497,11 +17790,11 @@ body.keyboard-no-transition .chat-input-bar {
                                 <div id="conteggDiscussionCommentsList" class="contegg-discussion-comments"></div>
                             </div>
                             <div class="contegg-discussion-composer">
-                                <button type="button" class="contegg-discussion-attach" aria-label="Прикрепить"><i class="fas fa-paperclip"></i></button>
+                                <button type="button" class="contegg-discussion-attach contegg-comment-attach" aria-label="Фото или видео" title="Фото или видео"><i class="fas fa-paperclip"></i></button>
                                 <textarea id="conteggDiscussionCommentInput" class="chat-input contegg-discussion-input" placeholder="Комментировать..." rows="1"></textarea>
                                 <div class="contegg-discussion-actions">
                                     <button type="button" class="contegg-discussion-icon" aria-label="Эмодзи"><i class="far fa-smile"></i></button>
-                                    <button type="button" class="contegg-discussion-icon" aria-label="Голосовое сообщение"><i class="fas fa-microphone"></i></button>
+                                    <button type="button" class="contegg-discussion-icon contegg-comment-voice" aria-label="Голосовое сообщение" title="Голосовое сообщение"><i class="fas fa-microphone"></i></button>
                                     <button type="button" class="chat-send contegg-discussion-send" onclick="sendPostComment()"><i class="fas fa-arrow-up"></i></button>
                                 </div>
                             </div>
@@ -21066,6 +21359,167 @@ body.contegg-has-pinned-message #chatMessages {
 
     .contegg-admin-v6-primary.compact {
         width:100%;
+    }
+}
+</style>
+
+
+<input
+    id="conteggCommentMediaInput"
+    type="file"
+    accept="image/*,video/*"
+    style="display:none;"
+>
+
+
+<script id="CONTEGG-COMMENTS-MEDIA-CONTROLLER-V7">
+(() => {
+    if (window.__conteggCommentsMediaV7) return;
+    window.__conteggCommentsMediaV7 = true;
+
+    document.addEventListener('click', event => {
+        const attach = event.target.closest('.contegg-comment-attach');
+        if (attach) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const input = document.getElementById('conteggCommentMediaInput');
+            if (input) {
+                input.value = '';
+                input.click();
+            }
+            return;
+        }
+
+        const voice = event.target.closest('.contegg-comment-voice');
+        if (voice) {
+            event.preventDefault();
+            event.stopPropagation();
+            togglePostCommentVoice();
+            return;
+        }
+
+        const image = event.target.closest('[data-comment-image]');
+        if (image) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const src = image.dataset.commentImage;
+            if (src) viewImage(src);
+        }
+    }, true);
+
+    document.addEventListener('change', event => {
+        const input = event.target;
+        if (input?.id !== 'conteggCommentMediaInput') return;
+
+        const file = input.files?.[0];
+        input.value = '';
+
+        if (file) {
+            sendPostCommentMedia(file);
+        }
+    }, true);
+})();
+</script>
+
+
+<style id="CONTEGG-COMMENTS-MEDIA-V7">
+.contegg-comment-composer {
+    display:flex;
+    align-items:flex-end;
+    gap:7px;
+}
+
+.contegg-comment-media-btn {
+    width:34px;
+    height:34px;
+    flex:0 0 34px;
+    border:0;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:var(--bg-tertiary);
+    color:var(--accent);
+    cursor:pointer;
+    transition:
+        transform .12s ease,
+        background .12s ease,
+        color .12s ease;
+}
+
+.contegg-comment-media-btn:active,
+.contegg-comment-voice:active,
+.contegg-comment-attach:active {
+    transform:scale(.93);
+}
+
+.contegg-comment-voice.recording {
+    background:var(--danger) !important;
+    color:white !important;
+    animation:pulse 1s infinite;
+}
+
+.contegg-comment-image-wrap {
+    display:block;
+    width:min(280px,100%);
+    margin:6px 0;
+    padding:0;
+    border:0;
+    border-radius:12px;
+    overflow:hidden;
+    background:#111;
+    cursor:pointer;
+}
+
+.contegg-comment-image {
+    display:block;
+    width:100%;
+    max-height:300px;
+    object-fit:cover;
+}
+
+.contegg-comment-video {
+    display:block;
+    width:min(300px,100%);
+    max-height:320px;
+    margin:6px 0;
+    border-radius:12px;
+    background:#111;
+}
+
+.contegg-comment-audio {
+    width:min(310px,100%);
+    margin:6px 0;
+}
+
+.contegg-comment-audio audio {
+    width:100%;
+    max-width:100%;
+    height:38px;
+}
+
+.comment-avatar.contegg-comment-profile-trigger,
+.comment-author.contegg-comment-profile-trigger {
+    cursor:pointer !important;
+    pointer-events:auto !important;
+    position:relative;
+    z-index:4;
+}
+
+@media (min-width:768px) {
+    .contegg-discussion-attach,
+    .contegg-comment-voice {
+        cursor:pointer;
+        pointer-events:auto !important;
+    }
+}
+
+@media (max-width:767px) {
+    .comments-input-wrap.contegg-comment-composer .chat-input {
+        min-width:0;
+        flex:1 1 auto;
     }
 }
 </style>
