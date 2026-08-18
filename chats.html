@@ -2244,7 +2244,15 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
 
 <div class="app-container">
     <div class="navbar">
-        <span class="navbar-title">Contegg</span>
+        <span
+            class="navbar-title contegg-reload-title"
+            role="button"
+            tabindex="0"
+            title="Перезагрузить Contegg"
+            aria-label="Перезагрузить Contegg"
+            onclick="window.location.reload()"
+            onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.location.reload();}"
+        >Contegg</span>
         <button
             class="navbar-btn contegg-create-tab-btn"
             onclick="showCreateMenu()"
@@ -10444,7 +10452,7 @@ async function openCommentUserProfile(userId) {
                 ${renderVerificationBadge(user, 16)}
             </div>
 
-            <div style="font-size:15px;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;gap:5px;">@${esc(user.username || '')} ${renderVerificationBadge(user, 13)}</div>
+            <div style="font-size:15px;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;gap:5px;">@${esc(user.username || '')}</div>
 
             <div style="font-size:14px;color:var(--text-secondary);margin-top:8px;line-height:1.4;">
                 ${esc(user.bio || 'Нет описания')}
@@ -11738,7 +11746,7 @@ const avHTML = myAvatarSrc
                 ${renderVerificationBadge(userData, 16)}
                 <i class="fas fa-pen" style="font-size:14px;color:var(--accent);cursor:pointer;" onclick="openProfileEdit()"></i>
             </div>
-            <div class="profile-username" style="display:flex;align-items:center;justify-content:center;gap:5px;">@${esc(userData.username)} ${renderVerificationBadge(userData, 13)}</div>
+            <div class="profile-username" style="display:flex;align-items:center;justify-content:center;gap:5px;">@${esc(userData.username)}</div>
             <div class="profile-bio">${esc(userData.bio || 'Нет описания')}</div>
         </div>
         
@@ -13891,7 +13899,7 @@ async function viewChatUserProfile() {
                 ${esc(user.displayName || 'Пользователь')}
                 ${renderVerificationBadge(user, 16)}
             </div>
-            <div style="font-size:15px;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;gap:5px;">@${esc(user.username || '')} ${renderVerificationBadge(user, 13)}</div>
+            <div style="font-size:15px;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;gap:5px;">@${esc(user.username || '')}</div>
             <div style="font-size:14px;color:var(--text-secondary);margin-top:8px;line-height:1.4;">${esc(user.bio || 'Нет описания')}</div>
             ${buildContactPrivateNoteHtml(currentChatUser.uid)}
             <div style="font-size:13px;color:var(--text-tertiary);margin-top:8px;">ID: ${(user.uid || currentChatUser.uid).slice(-8)}</div>
@@ -22638,6 +22646,33 @@ body.contegg-has-pinned-message #chatMessages {
     margin-top:4px;
     color:var(--text-tertiary);
     font-size:10px;
+}
+</style>
+
+
+<style id="CONTEGG-RELOAD-TITLE-V12">
+.navbar-title.contegg-reload-title {
+    cursor:pointer;
+    user-select:none;
+    -webkit-user-select:none;
+    border-radius:8px;
+    outline:none;
+    transition:opacity .12s ease, transform .12s ease;
+}
+
+@media (hover:hover) and (pointer:fine) {
+    .navbar-title.contegg-reload-title:hover {
+        opacity:.82;
+    }
+}
+
+.navbar-title.contegg-reload-title:active {
+    opacity:.68;
+    transform:scale(.98);
+}
+
+.navbar-title.contegg-reload-title:focus-visible {
+    box-shadow:0 0 0 2px rgba(10,132,255,.34);
 }
 </style>
 
