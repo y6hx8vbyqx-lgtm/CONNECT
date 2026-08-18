@@ -2245,8 +2245,15 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
 <div class="app-container">
     <div class="navbar">
         <span class="navbar-title">Contegg</span>
-        <button class="navbar-btn" onclick="showCreateMenu()">
-            <i class="fas fa-plus"></i>
+        <button
+            class="navbar-btn contegg-create-btn"
+            onclick="showCreateMenu()"
+            type="button"
+            aria-label="Создать"
+            title="Создать"
+        >
+            <span class="contegg-create-brand" aria-hidden="true">C</span>
+            <i class="fas fa-plus contegg-create-plus" aria-hidden="true"></i>
         </button>
     </div>
 
@@ -21520,6 +21527,165 @@ body.contegg-has-pinned-message #chatMessages {
     .comments-input-wrap.contegg-comment-composer .chat-input {
         min-width:0;
         flex:1 1 auto;
+    }
+}
+</style>
+
+
+<style id="CONTEGG-CREATE-BUTTON-BRAND-V8">
+/*
+   Create button — visually tied to the bottom glass tabbar.
+   Logic remains the original showCreateMenu().
+*/
+.navbar-btn.contegg-create-btn {
+    position:relative;
+    isolation:isolate;
+    overflow:hidden;
+
+    width:42px !important;
+    height:38px !important;
+    flex:0 0 42px;
+
+    border-radius:19px !important;
+    border:0.5px solid rgba(255,255,255,.11) !important;
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(42,42,46,.94) 0%,
+            rgba(25,25,28,.92) 100%
+        ) !important;
+
+    color:#0a84ff !important;
+
+    backdrop-filter:blur(24px) saturate(165%) !important;
+    -webkit-backdrop-filter:blur(24px) saturate(165%) !important;
+
+    box-shadow:
+        0 4px 14px rgba(0,0,0,.24),
+        inset 0 1px 0 rgba(255,255,255,.09) !important;
+
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+
+    transition:
+        transform .16s cubic-bezier(.2,.8,.2,1),
+        background .16s ease,
+        border-color .16s ease,
+        box-shadow .16s ease !important;
+}
+
+.navbar-btn.contegg-create-btn::after {
+    content:"";
+    position:absolute;
+    inset:0;
+    z-index:-1;
+    pointer-events:none;
+
+    background:
+        radial-gradient(
+            circle at 72% 24%,
+            rgba(10,132,255,.11),
+            transparent 45%
+        );
+}
+
+/* Tiny Contegg identity mark. It is intentionally subtle. */
+.contegg-create-brand {
+    position:absolute;
+    left:7px;
+    bottom:3px;
+
+    z-index:0;
+
+    color:rgba(255,255,255,.095);
+    font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "SF Pro Display",
+        "Helvetica Neue",
+        sans-serif;
+
+    font-size:20px;
+    line-height:1;
+    font-weight:800;
+    letter-spacing:-1.5px;
+
+    transform:rotate(-7deg);
+    pointer-events:none;
+    user-select:none;
+}
+
+.contegg-create-plus {
+    position:relative;
+    z-index:2;
+
+    font-size:15px !important;
+    font-weight:700;
+
+    color:#4aa3ff;
+    text-shadow:0 0 10px rgba(10,132,255,.18);
+
+    transform:translateX(3px);
+    transition:
+        transform .16s cubic-bezier(.2,.8,.2,1),
+        color .16s ease;
+}
+
+@media (hover:hover) and (pointer:fine) {
+    .navbar-btn.contegg-create-btn:hover {
+        background:
+            linear-gradient(
+                180deg,
+                rgba(48,48,52,.98) 0%,
+                rgba(29,29,32,.96) 100%
+            ) !important;
+
+        border-color:rgba(10,132,255,.22) !important;
+
+        box-shadow:
+            0 5px 18px rgba(0,0,0,.28),
+            inset 0 1px 0 rgba(255,255,255,.11) !important;
+    }
+
+    .navbar-btn.contegg-create-btn:hover .contegg-create-plus {
+        color:#69b5ff;
+        transform:translateX(3px) scale(1.06);
+    }
+}
+
+.navbar-btn.contegg-create-btn:active {
+    transform:scale(.94) !important;
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(36,43,51,.98) 0%,
+            rgba(22,31,40,.98) 100%
+        ) !important;
+
+    border-color:rgba(10,132,255,.30) !important;
+}
+
+.navbar-btn.contegg-create-btn:active .contegg-create-plus {
+    transform:translateX(3px) scale(.94);
+}
+
+/* Slightly smaller on narrow phones, without changing navbar layout. */
+@media (max-width:380px) {
+    .navbar-btn.contegg-create-btn {
+        width:40px !important;
+        height:36px !important;
+        flex-basis:40px;
+    }
+
+    .contegg-create-brand {
+        font-size:18px;
+    }
+
+    .contegg-create-plus {
+        font-size:14px !important;
     }
 }
 </style>
