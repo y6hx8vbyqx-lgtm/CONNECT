@@ -6226,28 +6226,9 @@ async function ctxPinMessage() {
 }
 
 function bindLiveChatFeatures() {
-    const input = document.getElementById('chatInput');
-    if (!input || input.dataset.liveFeaturesBound === '1') return;
-
-    input.dataset.liveFeaturesBound = '1';
-
-    input.addEventListener('input', () => {
-        saveCurrentChatDraft(input.value);
-
-        if (input.value.trim()) {
-            scheduleTypingState();
-        } else {
-            clearTimeout(typingWriteTimer);
-            clearTimeout(typingClearTimer);
-            setTypingState('').catch(() => {});
-        }
-    });
-
-    input.addEventListener('blur', () => {
-        clearTimeout(typingWriteTimer);
-        clearTimeout(typingClearTimer);
-        setTypingState('').catch(() => {});
-    });
+    // V6: typing/drafts are handled through one delegated document listener.
+    // This survives desktop DOM reparenting/rebuilding of #chatInput.
+    return;
 }
 
 
@@ -13838,213 +13819,340 @@ async function copyAdminRegistrationCode(value) {
 }
 
 function getAdminPanelMarkup() {
+    const superAdmin = isConteggSuperAdmin();
+
     return `
-        ${isConteggSuperAdmin() ? `
-        <div class="admin-panel contegg-super-admin-panel">
-            <div class="admin-panel-title">
-                <i class="fas fa-users"></i>
-                Все зарегистрированные пользователи
-                <span class="contegg-admin-count-pill" id="conteggAdminUsersCount">…</span>
-            </div>
-
-            <div class="contegg-admin-section-actions">
-                <button type="button" class="contegg-admin-secondary-action" onclick="loadAdminRegisteredUsers()">
-                    <i class="fas fa-sync-alt"></i>
-                    Обновить список
-                </button>
-            </div>
-
-            <div id="conteggAdminUsersList" class="contegg-admin-users-list">
-                <div class="loader"><div class="spinner"></div><span>Загрузка пользователей...</span></div>
-            </div>
-
-            <div id="conteggAdminDirectComposer" class="contegg-admin-direct-composer hidden">
-                <div class="contegg-admin-message-heading">
-                    Написать: <b id="conteggAdminMessageTarget">пользователю</b>
-                </div>
-
-                <div class="input-row">
-                    <label>Отправитель</label>
-                    <select id="adminMessageSenderMode" class="contegg-admin-select">
-                        <option value="admin">От моего аккаунта администратора</option>
-                        <option value="contegg">От лица Contegg</option>
-                    </select>
-                </div>
-
-                <div class="input-row">
-                    <label>Сообщение</label>
-                    <textarea
-                        id="adminDirectMessage"
-                        class="admin-textarea"
-                        placeholder="Введите сообщение..."
-                    ></textarea>
-                </div>
-
-                <button class="btn btn-primary" onclick="sendAdminDirectMessage()">
-                    <i class="fas fa-paper-plane"></i>
-                    Отправить
-                </button>
-            </div>
-        </div>
-
-        <div class="admin-panel contegg-super-admin-panel">
-            <div class="admin-panel-title">
-                <i class="fas fa-user-shield"></i>
-                Управление аккаунтом
-            </div>
-
-            <div class="contegg-admin-search-line">
-                <div class="search-bar contegg-admin-search-bar">
-                    <i class="fas fa-search"></i>
-                    <input id="adminUserLookup" type="text" placeholder="@username или email">
-                </div>
-                <button class="btn btn-primary contegg-admin-find-btn" onclick="adminLookupUser()">Найти</button>
-            </div>
-
-            <div id="conteggAdminTargetCard" class="contegg-admin-target-card">
-                <div class="contegg-admin-empty-hint">
-                    <i class="fas fa-user-cog"></i>
-                    <span>Введите username или почту пользователя</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="admin-panel contegg-super-admin-panel">
-            <div class="admin-panel-title">
-                <i class="fas fa-key"></i>
-                Коды регистрации
-            </div>
-
-            <div class="contegg-admin-permanent-code">
-                <div>
-                    <div class="contegg-admin-code-label">Постоянный код</div>
-                    <code>Ft$d$1Zq.^&amp;HfshF~USnfo2J:x;44A</code>
+        <div class="contegg-admin-v6-page">
+            <div class="contegg-admin-v6-topbar">
+                <div class="contegg-admin-v6-title-wrap">
+                    <div class="contegg-admin-v6-logo">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <div>
+                        <div class="contegg-admin-v6-title">Админ-панель</div>
+                        <div class="contegg-admin-v6-subtitle">
+                            Управление Contegg
+                        </div>
+                    </div>
                 </div>
 
                 <button
                     type="button"
-                    class="contegg-admin-copy-code"
-                    onclick="copyAdminRegistrationCode('Ft$d$1Zq.^&HfshF~USnfo2J:x;44A')"
+                    class="contegg-admin-v6-close"
+                    data-admin-v6-action="close"
+                    aria-label="Закрыть"
                 >
-                    <i class="far fa-copy"></i>
+                    <i class="fas fa-times"></i>
                 </button>
             </div>
 
-            <div class="contegg-admin-code-generator">
-                <div class="input-row">
-                    <label>Длина одноразового кода</label>
-                    <input id="adminInviteCodeLength" type="number" value="20" min="12" max="40">
-                </div>
+            <div class="contegg-admin-v6-scroll">
+                ${superAdmin ? `
+                    <section class="contegg-admin-v6-card">
+                        <div class="contegg-admin-v6-section-head">
+                            <div>
+                                <div class="contegg-admin-v6-section-title">
+                                    <i class="fas fa-users"></i>
+                                    Пользователи
+                                    <span id="conteggAdminUsersCount" class="contegg-admin-v6-count">…</span>
+                                </div>
+                                <div class="contegg-admin-v6-section-desc">
+                                    Все зарегистрированные аккаунты Contegg
+                                </div>
+                            </div>
 
-                <button class="btn btn-primary" onclick="createOneTimeRegistrationCode()">
-                    <i class="fas fa-dice"></i>
-                    Создать одноразовый код
-                </button>
+                            <button
+                                type="button"
+                                class="contegg-admin-v6-icon-btn"
+                                data-admin-v6-action="refresh-users"
+                                title="Обновить"
+                            >
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
 
-                <div class="input-row" style="margin-top:10px;">
-                    <label>Новый код</label>
-                    <div class="contegg-admin-generated-code-line">
-                        <input
-                            id="adminGeneratedInviteCode"
-                            type="text"
-                            readonly
-                            placeholder="Сгенерированный код появится здесь"
-                        >
-                        <button
-                            type="button"
-                            class="contegg-admin-copy-code"
-                            onclick="copyAdminRegistrationCode(document.getElementById('adminGeneratedInviteCode')?.value || '')"
-                            title="Скопировать код"
-                        >
-                            <i class="far fa-copy"></i>
-                        </button>
+                        <div id="conteggAdminUsersList" class="contegg-admin-v6-users">
+                            <div class="loader">
+                                <div class="spinner"></div>
+                                <span>Загрузка пользователей…</span>
+                            </div>
+                        </div>
+
+                        <div id="conteggAdminDirectComposer" class="contegg-admin-v6-composer hidden">
+                            <div class="contegg-admin-v6-composer-title">
+                                Написать: <b id="conteggAdminMessageTarget">пользователю</b>
+                            </div>
+
+                            <label class="contegg-admin-v6-field">
+                                <span>Отправитель</span>
+                                <select id="adminMessageSenderMode" class="contegg-admin-v6-select">
+                                    <option value="admin">Мой аккаунт администратора</option>
+                                    <option value="contegg">Contegg</option>
+                                </select>
+                            </label>
+
+                            <label class="contegg-admin-v6-field">
+                                <span>Сообщение</span>
+                                <textarea
+                                    id="adminDirectMessage"
+                                    class="contegg-admin-v6-textarea"
+                                    placeholder="Введите сообщение…"
+                                ></textarea>
+                            </label>
+
+                            <button
+                                type="button"
+                                class="contegg-admin-v6-primary"
+                                data-admin-v6-action="send-direct"
+                            >
+                                <i class="fas fa-paper-plane"></i>
+                                Отправить
+                            </button>
+                        </div>
+                    </section>
+
+                    <section class="contegg-admin-v6-card">
+                        <div class="contegg-admin-v6-section-title">
+                            <i class="fas fa-user-cog"></i>
+                            Управление аккаунтом
+                        </div>
+                        <div class="contegg-admin-v6-section-desc">
+                            Поиск по @username или электронной почте
+                        </div>
+
+                        <div class="contegg-admin-v6-search-row">
+                            <input
+                                id="adminUserLookup"
+                                type="text"
+                                class="contegg-admin-v6-input"
+                                placeholder="@username или email"
+                                autocomplete="off"
+                            >
+                            <button
+                                type="button"
+                                class="contegg-admin-v6-primary compact"
+                                data-admin-v6-action="lookup-user"
+                            >
+                                Найти
+                            </button>
+                        </div>
+
+                        <div id="conteggAdminTargetCard" class="contegg-admin-v6-target">
+                            <div class="contegg-admin-empty-hint">
+                                <i class="fas fa-user-shield"></i>
+                                <span>Выберите пользователя из списка или найдите его</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="contegg-admin-v6-card">
+                        <div class="contegg-admin-v6-section-title">
+                            <i class="fas fa-key"></i>
+                            Коды регистрации
+                        </div>
+
+                        <div class="contegg-admin-v6-permanent">
+                            <div>
+                                <span>Постоянный код</span>
+                                <code>Ft$d$1Zq.^&amp;HfshF~USnfo2J:x;44A</code>
+                            </div>
+                            <button
+                                type="button"
+                                class="contegg-admin-v6-icon-btn"
+                                data-admin-v6-action="copy-permanent"
+                                title="Скопировать"
+                            >
+                                <i class="far fa-copy"></i>
+                            </button>
+                        </div>
+
+                        <div class="contegg-admin-v6-code-maker">
+                            <label class="contegg-admin-v6-field small">
+                                <span>Длина одноразового кода</span>
+                                <input
+                                    id="adminInviteCodeLength"
+                                    type="number"
+                                    value="20"
+                                    min="12"
+                                    max="40"
+                                    class="contegg-admin-v6-input"
+                                >
+                            </label>
+
+                            <button
+                                type="button"
+                                class="contegg-admin-v6-primary"
+                                data-admin-v6-action="create-code"
+                            >
+                                <i class="fas fa-dice"></i>
+                                Создать одноразовый код
+                            </button>
+                        </div>
+
+                        <div class="contegg-admin-v6-generated">
+                            <input
+                                id="adminGeneratedInviteCode"
+                                type="text"
+                                readonly
+                                class="contegg-admin-v6-input"
+                                placeholder="Новый код появится здесь"
+                            >
+                            <button
+                                type="button"
+                                class="contegg-admin-v6-icon-btn"
+                                data-admin-v6-action="copy-generated"
+                                title="Скопировать"
+                            >
+                                <i class="far fa-copy"></i>
+                            </button>
+                        </div>
+
+                        <div class="contegg-admin-v6-list-label">Последние одноразовые коды</div>
+                        <div id="conteggAdminOneTimeCodes" class="contegg-admin-v6-codes">
+                            <div class="loader">
+                                <div class="spinner"></div>
+                                <span>Загрузка кодов…</span>
+                            </div>
+                        </div>
+                    </section>
+                ` : ''}
+
+                <section class="contegg-admin-v6-card">
+                    <div class="contegg-admin-v6-section-title">
+                        <i class="fas fa-bullhorn"></i>
+                        Системная рассылка
                     </div>
-                </div>
-            </div>
+                    <div class="contegg-admin-v6-section-desc">
+                        Сообщение придёт пользователям от системного Contegg
+                    </div>
 
-            <div class="contegg-admin-code-list-title">Последние коды</div>
-            <div id="conteggAdminOneTimeCodes" class="contegg-admin-one-time-codes">
-                <div class="loader"><div class="spinner"></div><span>Загрузка кодов...</span></div>
-            </div>
-        </div>
-        ` : ''}
+                    <label class="contegg-admin-v6-field">
+                        <span>Сообщение всем пользователям</span>
+                        <textarea
+                            id="broadcastMessage"
+                            class="contegg-admin-v6-textarea"
+                            placeholder="Введите текст рассылки…"
+                        ></textarea>
+                    </label>
 
-        <div class="admin-panel contegg-broadcast-panel">
-            <div class="admin-panel-title">
-                <i class="fas fa-bullhorn"></i>
-                Системная рассылка
+                    <button
+                        type="button"
+                        class="contegg-admin-v6-primary"
+                        data-admin-v6-action="broadcast"
+                    >
+                        <i class="fas fa-paper-plane"></i>
+                        Отправить рассылку
+                    </button>
+                </section>
             </div>
-
-            <div class="input-row">
-                <label>Сообщение всем пользователям</label>
-                <textarea class="admin-textarea" id="broadcastMessage" placeholder="Введите текст рассылки..."></textarea>
-            </div>
-
-            <button class="btn btn-primary" onclick="sendBroadcastFromPanel()">
-                <i class="fas fa-paper-plane"></i> Отправить рассылку
-            </button>
         </div>
     `;
 }
+function bindAdminPanelInputs(root = document.getElementById('conteggAdminV6')) {
+    if (!root || root.dataset.bound === '1') return;
+    root.dataset.bound = '1';
 
-function bindAdminPanelInputs() {
-    requestAnimationFrame(() => {
-        if (isConteggSuperAdmin()) {
-            loadAdminRegisteredUsers();
-            loadAdminOneTimeCodes();
+    root.addEventListener('click', async event => {
+        const actionButton = event.target.closest('[data-admin-v6-action]');
 
-            const userList = document.getElementById('conteggAdminUsersList');
+        if (actionButton) {
+            event.preventDefault();
+            const action = actionButton.dataset.adminV6Action;
 
-            if (userList && userList.dataset.adminClickBound !== '1') {
-                userList.dataset.adminClickBound = '1';
-
-                userList.addEventListener('click', async e => {
-                    const button = e.target.closest('[data-admin-action][data-admin-user]');
-                    if (!button) return;
-
-                    e.preventDefault();
-
-                    await selectAdminUserByUid(
-                        button.dataset.adminUser,
-                        button.dataset.adminAction
-                    );
-                });
+            if (action === 'close') {
+                closeAdminPanel();
+                return;
             }
 
-            const codeList = document.getElementById('conteggAdminOneTimeCodes');
+            if (action === 'refresh-users') {
+                await loadAdminRegisteredUsers();
+                return;
+            }
 
-            if (codeList && codeList.dataset.codeClickBound !== '1') {
-                codeList.dataset.codeClickBound = '1';
+            if (action === 'lookup-user') {
+                await adminLookupUser();
+                return;
+            }
 
-                codeList.addEventListener('click', async e => {
-                    const copyButton = e.target.closest('[data-copy-one-time-code]');
+            if (action === 'send-direct') {
+                await sendAdminDirectMessage();
+                return;
+            }
 
-                    if (copyButton) {
-                        e.preventDefault();
-                        await copyAdminRegistrationCode(copyButton.dataset.copyOneTimeCode || '');
-                        return;
-                    }
+            if (action === 'copy-permanent') {
+                await copyAdminRegistrationCode('Ft$d$1Zq.^&HfshF~USnfo2J:x;44A');
+                return;
+            }
 
-                    const button = e.target.closest('[data-disable-code]');
-                    if (!button) return;
+            if (action === 'create-code') {
+                await createOneTimeRegistrationCode();
+                return;
+            }
 
-                    e.preventDefault();
-                    await disableAdminRegistrationCode(button.dataset.disableCode);
-                });
+            if (action === 'copy-generated') {
+                await copyAdminRegistrationCode(
+                    document.getElementById('adminGeneratedInviteCode')?.value || ''
+                );
+                return;
+            }
+
+            if (action === 'broadcast') {
+                await sendBroadcastFromPanel();
+                return;
             }
         }
 
-        const input = document.getElementById('adminUserLookup');
-        if (input && input.dataset.enterBound !== '1') {
-            input.dataset.enterBound = '1';
-            input.addEventListener('keydown', e => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    adminLookupUser();
-                }
-            });
+        const userButton = event.target.closest('[data-admin-action][data-admin-user]');
+        if (userButton) {
+            event.preventDefault();
+            await selectAdminUserByUid(
+                userButton.dataset.adminUser,
+                userButton.dataset.adminAction
+            );
+            return;
+        }
+
+        const copyCode = event.target.closest('[data-copy-one-time-code]');
+        if (copyCode) {
+            event.preventDefault();
+            await copyAdminRegistrationCode(copyCode.dataset.copyOneTimeCode || '');
+            return;
+        }
+
+        const disableCode = event.target.closest('[data-disable-code]');
+        if (disableCode) {
+            event.preventDefault();
+            await disableAdminRegistrationCode(disableCode.dataset.disableCode || '');
         }
     });
+
+    root.addEventListener('keydown', event => {
+        if (
+            event.key === 'Enter' &&
+            event.target?.id === 'adminUserLookup'
+        ) {
+            event.preventDefault();
+            adminLookupUser();
+        }
+    });
+
+    if (isConteggSuperAdmin()) {
+        loadAdminRegisteredUsers().catch(console.error);
+        loadAdminOneTimeCodes().catch(console.error);
+    }
+}
+function ensureAdminV6Shell() {
+    let root = document.getElementById('conteggAdminV6');
+
+    if (root) return root;
+
+    root = document.createElement('section');
+    root.id = 'conteggAdminV6';
+    root.className = 'contegg-admin-v6-root';
+    root.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(root);
+
+    return root;
 }
 
 function openAdminPanel() {
@@ -14053,127 +14161,75 @@ function openAdminPanel() {
         return;
     }
 
-    // Admin workspace is NOT a chat. Stop the current chat feed, typing,
-    // receipts and mobile overlay before mounting admin UI.
+    // Admin is its own screen. No chat remains active under it.
     if (currentChatId || document.body.classList.contains('chat-open')) {
         closeChatUIOnly();
     }
 
-    closeAdminPanel({ keepChatState: true });
+    // Kill every legacy admin surface before opening the new one.
+    document.body.classList.remove('contegg-admin-workspace-open');
+
+    const oldWorkspace = document.getElementById('conteggAdminWorkspace');
+    if (oldWorkspace) {
+        oldWorkspace.setAttribute('aria-hidden', 'true');
+        oldWorkspace.style.display = 'none';
+    }
+
+    const oldModal = document.getElementById('adminPanelModal');
+    oldModal?.classList.remove('show');
+
     currentAdminTargetUser = null;
-    const markup = getAdminPanelMarkup();
 
-    if (window.innerWidth >= 768) {
-        if (typeof ensureChatNavbarInOverlay === 'function') {
-            ensureChatNavbarInOverlay();
-        }
+    const root = ensureAdminV6Shell();
+    root.innerHTML = getAdminPanelMarkup();
+    root.dataset.bound = '';
+    root.setAttribute('aria-hidden', 'false');
 
-        const workspace = document.getElementById('conteggAdminWorkspace');
-        const content = document.getElementById('conteggAdminWorkspaceContent');
+    document.body.classList.add('contegg-admin-v6-open');
+    bindAdminPanelInputs(root);
 
-        if (!workspace || !content) {
-            toast('Не удалось открыть админ панель');
-            return;
-        }
-
-        if (typeof closeInlinePostComments === 'function') {
-            closeInlinePostComments();
-        }
-
-        document.body.classList.add('chat-open', 'contegg-admin-workspace-open');
-
-        workspace.setAttribute('aria-hidden', 'false');
-        workspace.style.display = 'flex';
-        workspace.style.visibility = 'visible';
-        workspace.style.opacity = '1';
-        workspace.style.pointerEvents = 'auto';
-
-        // Always remount. A stale "adminMounted=1" with emptied DOM caused the blank panel.
-        content.innerHTML = markup;
-        content.dataset.adminMounted = '1';
-        content.style.display = 'block';
-        content.style.visibility = 'visible';
-        content.style.opacity = '1';
-        content.style.pointerEvents = 'auto';
-
-        bindAdminPanelInputs();
-
-        requestAnimationFrame(() => {
-            workspace.classList.add('contegg-admin-visible');
-        });
-
-        return;
-    }
-
-    const modal = document.getElementById('adminPanelModal');
-    const content = document.getElementById('adminPanelContent');
-
-    if (!modal || !content) {
-        toast('Не удалось открыть админ панель');
-        return;
-    }
-
-    content.innerHTML = markup;
-    content.style.display = 'block';
-    content.style.visibility = 'visible';
-    content.style.opacity = '1';
-
-    modal.classList.add('show');
-    modal.style.visibility = 'visible';
-    modal.style.opacity = '1';
-    modal.style.pointerEvents = 'auto';
-
-    bindAdminPanelInputs();
+    requestAnimationFrame(() => {
+        root.classList.add('is-open');
+    });
 }
 
 function closeAdminPanel(options = {}) {
-    const keepChatState = options.keepChatState === true;
+    const root = document.getElementById('conteggAdminV6');
 
-    document.body.classList.remove('contegg-admin-workspace-open');
+    document.body.classList.remove(
+        'contegg-admin-v6-open',
+        'contegg-admin-workspace-open'
+    );
 
-    const workspace = document.getElementById('conteggAdminWorkspace');
-    if (workspace) {
-        workspace.setAttribute('aria-hidden', 'true');
-        workspace.classList.remove('contegg-admin-visible');
+    if (root) {
+        root.classList.remove('is-open');
+        root.setAttribute('aria-hidden', 'true');
 
-        // openAdminPanel uses inline styles. Merely removing the body class is
-        // not enough — those inline values kept the admin workspace above chats.
-        workspace.style.display = 'none';
-        workspace.style.visibility = 'hidden';
-        workspace.style.opacity = '0';
-        workspace.style.pointerEvents = 'none';
+        setTimeout(() => {
+            if (!document.body.classList.contains('contegg-admin-v6-open')) {
+                root.innerHTML = '';
+            }
+        }, 180);
     }
 
-    const desktopContent = document.getElementById('conteggAdminWorkspaceContent');
-    if (desktopContent) {
-        desktopContent.style.removeProperty('display');
-        desktopContent.style.removeProperty('visibility');
-        desktopContent.style.removeProperty('opacity');
-        desktopContent.style.removeProperty('pointer-events');
+    const oldWorkspace = document.getElementById('conteggAdminWorkspace');
+    if (oldWorkspace) {
+        oldWorkspace.setAttribute('aria-hidden', 'true');
+        oldWorkspace.style.display = 'none';
+        oldWorkspace.style.visibility = 'hidden';
+        oldWorkspace.style.opacity = '0';
+        oldWorkspace.style.pointerEvents = 'none';
     }
 
-    const modal = document.getElementById('adminPanelModal');
-    if (modal) {
-        modal.classList.remove('show');
-        modal.style.removeProperty('visibility');
-        modal.style.removeProperty('opacity');
-        modal.style.removeProperty('pointer-events');
-    }
-
-    const mobileContent = document.getElementById('adminPanelContent');
-    if (mobileContent) {
-        mobileContent.style.removeProperty('display');
-        mobileContent.style.removeProperty('visibility');
-        mobileContent.style.removeProperty('opacity');
+    const oldModal = document.getElementById('adminPanelModal');
+    if (oldModal) {
+        oldModal.classList.remove('show');
+        oldModal.style.visibility = 'hidden';
+        oldModal.style.opacity = '0';
+        oldModal.style.pointerEvents = 'none';
     }
 
     currentAdminTargetUser = null;
-
-    // When explicitly leaving the admin workspace for a normal chat, the
-    // normal chat opener owns the chat-open state from this point onward.
-    if (!keepChatState && !currentChatId) {
-        document.body.classList.remove('chat-open');
-    }
 }
 
 function closeAdminWorkspaceBeforeOpeningChat() {
@@ -14898,6 +14954,7 @@ if (window.__justOpenedPanel) return;
 
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
+        closeAdminPanel();
         closeImagePreview();
         closeChat();
         document.getElementById('channelSettingsModal')?.classList.remove('show');
@@ -20554,6 +20611,464 @@ body.contegg-has-pinned-message #chatMessages {
     window.addEventListener('pagehide', clearTyping, { passive:true });
 })();
 </script>
+
+
+<script id="CONTEGG-DELEGATED-TYPING-V6">
+(() => {
+    if (window.__conteggDelegatedTypingV6) return;
+    window.__conteggDelegatedTypingV6 = true;
+
+    document.addEventListener('input', event => {
+        const input = event.target?.closest?.('#chatInput');
+        if (!input) return;
+
+        saveCurrentChatDraft(input.value);
+
+        if (input.value.trim()) {
+            scheduleTypingState();
+        } else {
+            clearTimeout(typingWriteTimer);
+            clearTimeout(typingClearTimer);
+            setTypingState('').catch(() => {});
+        }
+    }, true);
+
+    document.addEventListener('focusout', event => {
+        const input = event.target?.closest?.('#chatInput');
+        if (!input) return;
+
+        clearTimeout(typingWriteTimer);
+        clearTimeout(typingClearTimer);
+        setTypingState('').catch(() => {});
+    }, true);
+})();
+</script>
+
+
+<style id="CONTEGG-ADMIN-V6-REBUILT">
+/* Legacy admin surfaces are retired. */
+#conteggAdminWorkspace,
+#adminPanelModal {
+    display:none !important;
+}
+
+.contegg-admin-v6-root {
+    position:fixed;
+    z-index:2147482000;
+    overflow:hidden;
+
+    background:#0b0b0d;
+    color:var(--text-primary);
+
+    opacity:0;
+    visibility:hidden;
+    pointer-events:none;
+    transform:translate3d(0,6px,0);
+
+    transition:
+        opacity .16s ease,
+        transform .18s cubic-bezier(.2,.8,.2,1),
+        visibility 0s linear .18s;
+}
+
+.contegg-admin-v6-root.is-open {
+    opacity:1;
+    visibility:visible;
+    pointer-events:auto;
+    transform:none;
+
+    transition:
+        opacity .16s ease,
+        transform .18s cubic-bezier(.2,.8,.2,1),
+        visibility 0s;
+}
+
+.contegg-admin-v6-page {
+    width:100%;
+    height:100%;
+    min-height:0;
+    display:flex;
+    flex-direction:column;
+    background:
+        radial-gradient(circle at 50% -10%, rgba(10,132,255,.09), transparent 35%),
+        #0b0b0d;
+}
+
+.contegg-admin-v6-topbar {
+    flex:0 0 66px;
+    min-height:66px;
+
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+
+    padding:10px 18px;
+
+    background:rgba(20,20,23,.96);
+    border-bottom:.5px solid rgba(255,255,255,.10);
+}
+
+.contegg-admin-v6-title-wrap {
+    display:flex;
+    align-items:center;
+    gap:12px;
+    min-width:0;
+}
+
+.contegg-admin-v6-logo {
+    width:40px;
+    height:40px;
+    border-radius:12px;
+
+    display:flex;
+    align-items:center;
+    justify-content:center;
+
+    background:linear-gradient(135deg,#ff9f0a,#ff5e3a);
+    color:white;
+    font-size:17px;
+}
+
+.contegg-admin-v6-title {
+    font-size:17px;
+    font-weight:750;
+    letter-spacing:-.2px;
+}
+
+.contegg-admin-v6-subtitle {
+    margin-top:2px;
+    color:var(--text-secondary);
+    font-size:11px;
+}
+
+.contegg-admin-v6-close,
+.contegg-admin-v6-icon-btn {
+    border:0;
+    cursor:pointer;
+
+    display:flex;
+    align-items:center;
+    justify-content:center;
+
+    color:var(--text-primary);
+    background:#2c2c2e;
+
+    transition:
+        transform .12s ease,
+        background .12s ease;
+}
+
+.contegg-admin-v6-close {
+    width:36px;
+    height:36px;
+    border-radius:50%;
+}
+
+.contegg-admin-v6-icon-btn {
+    width:34px;
+    height:34px;
+    border-radius:10px;
+}
+
+.contegg-admin-v6-close:active,
+.contegg-admin-v6-icon-btn:active {
+    transform:scale(.94);
+}
+
+.contegg-admin-v6-scroll {
+    flex:1 1 auto;
+    min-height:0;
+    overflow-y:auto;
+    overflow-x:hidden;
+    padding:18px;
+    scrollbar-width:thin;
+}
+
+.contegg-admin-v6-card {
+    width:min(920px,100%);
+    margin:0 auto 14px;
+    padding:16px;
+
+    border:.5px solid rgba(255,255,255,.10);
+    border-radius:16px;
+
+    background:#171719;
+}
+
+.contegg-admin-v6-section-head {
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:12px;
+}
+
+.contegg-admin-v6-section-title {
+    display:flex;
+    align-items:center;
+    gap:8px;
+
+    font-size:15px;
+    font-weight:720;
+}
+
+.contegg-admin-v6-section-title i {
+    width:18px;
+    color:#ff9f0a;
+    text-align:center;
+}
+
+.contegg-admin-v6-section-desc {
+    margin:4px 0 12px;
+    color:var(--text-secondary);
+    font-size:11px;
+    line-height:1.4;
+}
+
+.contegg-admin-v6-count {
+    min-width:22px;
+    height:20px;
+    padding:0 6px;
+    border-radius:999px;
+
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+
+    background:#2c2c2e;
+    color:var(--text-secondary);
+    font-size:10px;
+}
+
+.contegg-admin-v6-users,
+.contegg-admin-v6-codes {
+    overflow:auto;
+    border:.5px solid rgba(255,255,255,.08);
+    border-radius:12px;
+    background:#111113;
+}
+
+.contegg-admin-v6-users {
+    max-height:320px;
+}
+
+.contegg-admin-v6-codes {
+    max-height:220px;
+}
+
+.contegg-admin-user-row {
+    border-bottom:.5px solid rgba(255,255,255,.07) !important;
+    border-radius:0 !important;
+    background:transparent !important;
+}
+
+.contegg-admin-user-row:last-child {
+    border-bottom:0 !important;
+}
+
+.contegg-admin-v6-composer {
+    margin-top:12px;
+    padding:12px;
+    border-radius:12px;
+    background:#202023;
+}
+
+.contegg-admin-v6-composer.hidden {
+    display:none;
+}
+
+.contegg-admin-v6-composer-title {
+    margin-bottom:10px;
+    font-size:12px;
+    color:var(--text-secondary);
+}
+
+.contegg-admin-v6-field {
+    display:block;
+    margin-top:10px;
+}
+
+.contegg-admin-v6-field > span,
+.contegg-admin-v6-list-label,
+.contegg-admin-v6-permanent span {
+    display:block;
+    margin-bottom:5px;
+    color:var(--text-secondary);
+    font-size:10px;
+    font-weight:650;
+}
+
+.contegg-admin-v6-input,
+.contegg-admin-v6-select,
+.contegg-admin-v6-textarea {
+    width:100%;
+    outline:0;
+
+    border:.5px solid rgba(255,255,255,.10);
+    border-radius:10px;
+
+    background:#252528;
+    color:var(--text-primary);
+
+    font:inherit;
+    font-size:13px;
+}
+
+.contegg-admin-v6-input,
+.contegg-admin-v6-select {
+    height:40px;
+    padding:0 11px;
+}
+
+.contegg-admin-v6-textarea {
+    min-height:88px;
+    max-height:220px;
+    padding:10px 11px;
+    resize:vertical;
+}
+
+.contegg-admin-v6-primary {
+    min-height:38px;
+    margin-top:10px;
+    padding:8px 13px;
+
+    border:0;
+    border-radius:10px;
+
+    background:#0a84ff;
+    color:white;
+
+    font-size:12px;
+    font-weight:700;
+
+    cursor:pointer;
+}
+
+.contegg-admin-v6-primary.compact {
+    margin:0;
+    min-width:84px;
+}
+
+.contegg-admin-v6-search-row,
+.contegg-admin-v6-generated,
+.contegg-admin-v6-code-maker,
+.contegg-admin-v6-permanent {
+    display:flex;
+    align-items:center;
+    gap:8px;
+}
+
+.contegg-admin-v6-permanent {
+    justify-content:space-between;
+    padding:11px;
+    border-radius:12px;
+    background:#202023;
+}
+
+.contegg-admin-v6-permanent code,
+.contegg-admin-v6-code-row code {
+    word-break:break-all;
+}
+
+.contegg-admin-v6-code-maker {
+    margin-top:10px;
+    align-items:flex-end;
+}
+
+.contegg-admin-v6-code-maker .contegg-admin-v6-field {
+    flex:1;
+    margin-top:0;
+}
+
+.contegg-admin-v6-generated {
+    margin-top:9px;
+}
+
+.contegg-admin-v6-generated .contegg-admin-v6-input {
+    flex:1;
+}
+
+.contegg-admin-v6-list-label {
+    margin-top:14px;
+}
+
+.contegg-admin-v6-target {
+    margin-top:12px;
+}
+
+.contegg-admin-target-card,
+.contegg-admin-control-row,
+.input-row,
+.contegg-admin-target-head {
+    box-shadow:none !important;
+}
+
+@media (min-width:1200px) {
+    .contegg-admin-v6-root {
+        top:0;
+        bottom:0;
+        left:var(--contegg-desktop-left);
+        right:var(--contegg-desktop-right);
+    }
+}
+
+@media (min-width:768px) and (max-width:1199px) {
+    .contegg-admin-v6-root {
+        top:0;
+        bottom:0;
+        left:var(--contegg-desktop-left);
+        right:0;
+    }
+}
+
+@media (max-width:767px) {
+    .contegg-admin-v6-root {
+        inset:0;
+        width:100%;
+        height:100dvh;
+        transform:translate3d(100%,0,0);
+    }
+
+    .contegg-admin-v6-root.is-open {
+        transform:translate3d(0,0,0);
+    }
+
+    .contegg-admin-v6-topbar {
+        flex-basis:calc(58px + env(safe-area-inset-top,0px));
+        min-height:calc(58px + env(safe-area-inset-top,0px));
+        padding:
+            max(8px, env(safe-area-inset-top,0px))
+            12px
+            8px;
+    }
+
+    .contegg-admin-v6-scroll {
+        padding:
+            12px
+            10px
+            max(24px, env(safe-area-inset-bottom,0px));
+    }
+
+    .contegg-admin-v6-card {
+        padding:13px;
+        border-radius:14px;
+    }
+
+    .contegg-admin-v6-users {
+        max-height:38dvh;
+    }
+
+    .contegg-admin-v6-search-row,
+    .contegg-admin-v6-code-maker {
+        align-items:stretch;
+        flex-direction:column;
+    }
+
+    .contegg-admin-v6-primary.compact {
+        width:100%;
+    }
+}
+</style>
 
 </body>
 </html>
