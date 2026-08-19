@@ -531,6 +531,98 @@
         .chat-user-name { font-size: 15px; font-weight: 500; }
         .chat-user-status { font-size: 12px; color: var(--text-secondary); }
 
+        .chat-navbar-actions { display:flex; align-items:center; gap:6px; margin-left:auto; position:relative; }
+        .chat-nav-icon-btn {
+            width: 34px;
+            height: 34px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background .18s ease, color .18s ease, transform .18s ease;
+            font-size: 19px;
+        }
+        .chat-nav-icon-btn:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
+        .chat-nav-icon-btn:active { transform: scale(0.97); }
+        .contegg-chat-header-menu {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            min-width: 240px;
+            background: rgba(28,28,30,0.98);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+            padding: 6px;
+            z-index: 30;
+            display: none;
+            backdrop-filter: blur(22px);
+        }
+        .contegg-chat-header-menu.show { display:block; animation: conteggMenuIn .16s ease; }
+        @keyframes conteggMenuIn { from { opacity:0; transform: translateY(-6px) scale(.98);} to {opacity:1; transform: translateY(0) scale(1);} }
+        .contegg-chat-header-menu button {
+            width: 100%;
+            border: none;
+            background: transparent;
+            color: var(--text-primary);
+            text-align: left;
+            border-radius: 12px;
+            padding: 11px 12px;
+            display:flex;
+            align-items:center;
+            gap:10px;
+            cursor:pointer;
+            font-size:14px;
+        }
+        .contegg-chat-header-menu button:hover { background: rgba(255,255,255,0.06); }
+        .contegg-chat-header-menu button.danger { color: #ff453a; }
+        .contegg-chat-header-menu i { width: 18px; text-align: center; }
+        .contegg-search-sheet {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: min(560px, calc(100vw - 24px));
+            max-height: min(74vh, 720px);
+            background: var(--bg-secondary);
+            border-radius: 20px;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.42);
+            display:flex;
+            flex-direction: column;
+            overflow:hidden;
+        }
+        .contegg-search-sheet-header { padding:16px 16px 12px; border-bottom:1px solid var(--separator); }
+        .contegg-search-sheet-title { font-size:18px; font-weight:700; margin-bottom:12px; }
+        .contegg-search-input-wrap { display:flex; gap:8px; }
+        .contegg-search-input {
+            flex:1; border:none; outline:none; background: var(--bg-tertiary); color: var(--text-primary);
+            border-radius: 12px; padding: 12px 14px; font-size:15px;
+        }
+        .contegg-search-sheet-body { padding:10px; overflow:auto; }
+        .contegg-search-empty { color: var(--text-secondary); font-size:14px; text-align:center; padding:30px 14px; }
+        .contegg-search-result {
+            padding: 12px; border-radius: 14px; cursor:pointer; transition: background .15s ease; border:1px solid transparent;
+        }
+        .contegg-search-result:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.04); }
+        .contegg-search-result-text { font-size:14px; line-height:1.45; margin-bottom:4px; white-space: pre-wrap; word-break: break-word; }
+        .contegg-search-result-time { font-size:12px; color: var(--text-secondary); }
+        .contegg-search-highlight {
+            outline: 2px solid rgba(10,132,255,0.9);
+            box-shadow: 0 0 0 6px rgba(10,132,255,0.12);
+            transition: outline-color .25s ease, box-shadow .25s ease;
+        }
+        @media (max-width: 900px) {
+            .contegg-search-sheet {
+                top: auto; bottom: 12px; transform: translateX(-50%);
+                width: calc(100vw - 12px); max-height: 78vh; border-radius: 18px;
+            }
+            .contegg-chat-header-menu { min-width: 220px; right: -4px; }
+        }
+
         .chat-messages {
             flex: 1;
             overflow-y: auto;
@@ -2312,7 +2404,7 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
                 <div class="chat-user-status" id="chatStatus">онлайн</div>
             </div>
         </div>
-        <div id="chatNavbarActions"></div>
+        <div id="chatNavbarActions" class="chat-navbar-actions"></div>
     </div>
     <div class="chat-messages" id="chatMessages">
         <div class="loader"><div class="spinner"></div></div>
@@ -2850,6 +2942,22 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
     </div>
 </div>
 
+
+<div class="modal-overlay" id="chatMessageSearchModal">
+    <div class="contegg-search-sheet" onclick="event.stopPropagation()">
+        <div class="contegg-search-sheet-header">
+            <div class="contegg-search-sheet-title">Поиск сообщений</div>
+            <div class="contegg-search-input-wrap">
+                <input class="contegg-search-input" id="chatMessageSearchInput" type="text" placeholder="Введите текст сообщения">
+                <button class="btn btn-primary" type="button" onclick="performChatMessageSearch()" style="width:auto;min-width:110px;padding:0 16px;">Найти</button>
+            </div>
+        </div>
+        <div class="contegg-search-sheet-body" id="chatMessageSearchResults">
+            <div class="contegg-search-empty">Введите текст и нажмите «Найти».</div>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="userProfileModal">
     <div class="modal-sheet">
         <div class="modal-handle"></div>
@@ -3218,6 +3326,8 @@ let contactsListener = null;
 let activeContactEditUid = null;
 
 let selectedGroupUsers = new Set();
+let preselectedGroupUsers = [];
+let currentChatSearchResults = [];
 let groupAvatarBase64 = null;
 let channelAvatarBase64 = null;
 let channelCropper = null;
@@ -5638,6 +5748,7 @@ async function isGroupOwner(chatId, userId) {
 }
 
 function clearChatNavbarActions() {
+    closeChatHeaderMenu?.();
     const container = document.getElementById('chatNavbarActions');
     if (container) container.innerHTML = '';
 }
@@ -7571,7 +7682,8 @@ const snap = await db.collection('chats')
 
 const rawChats = snap.docs
     .map(doc => ({ id: doc.id, ...doc.data() }))
-    .filter(chat => chat.participants?.includes(currentUser.uid));
+    .filter(chat => chat.participants?.includes(currentUser.uid))
+    .filter(chat => !(chat.hiddenFor || []).includes(currentUser.uid));
 
 const dmUserIds = [
     ...new Set(
@@ -8016,6 +8128,16 @@ async function openDirectChat(userId, username, knownChatId = null) {
     }
 
     currentChatId = chatId;
+
+    try {
+        await db.collection('chats').doc(chatId).set({
+            hiddenFor: firebase.firestore.FieldValue.arrayRemove(currentUser.uid)
+        }, { merge: true });
+    } catch (e) {
+        console.warn('unhide chat warning:', e);
+    }
+
+    renderDirectChatNavbarActions();
     await openChatUI(userId, username, false);
 }
     
@@ -8549,6 +8671,8 @@ function closeChatUIOnly() {
 let conteggProgrammaticChatBack = false;
 
 function closeChat() {
+    closeChatHeaderMenu?.();
+    closeChatMessageSearch?.();
     const overlay = document.getElementById('chatOverlay');
     const chatIsOpen = overlay?.classList.contains('show');
 
@@ -13896,12 +14020,15 @@ function saveChannelCropSettings() {
 }
 
 async function showCreateGroup() {
+    const presetUsers = Array.isArray(preselectedGroupUsers) ? [...preselectedGroupUsers] : [];
     selectedGroupUsers.clear();
+    presetUsers.forEach(uid => selectedGroupUsers.add(uid));
+    preselectedGroupUsers = [];
     groupAvatarBase64 = null;
 
     document.getElementById('groupNameInput').value = '';
     document.getElementById('groupAvatarPreview').innerHTML = '👥';
-    document.getElementById('createGroupBtn').disabled = true;
+    document.getElementById('createGroupBtn').disabled = selectedGroupUsers.size < 1;
 
     document.getElementById('groupModal').classList.add('show');
 
@@ -14039,6 +14166,209 @@ async function createGroup() {
         loadChats();
     } catch (e) { toast('Ошибка создания группы'); }
 }
+
+
+function closeChatHeaderMenu() {
+    const menu = document.getElementById('chatHeaderMoreMenu');
+    if (menu) menu.classList.remove('show');
+}
+
+function renderDirectChatNavbarActions() {
+    const container = document.getElementById('chatNavbarActions');
+    if (!container) return;
+
+    container.innerHTML = `
+        <button class="chat-nav-icon-btn" type="button" title="Поиск сообщений" onclick="openChatMessageSearch(event)">
+            <i class="fas fa-search"></i>
+        </button>
+        <button class="chat-nav-icon-btn" type="button" title="Ещё" onclick="toggleChatHeaderMenu(event)">
+            <i class="fas fa-ellipsis-h"></i>
+        </button>
+        <div class="contegg-chat-header-menu" id="chatHeaderMoreMenu">
+            <button type="button" onclick="createGroupWithCurrentContact()"><i class="fas fa-user-friends"></i><span>Создать группу с этим контактом</span></button>
+            <button type="button" onclick="openCurrentChatProfileFromMenu()"><i class="fas fa-user"></i><span>Профиль</span></button>
+            <button type="button" onclick="deleteCurrentChatForMe()"><i class="fas fa-trash-alt"></i><span>Удалить чат у себя</span></button>
+            <button type="button" class="danger" onclick="deleteCurrentChatForBoth()"><i class="fas fa-trash"></i><span>Удалить чат у обоих</span></button>
+        </div>
+    `;
+}
+
+function toggleChatHeaderMenu(event) {
+    event?.stopPropagation?.();
+    const menu = document.getElementById('chatHeaderMoreMenu');
+    if (!menu) return;
+    menu.classList.toggle('show');
+}
+
+document.addEventListener('click', (event) => {
+    const menu = document.getElementById('chatHeaderMoreMenu');
+    const actions = document.getElementById('chatNavbarActions');
+    if (!menu || !actions) return;
+    if (!actions.contains(event.target)) closeChatHeaderMenu();
+});
+
+function openCurrentChatProfileFromMenu() {
+    closeChatHeaderMenu();
+    viewChatUserProfile();
+}
+
+function createGroupWithCurrentContact() {
+    if (!currentChatUser?.uid) return;
+    closeChatHeaderMenu();
+    preselectedGroupUsers = [currentChatUser.uid];
+    showCreateGroup();
+}
+
+async function deleteCurrentChatForMe() {
+    if (!currentChatId || !currentChatUser?.uid) return;
+    closeChatHeaderMenu();
+    if (!confirm('Удалить этот чат только у вас?')) return;
+
+    try {
+        await db.collection('chats').doc(currentChatId).set({
+            hiddenFor: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
+        }, { merge: true });
+
+        if (pinnedChats.includes(currentChatId)) {
+            pinnedChats = pinnedChats.filter(id => id !== currentChatId);
+            await db.collection('users').doc(currentUser.uid).update({ pinnedChats });
+        }
+
+        closeChat();
+        await loadChats();
+        toast('Чат удалён у вас');
+    } catch (e) {
+        console.error('deleteCurrentChatForMe error:', e);
+        toast('Ошибка удаления');
+    }
+}
+
+async function deleteCurrentChatForBoth() {
+    if (!currentChatId || !currentChatUser?.uid) return;
+    closeChatHeaderMenu();
+    if (!confirm('Удалить чат у обоих пользователей? Это действие нельзя отменить.')) return;
+
+    try {
+        const batch = db.batch();
+        const ref = db.collection('chats').doc(currentChatId);
+        const msgs = await ref.collection('messages').get();
+        msgs.forEach(doc => batch.delete(doc.ref));
+        batch.delete(ref);
+        await batch.commit();
+
+        if (pinnedChats.includes(currentChatId)) {
+            pinnedChats = pinnedChats.filter(id => id !== currentChatId);
+            await db.collection('users').doc(currentUser.uid).update({ pinnedChats });
+        }
+
+        closeChat();
+        await loadChats();
+        toast('Чат удалён у обоих');
+    } catch (e) {
+        console.error('deleteCurrentChatForBoth error:', e);
+        toast('Ошибка удаления');
+    }
+}
+
+function openChatMessageSearch(event) {
+    event?.stopPropagation?.();
+    closeChatHeaderMenu();
+    const modal = document.getElementById('chatMessageSearchModal');
+    const input = document.getElementById('chatMessageSearchInput');
+    const results = document.getElementById('chatMessageSearchResults');
+    if (!modal || !input || !results || !currentChatId) return;
+
+    currentChatSearchResults = [];
+    results.innerHTML = '<div class="contegg-search-empty">Введите текст и нажмите «Найти».</div>';
+    input.value = '';
+    modal.classList.add('show');
+    setTimeout(() => input.focus(), 60);
+}
+
+function closeChatMessageSearch() {
+    document.getElementById('chatMessageSearchModal')?.classList.remove('show');
+}
+
+async function performChatMessageSearch() {
+    const input = document.getElementById('chatMessageSearchInput');
+    const results = document.getElementById('chatMessageSearchResults');
+    if (!input || !results || !currentChatId) return;
+
+    const query = input.value.trim().toLowerCase();
+    if (!query) {
+        results.innerHTML = '<div class="contegg-search-empty">Введите текст для поиска.</div>';
+        return;
+    }
+
+    results.innerHTML = '<div class="contegg-search-empty">Ищем сообщения...</div>';
+
+    try {
+        const snap = await db.collection('chats').doc(currentChatId)
+            .collection('messages')
+            .orderBy('timestamp', 'desc')
+            .get();
+
+        const found = snap.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(msg => {
+                const hay = `${msg.text || ''} ${msg.caption || ''}`.toLowerCase();
+                return hay.includes(query);
+            })
+            .slice(0, 50);
+
+        currentChatSearchResults = found;
+
+        if (!found.length) {
+            results.innerHTML = '<div class="contegg-search-empty">Ничего не найдено.</div>';
+            return;
+        }
+
+        results.innerHTML = found.map(msg => {
+            const plain = esc((msg.text || msg.caption || '[медиа]').trim() || '[медиа]');
+            const date = timeAgo(msg.timestamp?.toDate?.() || new Date());
+            return `
+                <div class="contegg-search-result" onclick="jumpToFoundMessage('${esc(msg.id)}')">
+                    <div class="contegg-search-result-text">${plain}</div>
+                    <div class="contegg-search-result-time">${date}</div>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error('performChatMessageSearch error:', e);
+        results.innerHTML = '<div class="contegg-search-empty">Ошибка поиска.</div>';
+    }
+}
+
+async function jumpToFoundMessage(messageId) {
+    if (!messageId) return;
+    closeChatMessageSearch();
+
+    let node = document.querySelector(`[data-msg-id="${CSS.escape(messageId)}"]`);
+    let attempts = 0;
+
+    while (!node && typeof loadOlderMessages === 'function' && chatHistoryHasMore && attempts < 40) {
+        attempts += 1;
+        await loadOlderMessages({ prefetch: true });
+        node = document.querySelector(`[data-msg-id="${CSS.escape(messageId)}"]`);
+    }
+
+    if (!node) {
+        toast('Сообщение найдено, но пока не удалось прокрутить к нему');
+        return;
+    }
+
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    node.classList.add('contegg-search-highlight');
+    setTimeout(() => node.classList.remove('contegg-search-highlight'), 1800);
+}
+
+document.getElementById('chatMessageSearchInput')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') performChatMessageSearch();
+});
+
+document.getElementById('chatMessageSearchModal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'chatMessageSearchModal') closeChatMessageSearch();
+});
 
 async function viewChatUserProfile() {
     if (currentChatIsChannel) {
