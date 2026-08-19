@@ -3373,35 +3373,6 @@ let conteggStickerEditorDragging = false;
 let conteggStickerEditorDragStart = null;
 let conteggStickerMenuSticker = null;
 let conteggStickerPanelRenderToken = 0;
-let conteggSavedStickerKeysCache = new Set();
-let conteggCreatedStickerIdsCache = new Set();
-
-function getConteggStickerRecentStorageKey() {
-    return currentUser?.uid ? `contegg_sticker_recent_v1_${currentUser.uid}` : '';
-}
-
-function getConteggStickerRecentMap() {
-    const key = getConteggStickerRecentStorageKey();
-    if (!key) return {};
-    try {
-        return JSON.parse(localStorage.getItem(key) || '{}') || {};
-    } catch (_) {
-        return {};
-    }
-}
-
-function markConteggStickerRecentlyUsed(sticker) {
-    if (!sticker?.url) return;
-    const key = getConteggStickerRecentStorageKey();
-    if (!key) return;
-    const map = getConteggStickerRecentMap();
-    map[getConteggStickerSaveKey(sticker)] = Date.now();
-    try { localStorage.setItem(key, JSON.stringify(map)); } catch (_) {}
-}
-
-function getConteggStickerRecentTime(sticker) {
-    return Number(getConteggStickerRecentMap()[getConteggStickerSaveKey(sticker)] || 0);
-}
 
 let selectedGroupUsers = new Set();
 let preselectedGroupUsers = [];
@@ -9757,6 +9728,32 @@ if (msg.notificationAction === 'terminate_device' && msg.actionDeviceId) {
     }
     div.innerHTML = html;
 
+    div.querySelectorAll('.contegg-chat-sticker').forEach(sticker => {
+        // ЛКМ / короткий тап: вместо реакций — лёгкое меню самого стикера.
+        sticker.addEventListener('click', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+
+            selectedMsgId = id;
+            selectedMsgData = msg;
+
+            const rect = sticker.getBoundingClientRect();
+            showConteggStickerContextMenu(
+                rect.left + rect.width / 2,
+                rect.top + Math.min(rect.height, 48),
+                {
+                    url: sticker.dataset.stickerUrl || '',
+                    id: sticker.dataset.stickerId || '',
+                    ownerId: sticker.dataset.stickerOwner || ''
+                },
+                { fromChat: true }
+            );
+        });
+
+        // ПКМ специально НЕ перехватываем: он всплывает к обычному меню сообщения.
+    });
+
     div.querySelectorAll('.contegg-mention[data-mention-username]').forEach(btn => {
         btn.addEventListener('click', async e => {
             e.preventDefault();
@@ -9972,12 +9969,14 @@ div.addEventListener('click', (e) => {
     if (e.target.closest('.reaction-badge')) return;
     if (e.target.closest('.contegg-profile-trigger')) return;
     if (e.target.closest('.contegg-forwarded-from')) return;
+    if (e.target.closest('.contegg-chat-sticker')) return;
 
     if (
         e.target.closest('.audio-play-btn') ||
         e.target.closest('.audio-waveform') ||
         e.target.closest('.audio-progress') ||
         e.target.closest('.msg-video') ||
+        e.target.closest('.contegg-chat-sticker') ||
         e.target.closest('.post-comments-btn')
     ) {
         return;
@@ -9998,20 +9997,6 @@ div.addEventListener('click', (e) => {
 
     selectedMsgId = id;
     selectedMsgData = msg;
-
-    if (msg.stickerUrl) {
-        showConteggStickerContextMenu(
-            p.x,
-            p.y,
-            {
-                url: msg.stickerUrl || '',
-                id: msg.stickerId || '',
-                ownerId: msg.stickerOwnerId || ''
-            },
-            { fromChat: true }
-        );
-        return;
-    }
 
     showReactionsPanel(p.x, p.y, id);
 });
@@ -10101,22 +10086,6 @@ div.addEventListener('touchend', (e) => {
 
         if (!touchMoved) {
             ignoreNextClick = true;
-
-            const stickerEl = e.target.closest('.contegg-chat-sticker');
-            if (stickerEl) {
-                const rect = stickerEl.getBoundingClientRect();
-                showConteggStickerContextMenu(
-                    Math.min(rect.left + rect.width * 0.55, window.innerWidth - 16),
-                    Math.min(rect.top + rect.height * 0.42, window.innerHeight - 16),
-                    {
-                        url: stickerEl.dataset.stickerUrl || '',
-                        id: stickerEl.dataset.stickerId || '',
-                        ownerId: stickerEl.dataset.stickerOwner || ''
-                    },
-                    { fromChat: true }
-                );
-                return;
-            }
 
             const img = e.target.closest('.msg-image');
 
@@ -11839,8 +11808,6 @@ async function ctxReply() {
         replyText = '🎥 Видео';
     } else if (selectedMsgData.audioUrl) {
         replyText = '🎤 Голосовое';
-    } else if (selectedMsgData.stickerUrl) {
-        replyText = '🏷️ Стикер';
     }
 
     let senderName = 'Пользователь';
@@ -11895,6 +11862,7 @@ function showReactionsPanelForMsg(id, msg, e) {
 }
 
 function showReactionsPanel(x, y, msgId) {
+    hideConteggStickerContextMenu?.();
     window.__justOpenedPanel = true;
     setTimeout(() => window.__justOpenedPanel = false, 250);
     const panel = document.getElementById('reactionsPanel');
@@ -19214,9 +19182,6 @@ body.keyboard-no-transition .chat-input-bar {
             const createdKeys = new Set(created.map(s => `${s.ownerId || currentUser.uid}_${s.id}`));
             const visibleSaved = saved.filter(s => !createdKeys.has(`${s.ownerId || s.sourceOwnerId || ''}_${s.sourceStickerId || s.id}`));
 
-            conteggCreatedStickerIdsCache = new Set(created.map(s => s.id));
-            conteggSavedStickerKeysCache = new Set(saved.map(s => s.id));
-
             const grid = document.createElement('div');
             grid.className = 'contegg-sticker-grid';
 
@@ -19247,28 +19212,10 @@ body.keyboard-no-transition .chat-input-bar {
                 grid.appendChild(cell);
             };
 
-            // Most recently used sticker is always the first actual sticker cell.
-            // Everything else keeps the familiar own -> plus -> saved structure.
-            const allActual = [...createdStickers, ...savedStickers];
-            let mostRecent = null;
-            let mostRecentTime = 0;
+            // Own stickers occupy the first cells. The plus button always sits
+            // in the NEXT free own-sticker cell, exactly like Telegram.
+            createdStickers.forEach(appendStickerCell);
 
-            allActual.forEach(sticker => {
-                const t = getConteggStickerRecentTime(sticker);
-                if (t > mostRecentTime) {
-                    mostRecentTime = t;
-                    mostRecent = sticker;
-                }
-            });
-
-            if (mostRecent) appendStickerCell(mostRecent);
-
-            createdStickers
-                .filter(s => !mostRecent || getConteggStickerSaveKey(s) !== getConteggStickerSaveKey(mostRecent))
-                .forEach(appendStickerCell);
-
-            // Plus exists only while the user owns fewer than four stickers.
-            // The fourth sticker takes the last available creation slot and the plus disappears.
             if (createdStickers.length < CONTEGG_MAX_CREATED_STICKERS) {
                 const add = document.createElement('button');
                 add.type = 'button';
@@ -19281,9 +19228,8 @@ body.keyboard-no-transition .chat-input-bar {
                 grid.appendChild(add);
             }
 
-            savedStickers
-                .filter(s => !mostRecent || getConteggStickerSaveKey(s) !== getConteggStickerSaveKey(mostRecent))
-                .forEach(appendStickerCell);
+            // Saved stickers continue after the user's own creation slots.
+            savedStickers.forEach(appendStickerCell);
 
             content.replaceChildren(grid);
         } catch (e) {
@@ -19324,8 +19270,6 @@ body.keyboard-no-transition .chat-input-bar {
             };
             if (unreadFor.length) update.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
             await db.collection('chats').doc(currentChatId).update(update);
-            markConteggStickerRecentlyUsed(sticker);
-            refreshConteggStickerTabIfVisible();
         } catch (e) {
             console.error('send sticker:', e);
             toast('Не удалось отправить стикер');
@@ -19351,7 +19295,6 @@ body.keyboard-no-transition .chat-input-bar {
                 sourceOwnerId: sticker.ownerId || sticker.sourceOwnerId || '',
                 savedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
-        conteggSavedStickerKeysCache.add(key);
         toast('Стикер сохранён');
         refreshConteggStickerTabIfVisible();
     }
@@ -19361,7 +19304,6 @@ body.keyboard-no-transition .chat-input-bar {
         const key = getConteggStickerSaveKey(sticker);
         await db.collection('users').doc(currentUser.uid)
             .collection('savedStickers').doc(key).delete();
-        conteggSavedStickerKeysCache.delete(key);
         toast('Удалено из сохранённых');
         refreshConteggStickerTabIfVisible();
     }
@@ -19372,7 +19314,6 @@ body.keyboard-no-transition .chat-input-bar {
         if (!confirm('Удалить этот стикер из вашего списка? У пользователей, которые уже сохранили его, он останется.')) return;
         await db.collection('users').doc(currentUser.uid)
             .collection('createdStickers').doc(sticker.id).delete();
-        conteggCreatedStickerIdsCache.delete(sticker.id);
         // Deliberately do NOT delete the Supabase object. Existing messages and
         // other users' saved copies must continue to work.
         toast('Стикер удалён из вашего списка');
@@ -19389,76 +19330,51 @@ body.keyboard-no-transition .chat-input-bar {
         });
     }
 
-    function openConteggStickerFromChat(sticker) {
-        showConteggStickerContextMenu(
-            Math.round(window.innerWidth / 2),
-            Math.round(window.innerHeight / 2),
-            sticker,
-            { fromChat: true }
-        );
+    async function openConteggStickerFromChat(sticker, anchor = null) {
+        if (!sticker?.url) return;
+        const x = anchor?.x ?? window.innerWidth / 2;
+        const y = anchor?.y ?? window.innerHeight / 2;
+        showConteggStickerContextMenu(x, y, sticker, { fromChat: true });
     }
 
     function closeConteggStickerChatModal() {
         document.getElementById('conteggStickerChatModal')?.classList.remove('show');
     }
 
-    function showConteggStickerContextMenu(x, y, sticker, options = {}) {
-        const normalMenu = document.getElementById('msgContextMenu');
-        if (normalMenu) normalMenu.style.display = 'none';
-
-        const reactions = document.getElementById('reactionsPanel');
-        if (reactions) reactions.style.display = 'none';
-
+    async function showConteggStickerContextMenu(x, y, sticker, options = {}) {
         const menu = document.getElementById('conteggStickerContextMenu');
         if (!menu || !sticker?.url) return;
 
+        document.getElementById('msgContextMenu')?.style.setProperty('display', 'none');
+        document.getElementById('reactionsPanel')?.style.setProperty('display', 'none');
+
         conteggStickerMenuSticker = sticker;
 
-        const owned =
-            (sticker.ownerId || '') === currentUser.uid ||
-            sticker.source === 'created' ||
-            conteggCreatedStickerIdsCache.has(sticker.id || '');
+        const owned = (sticker.ownerId || '') === currentUser.uid || sticker.source === 'created';
+        const saved = owned ? false : await isConteggStickerSaved(sticker);
+        if (conteggStickerMenuSticker !== sticker) return;
 
-        const saveKey = getConteggStickerSaveKey(sticker);
-        const saved = conteggSavedStickerKeysCache.has(saveKey);
+        menu.innerHTML = owned
+            ? `<button type="button" class="danger" data-sticker-menu="delete"><i class="far fa-trash-alt"></i>Удалить мой стикер</button>`
+            : `<button type="button" data-sticker-menu="save"><i class="far fa-bookmark"></i>${saved ? 'Удалить из сохранённых' : 'Добавить стикер'}</button>`;
 
-        // Own sticker is already part of the user's collection, so its primary
-        // action is deletion, not the confusing "save" action.
-        if (owned) {
-            menu.innerHTML = `
-                <button type="button" class="danger" data-sticker-menu="delete">
-                    <i class="far fa-trash-alt"></i>Удалить мой стикер
-                </button>
-            `;
-        } else {
-            menu.innerHTML = `
-                <button type="button" data-sticker-menu="save">
-                    <i class="far fa-bookmark"></i>${saved ? 'Удалить из сохранённых' : 'Добавить стикер'}
-                </button>
-            `;
-        }
-
-        // Keep it as a tiny fixed layer. Do not invoke modal/backdrop/layout code.
-        menu.style.transition = 'none';
-        menu.style.opacity = '0';
         menu.style.display = 'block';
+        menu.style.visibility = 'hidden';
+        menu.style.left = '0px';
+        menu.style.top = '0px';
 
-        requestAnimationFrame(() => {
-            const margin = 8;
-            const rect = menu.getBoundingClientRect();
-            menu.style.left = `${Math.max(margin, Math.min(x, window.innerWidth - rect.width - margin))}px`;
-            menu.style.top = `${Math.max(margin, Math.min(y, window.innerHeight - rect.height - margin))}px`;
-            menu.style.opacity = '1';
-        });
+        const margin = 8;
+        const rect = menu.getBoundingClientRect();
+        const left = Math.max(margin, Math.min(x - rect.width / 2, window.innerWidth - rect.width - margin));
+        const top = Math.max(margin, Math.min(y, window.innerHeight - rect.height - margin));
+        menu.style.left = `${left}px`;
+        menu.style.top = `${top}px`;
+        menu.style.visibility = 'visible';
     }
 
     function hideConteggStickerContextMenu() {
         const menu = document.getElementById('conteggStickerContextMenu');
-        if (menu) {
-            menu.style.display = 'none';
-            menu.style.opacity = '';
-            menu.style.transition = '';
-        }
+        if (menu) menu.style.display = 'none';
         conteggStickerMenuSticker = null;
     }
 
@@ -19470,8 +19386,7 @@ body.keyboard-no-transition .chat-input-bar {
         e.stopPropagation();
         hideConteggStickerContextMenu();
         if (action === 'save') {
-            const key = getConteggStickerSaveKey(sticker);
-            if (conteggSavedStickerKeysCache.has(key)) await removeConteggStickerFromSaved(sticker);
+            if (await isConteggStickerSaved(sticker)) await removeConteggStickerFromSaved(sticker);
             else await saveConteggStickerToSaved(sticker);
         } else if (action === 'delete') {
             await deleteConteggCreatedSticker(sticker);
@@ -24132,8 +24047,6 @@ body.contegg-has-pinned-message #chatMessages {
     backdrop-filter:none;
     -webkit-backdrop-filter:none;
     display:none;
-    opacity:1;
-    transform:none !important;
     contain:layout paint;
 }
 .contegg-sticker-context-menu button {
@@ -24287,29 +24200,9 @@ body.contegg-has-pinned-message #chatMessages {
 </style>
 
 
-<style id="CONTEGG-STICKER-NORMAL-MESSAGE-V24">
-#conteggStickerContextMenu {
-    position:fixed !important;
-    z-index:2147483000 !important;
-    min-width:190px;
-    max-width:min(290px, calc(100vw - 20px));
-    padding:6px !important;
-    border:0.5px solid rgba(255,255,255,.11) !important;
-    border-radius:15px !important;
-    background:rgba(31,31,33,.98) !important;
-    box-shadow:0 12px 34px rgba(0,0,0,.34) !important;
-    backdrop-filter:none !important;
-    -webkit-backdrop-filter:none !important;
-}
-#conteggStickerContextMenu button {
-    width:100%; min-height:40px; display:flex; align-items:center; gap:9px;
-    padding:8px 11px; border:0; border-radius:11px; background:transparent;
-    color:var(--text-primary); font-size:13px; text-align:left; cursor:pointer;
-}
-#conteggStickerContextMenu button:hover { background:rgba(255,255,255,.07); }
-#conteggStickerContextMenu button.danger { color:var(--danger, #ff453a); }
-#conteggStickerContextMenu button i { width:17px; text-align:center; }
+<style id="CONTEGG-STICKER-CHAT-MENU-V25">
+#conteggStickerChatModal { display:none !important; }
+.contegg-sticker-context-menu { will-change:auto !important; }
 </style>
-
 </body>
 </html>
