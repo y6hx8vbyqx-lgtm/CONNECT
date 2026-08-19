@@ -15274,7 +15274,9 @@ function closeAdminPanel(options = {}) {
 
     const oldModal = document.getElementById('adminPanelModal');
     if (oldModal) {
-        oldModal.classList.remove('show');
+        if (oldModal.classList.contains('show')) {
+            oldModal.classList.remove('show');
+        }
         oldModal.style.visibility = 'hidden';
         oldModal.style.opacity = '0';
         oldModal.style.pointerEvents = 'none';
@@ -22904,35 +22906,53 @@ body.contegg-has-pinned-message #chatMessages {
     document.addEventListener('pointerup', finish, { passive:true });
     document.addEventListener('pointercancel', finish, { passive:true });
 
-    // If another control closes a modal while it is being dragged,
-    // never leave stale inline transforms behind.
-    const observer = new MutationObserver(records => {
-        for (const record of records) {
-            const modal = record.target;
+    // V15: removed recursive MutationObserver cleanup.
+    // Swipe state is cleaned only by the gesture/close flow itself.
 
-            if (
-                modal instanceof HTMLElement &&
-                modal.classList.contains('modal-overlay') &&
-                !modal.classList.contains('show')
-            ) {
-                const sheet = modal.querySelector(':scope > .modal-sheet');
-                resetInlineStyles(modal, sheet);
+})();
+</script>
 
-                if (drag?.modal === modal) {
-                    drag = null;
-                }
-            }
+
+<script id="CONTEGG-MODAL-SWIPE-SAFE-CLEANUP-V15">
+(() => {
+    if (window.__conteggModalSwipeSafeCleanupV15) return;
+    window.__conteggModalSwipeSafeCleanupV15 = true;
+
+    function clearSheetInlineState(modal) {
+        if (!modal?.classList?.contains('modal-overlay')) return;
+
+        const sheet = modal.querySelector(':scope > .modal-sheet');
+
+        if (sheet) {
+            sheet.style.removeProperty('transition');
+            sheet.style.removeProperty('transform');
         }
-    });
 
-    document.addEventListener('DOMContentLoaded', () => {
-        document.querySelectorAll('.modal-overlay').forEach(modal => {
-            observer.observe(modal, {
-                attributes:true,
-                attributeFilter:['class']
-            });
-        });
-    }, { once:true });
+        modal.style.removeProperty('transition');
+        modal.style.removeProperty('opacity');
+
+        if (modal.classList.contains('contegg-sheet-dragging')) {
+            modal.classList.remove('contegg-sheet-dragging');
+        }
+    }
+
+    document.addEventListener('click', event => {
+        const modal = event.target.closest?.('.modal-overlay');
+        if (!modal) return;
+
+        const closeLike = event.target.closest(
+            '[data-modal-close], .modal-close, .btn-secondary, ' +
+            '[aria-label="Закрыть"], [title="Закрыть"]'
+        );
+
+        if (!closeLike) return;
+
+        setTimeout(() => {
+            if (!modal.classList.contains('show')) {
+                clearSheetInlineState(modal);
+            }
+        }, 340);
+    }, true);
 })();
 </script>
 
