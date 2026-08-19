@@ -9157,6 +9157,28 @@ async function loadMessages() {
                     if (change.type === 'added') {
                         if (msgEl) return;
 
+                        // A limitToLast(...) listener backfills an older document when
+                        // a recent message is deleted. That document is NOT a newly sent
+                        // message and must not be appended to the bottom of the chat.
+                        const incomingTime = msg.timestamp?.toDate?.()?.getTime?.();
+                        const oldestLoadedTime = chatHistoryOldestDoc
+                            ?.data?.()
+                            ?.timestamp
+                            ?.toDate?.()
+                            ?.getTime?.();
+
+                        const isOlderWindowRefill =
+                            change.newIndex === 0 &&
+                            chatHistoryOldestDoc &&
+                            change.doc.id !== chatHistoryOldestDoc.id &&
+                            Number.isFinite(incomingTime) &&
+                            Number.isFinite(oldestLoadedTime) &&
+                            incomingTime <= oldestLoadedTime;
+
+                        if (isOlderWindowRefill) {
+                            return;
+                        }
+
                         const shouldStickToBottom = isNearChatBottom(container);
                         const d = msg.timestamp?.toDate?.() || new Date();
 
@@ -11238,72 +11260,88 @@ function toggleReactionPanelExpanded(event) {
 }
 
 async function ctxDeleteForMe() {
-    document.getElementById('msgContextMenu').style.display = 'none';
+    const menu = document.getElementById('msgContextMenu');
+    if (menu) menu.style.display = 'none';
 
-    if (!selectedMsgId || !currentChatId) return;
+    const targetChatId = currentChatId;
+    const targetMsgId = selectedMsgId;
+    if (!targetMsgId || !targetChatId) return;
 
     try {
         await db.collection('chats')
-            .doc(currentChatId)
+            .doc(targetChatId)
             .collection('messages')
-            .doc(selectedMsgId)
+            .doc(targetMsgId)
             .update({
                 deletedFor: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
             });
 
-        document.querySelector(`[data-msg-id="${selectedMsgId}"]`)?.remove();
+        if (currentChatId === targetChatId) {
+            document.querySelector(`[data-msg-id="${targetMsgId}"]`)?.remove();
+            rebuildLoadedDateDividers(document.getElementById('chatMessages'));
+        }
 
         toast('Удалено у вас');
     } catch (e) {
-        console.error(e);
+        console.error('ctxDeleteForMe error:', e);
         toast('Ошибка удаления');
     }
 }
 
 async function ctxDeleteForBoth() {
-    document.getElementById('msgContextMenu').style.display = 'none';
+    const menu = document.getElementById('msgContextMenu');
+    if (menu) menu.style.display = 'none';
 
-    if (!selectedMsgId || !selectedMsgData || !currentChatId) return;
+    // Freeze the target immediately. Permission checks below can be async;
+    // global selectedMsg* must not be allowed to change the deletion target.
+    const targetChatId = currentChatId;
+    const targetMsgId = selectedMsgId;
+    const targetMsgData = selectedMsgData;
+    const targetWasChannel = currentChatIsChannel;
+    const targetWasGroup = currentChatIsGroup;
 
-    const isMyMessage = selectedMsgData.senderId === currentUser.uid;
+    if (!targetMsgId || !targetMsgData || !targetChatId) return;
 
+    const isMyMessage = targetMsgData.senderId === currentUser.uid;
     let canDelete = false;
 
-if (isCurrentUserDeveloper) {
-    canDelete = true;
-} else if (currentChatIsChannel) {
-    const chatDoc = await db.collection('chats').doc(currentChatId).get();
-    const chat = chatDoc.data();
-
-    const isOwner = chat?.ownerId === currentUser.uid;
-    const isAdmin = (chat?.admins || []).includes(currentUser.uid);
-
-    canDelete = isOwner || isAdmin;
-} else if (currentChatIsGroup) {
-    canDelete = await isGroupAdmin(currentChatId, currentUser.uid);
-} else {
-    canDelete = isMyMessage;
-}
+    if (isCurrentUserDeveloper) {
+        canDelete = true;
+    } else if (targetWasChannel) {
+        const chatDoc = await db.collection('chats').doc(targetChatId).get();
+        const chat = chatDoc.data();
+        const isOwner = chat?.ownerId === currentUser.uid;
+        const isAdmin = (chat?.admins || []).includes(currentUser.uid);
+        canDelete = isOwner || isAdmin;
+    } else if (targetWasGroup) {
+        canDelete = await isGroupAdmin(targetChatId, currentUser.uid);
+    } else {
+        canDelete = isMyMessage;
+    }
 
     if (!canDelete) {
         toast('Нельзя удалить у обоих');
         return;
     }
 
-if (!confirm(currentChatIsChannel ? 'Удалить пост у всех?' : 'Удалить сообщение у обоих?')) return;
+    if (!confirm(targetWasChannel ? 'Удалить пост у всех?' : 'Удалить сообщение у обоих?')) return;
 
     try {
         await db.collection('chats')
-            .doc(currentChatId)
+            .doc(targetChatId)
             .collection('messages')
-            .doc(selectedMsgId)
+            .doc(targetMsgId)
             .delete();
 
-        document.querySelector(`[data-msg-id="${selectedMsgId}"]`)?.remove();
+        // Only touch the DOM if we are still looking at the same chat.
+        if (currentChatId === targetChatId) {
+            document.querySelector(`[data-msg-id="${targetMsgId}"]`)?.remove();
+            rebuildLoadedDateDividers(document.getElementById('chatMessages'));
+        }
 
-toast(currentChatIsChannel ? 'Пост удалён у всех' : 'Удалено у обоих');
+        toast(targetWasChannel ? 'Пост удалён у всех' : 'Удалено у обоих');
     } catch (e) {
-        console.error(e);
+        console.error('ctxDeleteForBoth error:', e);
         toast('Ошибка удаления');
     }
 }
@@ -24225,6 +24263,28 @@ body.contegg-has-pinned-message #chatMessages {
         transform:none !important;
         will-change:auto !important;
     }
+}
+</style>
+
+
+<style id="CONTEGG-STICKER-CHAT-NO-ANIMATION-FIX">
+/* The sticker save/remove window should appear instantly. Chrome was visibly
+   stuttering while compositing this modal with the desktop chat layers. */
+#conteggStickerChatModal,
+#conteggStickerChatModal.modal-overlay,
+#conteggStickerChatModal.show {
+    transition: none !important;
+    animation: none !important;
+}
+
+#conteggStickerChatModal .contegg-sticker-chat-sheet,
+#conteggStickerChatModal.show .contegg-sticker-chat-sheet {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+    translate: none !important;
+    opacity: 1 !important;
+    will-change: auto !important;
 }
 </style>
 
