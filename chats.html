@@ -9751,7 +9751,21 @@ if (msg.notificationAction === 'terminate_device' && msg.actionDeviceId) {
             );
         });
 
-        // ПКМ специально НЕ перехватываем: он всплывает к обычному меню сообщения.
+        // ПКМ: принудительно открываем ОБЫЧНОЕ меню сообщения для стикера.
+        // Не полагаемся на bubbling: у стикера есть собственная лёгкая панель по ЛКМ.
+        sticker.addEventListener('contextmenu', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+
+            hideConteggStickerContextMenu?.();
+
+            selectedMsgId = id;
+            selectedMsgData = msg;
+
+            const p = getPointerPosition(e);
+            showMsgActionsAt(p.x, p.y, id, msg);
+        });
     });
 
     div.querySelectorAll('.contegg-mention[data-mention-username]').forEach(btn => {
@@ -11094,6 +11108,12 @@ async function showMsgActionsAt(x, y, id, msg) {
     const menu = document.getElementById('msgContextMenu');
     const editItem = document.getElementById('ctxEditItem');
     const deleteBothItem = document.getElementById('ctxDeleteForBothItem');
+    const pinItem = document.getElementById('ctxPinMessageItem');
+
+    if (pinItem) {
+        const pinText = pinItem.querySelector('span');
+        if (pinText) pinText.textContent = msg.stickerUrl ? 'Закрепить / открепить стикер' : 'Закрепить / открепить';
+    }
 
     const isMyMessage = msg.senderId === currentUser.uid;
     const copyItem = document.getElementById('ctxCopyItem');
