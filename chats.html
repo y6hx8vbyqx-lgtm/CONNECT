@@ -9739,14 +9739,57 @@ if (msg.notificationAction === 'terminate_device' && msg.actionDeviceId) {
                 ownerId: sticker.dataset.stickerOwner || ''
             });
         });
+
+        let stickerLongPressTimer = null;
+        let stickerTouchMoved = false;
+        let stickerTouchX = 0;
+        let stickerTouchY = 0;
+
+        sticker.addEventListener('touchstart', e => {
+            const t = e.touches?.[0];
+            if (!t) return;
+            stickerTouchMoved = false;
+            stickerTouchX = t.clientX;
+            stickerTouchY = t.clientY;
+            stickerLongPressTimer = setTimeout(() => {
+                stickerLongPressTimer = null;
+                if (stickerTouchMoved) return;
+                selectedMsgId = id;
+                selectedMsgData = msg;
+                showMsgActionsAt(stickerTouchX, stickerTouchY, id, msg);
+            }, 500);
+        }, { passive: true });
+
+        sticker.addEventListener('touchmove', e => {
+            const t = e.touches?.[0];
+            if (!t) return;
+            if (Math.abs(t.clientX - stickerTouchX) > 10 || Math.abs(t.clientY - stickerTouchY) > 10) {
+                stickerTouchMoved = true;
+                if (stickerLongPressTimer) {
+                    clearTimeout(stickerLongPressTimer);
+                    stickerLongPressTimer = null;
+                }
+            }
+        }, { passive: true });
+
+        sticker.addEventListener('touchend', () => {
+            if (stickerLongPressTimer) {
+                clearTimeout(stickerLongPressTimer);
+                stickerLongPressTimer = null;
+            }
+        }, { passive: true });
         sticker.addEventListener('contextmenu', e => {
+            // Sticker is still a normal chat message on right click.
+            // Use exactly the same message context menu as text/media messages.
             e.preventDefault();
             e.stopPropagation();
-            showConteggStickerContextMenu(e.clientX, e.clientY, {
-                url: sticker.dataset.stickerUrl || '',
-                id: sticker.dataset.stickerId || '',
-                ownerId: sticker.dataset.stickerOwner || ''
-            }, { fromChat: true });
+            e.stopImmediatePropagation();
+
+            selectedMsgId = id;
+            selectedMsgData = msg;
+
+            const p = getPointerPosition(e);
+            showMsgActionsAt(p.x, p.y, id, msg);
         });
     });
 
@@ -19180,20 +19223,32 @@ body.keyboard-no-transition .chat-input-bar {
             const grid = document.createElement('div');
             grid.className = 'contegg-sticker-grid';
 
-            const createdStickers = created.map(s => ({
-                ...s,
-                ownerId: s.ownerId || currentUser.uid,
-                source: 'created'
-            }));
+            const add = document.createElement('button');
+            add.type = 'button';
+            add.className = 'contegg-sticker-cell contegg-sticker-add';
+            add.innerHTML = '<i class="fas fa-plus"></i><span>Создать</span>';
+            add.title = `Создать стикер (${created.length}/${CONTEGG_MAX_CREATED_STICKERS})`;
+            add.disabled = created.length >= CONTEGG_MAX_CREATED_STICKERS;
+            add.addEventListener('click', () => {
+                if (add.disabled) {
+                    toast('Можно создать максимум 4 стикера');
+                    return;
+                }
+                document.getElementById('conteggStickerFileInput')?.click();
+            });
+            grid.appendChild(add);
 
-            const savedStickers = visibleSaved.map(s => ({
-                ...s,
-                id: s.sourceStickerId || s.stickerId || s.id,
-                ownerId: s.sourceOwnerId || s.ownerId || '',
-                source: 'saved'
-            }));
+            const all = [
+                ...created.map(s => ({ ...s, ownerId: s.ownerId || currentUser.uid, source: 'created' })),
+                ...visibleSaved.map(s => ({
+                    ...s,
+                    id: s.sourceStickerId || s.stickerId || s.id,
+                    ownerId: s.sourceOwnerId || s.ownerId || '',
+                    source: 'saved'
+                }))
+            ];
 
-            const appendStickerCell = sticker => {
+            all.forEach(sticker => {
                 const cell = document.createElement('button');
                 cell.type = 'button';
                 cell.className = 'contegg-sticker-cell';
@@ -19205,26 +19260,7 @@ body.keyboard-no-transition .chat-input-bar {
                     showConteggStickerContextMenu(e.clientX, e.clientY, sticker, { fromPanel: true });
                 });
                 grid.appendChild(cell);
-            };
-
-            // Own stickers occupy the first cells. The plus button always sits
-            // in the NEXT free own-sticker cell, exactly like Telegram.
-            createdStickers.forEach(appendStickerCell);
-
-            if (createdStickers.length < CONTEGG_MAX_CREATED_STICKERS) {
-                const add = document.createElement('button');
-                add.type = 'button';
-                add.className = 'contegg-sticker-cell contegg-sticker-add';
-                add.innerHTML = '<i class="fas fa-plus"></i><span>Создать</span>';
-                add.title = `Создать стикер (${createdStickers.length}/${CONTEGG_MAX_CREATED_STICKERS})`;
-                add.addEventListener('click', () => {
-                    document.getElementById('conteggStickerFileInput')?.click();
-                });
-                grid.appendChild(add);
-            }
-
-            // Saved stickers continue after the user's own creation slots.
-            savedStickers.forEach(appendStickerCell);
+            });
 
             content.replaceChildren(grid);
         } catch (e) {
