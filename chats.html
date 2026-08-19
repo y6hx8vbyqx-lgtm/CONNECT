@@ -24671,6 +24671,7 @@ let conteggMusicShuffle = false;
 let conteggMusicAccentHydrating = false;
 let conteggMusicShuffleQueue = [];
 let conteggMusicShuffleHistory = [];
+let conteggMusicNowRenderedTrackId = null;
 let conteggMusicDurationHydrating = false;
 
 function conteggMusicCollection() {
@@ -25244,28 +25245,87 @@ function musicPlayPrevious(event) {
     musicPlayTrack(conteggMusicTracks[(idx - 1 + conteggMusicTracks.length) % conteggMusicTracks.length].id);
 }
 
-function renderMusicNowPlaying() {
+function renderMusicNowPlaying(force = false) {
     const box = document.getElementById('conteggMusicNow');
     if (!box) return;
     const track = getCurrentMusicTrack();
     const audio = document.getElementById('conteggMusicAudio');
+
     if (!track) {
-        box.innerHTML = '<div class="contegg-music-empty"><i class="fas fa-headphones"></i><strong>Выберите песню</strong><div style="margin-top:6px">Здесь появится полноэкранный плеер.</div></div>';
+        if (conteggMusicNowRenderedTrackId !== '__empty__' || force) {
+            box.innerHTML = '<div class="contegg-music-empty"><i class="fas fa-headphones"></i><strong>Выберите песню</strong><div style="margin-top:6px">Здесь появится плеер.</div></div>';
+            conteggMusicNowRenderedTrackId = '__empty__';
+        }
         return;
     }
-    const cover = track.coverUrl ? `<img src="${esc(track.coverUrl)}">` : '<i class="fas fa-music"></i>';
-    const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
-    const current = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
-    box.style.setProperty('--music-accent', musicAccentTuple(track.accentColor));
-    box.innerHTML = `<div class="contegg-music-now-cover">${cover}</div>
-        <div class="contegg-music-now-title">${esc(track.title || 'Без названия')}</div>
-        <div class="contegg-music-now-artist">${esc(track.artist || 'Неизвестный исполнитель')}</div>
-        <input class="contegg-music-progress" type="range" min="0" max="${duration || 1}" step="0.1" value="${Math.min(current,duration||1)}" oninput="musicSeek(this.value)">
-        <div class="contegg-music-time-row"><span>${formatMusicTime(current)}</span><span>−${formatMusicTime(Math.max(0,duration-current))}</span></div>
-        <div class="contegg-music-controls"><button onclick="musicPlayPrevious(event)"><i class="fas fa-backward-step"></i></button><button class="main" onclick="musicTogglePlay(event)"><i class="fas ${audio.paused ? 'fa-play' : 'fa-pause'}"></i></button><button onclick="musicPlayNext(event)"><i class="fas fa-forward-step"></i></button></div>
-        <div class="contegg-music-extra-controls"><button class="${conteggMusicShuffle ? 'active' : ''}" data-music-shuffle-button onclick="toggleMusicShuffle(event)" title="Перемешать"><i class="fas fa-shuffle"></i></button></div>
-        ${musicVolumeMarkup()}
-        <div class="contegg-music-lyrics"><h3>Текст</h3>${track.lyrics ? `<pre>${esc(track.lyrics)}</pre>` : '<div class="contegg-music-no-lyrics">Текст для этой песни не добавлен.</div>'}</div>`;
+
+    const needsStructure = force || conteggMusicNowRenderedTrackId !== track.id || !box.querySelector('.contegg-music-now-cover');
+
+    if (needsStructure) {
+        const cover = track.coverUrl ? `<img src="${esc(track.coverUrl)}">` : '<i class="fas fa-music"></i>';
+        box.innerHTML = `<div class="contegg-music-now-cover">${cover}</div>
+            <div class="contegg-music-now-title">${esc(track.title || 'Без названия')}</div>
+            <div class="contegg-music-now-artist">${esc(track.artist || 'Неизвестный исполнитель')}</div>
+            <div class="contegg-music-progress-shell" data-music-seekbar role="slider" aria-label="Позиция воспроизведения" tabindex="0"><div class="contegg-music-progress-fill"></div></div>
+            <div class="contegg-music-time-row"><span>0:00</span><span>−0:00</span></div>
+            <div class="contegg-music-controls"><button onclick="musicPlayPrevious(event)"><i class="fas fa-backward-step"></i></button><button class="main contegg-music-main-toggle" onclick="musicTogglePlay(event)"><i class="fas fa-play"></i></button><button onclick="musicPlayNext(event)"><i class="fas fa-forward-step"></i></button></div>
+            <div class="contegg-music-extra-controls"><button class="contegg-music-now-shuffle" data-music-shuffle-button onclick="toggleMusicShuffle(event)" title="Перемешать"><i class="fas fa-shuffle"></i></button></div>
+            ${musicVolumeMarkup()}
+            <div class="contegg-music-lyrics"><h3>Текст</h3>${track.lyrics ? `<pre>${esc(track.lyrics)}</pre>` : '<div class="contegg-music-no-lyrics">Текст для этой песни не добавлен.</div>'}</div>`;
+        conteggMusicNowRenderedTrackId = track.id;
+    }
+
+    // From here on: only mutate tiny live elements. Never rebuild the whole pane.
+    const duration = Number.isFinite(audio?.duration) ? audio.duration : 0;
+    const current = Number.isFinite(audio?.currentTime) ? audio.currentTime : 0;
+    const progressFill = box.querySelector('.contegg-music-progress-fill');
+    if (progressFill) {
+        const ratio = duration > 0 ? Math.min(1, Math.max(0, current / duration)) : 0;
+        progressFill.style.width = `${ratio * 100}%`;
+    }
+    const timeRow = box.querySelector('.contegg-music-time-row');
+    if (timeRow?.children?.length >= 2) {
+        timeRow.children[0].textContent = formatMusicTime(current);
+        timeRow.children[1].textContent = `−${formatMusicTime(Math.max(0, duration-current))}`;
+    }
+    const playIcon = box.querySelector('.contegg-music-main-toggle i');
+    if (playIcon) playIcon.className = `fas ${audio?.paused ? 'fa-play' : 'fa-pause'}`;
+    const shuffleBtn = box.querySelector('.contegg-music-now-shuffle');
+    if (shuffleBtn) shuffleBtn.classList.toggle('active', !!conteggMusicShuffle);
+    const value = Math.round((audio?.volume ?? 0.7) * 100);
+    const volumeSlider = box.querySelector('.contegg-music-volume-slider');
+    if (volumeSlider && volumeSlider !== document.activeElement) volumeSlider.value = String(value);
+    const volumePercent = box.querySelector('.contegg-music-volume-percent');
+    if (volumePercent) volumePercent.textContent = `${value}%`;
+}
+
+function seekMusicFromStableBar(bar, clientX) {
+    const audio = document.getElementById('conteggMusicAudio');
+    if (!bar || !audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    const rect = bar.getBoundingClientRect();
+    if (!rect.width) return;
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    audio.currentTime = ratio * audio.duration;
+    renderMusicNowPlaying();
+}
+
+if (!window.__conteggMusicStableSeekBound) {
+    window.__conteggMusicStableSeekBound = true;
+    document.addEventListener('pointerdown', (event) => {
+        const bar = event.target.closest?.('[data-music-seekbar]');
+        if (!bar) return;
+        event.preventDefault();
+        seekMusicFromStableBar(bar, event.clientX);
+    });
+    document.addEventListener('keydown', (event) => {
+        const bar = event.target.closest?.('[data-music-seekbar]');
+        if (!bar || !['ArrowLeft','ArrowRight'].includes(event.key)) return;
+        const audio = document.getElementById('conteggMusicAudio');
+        if (!audio || !Number.isFinite(audio.duration)) return;
+        event.preventDefault();
+        audio.currentTime = Math.min(audio.duration, Math.max(0, audio.currentTime + (event.key === 'ArrowRight' ? 5 : -5)));
+        renderMusicNowPlaying();
+    });
 }
 
 function musicSeek(value) {
@@ -25290,7 +25350,9 @@ function updateMusicMini() {
     button.style.color = `rgb(${musicAccentTuple(track.accentColor)})`;
     button.style.background = `rgba(${musicAccentTuple(track.accentColor)},.14)`;
     button.title = `${track.title || 'Без названия'} — ${track.artist || 'Неизвестный исполнитель'}`;
-    renderMusicPlayerWindow();
+    if (document.getElementById('conteggMusicPlayerOverlay')?.classList.contains('show')) {
+        renderMusicPlayerWindow();
+    }
 }
 
 
@@ -25347,6 +25409,8 @@ function updateMusicSystemSession(track) {
     } catch(e) {}
 }
 
+console.log('%cContegg build: V34', 'color:#fa2d48;font-weight:800', '• Music paint fix');
+
 const conteggMusicAudioEl = document.getElementById('conteggMusicAudio');
 try {
     const savedMusicVolume = Number(localStorage.getItem('contegg_music_volume'));
@@ -25357,17 +25421,7 @@ conteggMusicAudioEl?.addEventListener('pause', () => { updateMusicMini(); update
 conteggMusicAudioEl?.addEventListener('ended', () => musicPlayNext());
 conteggMusicAudioEl?.addEventListener('timeupdate', () => {
     const app = document.getElementById('conteggMusicApp');
-    if (!app?.classList.contains('show')) return;
-    const slider = app.querySelector('.contegg-music-progress');
-    const row = app.querySelector('.contegg-music-time-row');
-    if (slider && Number.isFinite(conteggMusicAudioEl.duration)) {
-        slider.max = conteggMusicAudioEl.duration;
-        slider.value = conteggMusicAudioEl.currentTime;
-    }
-    if (row && Number.isFinite(conteggMusicAudioEl.duration)) {
-        row.children[0].textContent = formatMusicTime(conteggMusicAudioEl.currentTime);
-        row.children[1].textContent = `−${formatMusicTime(Math.max(0,conteggMusicAudioEl.duration-conteggMusicAudioEl.currentTime))}`;
-    }
+    if (app?.classList.contains('show')) renderMusicNowPlaying();
     const player = document.getElementById('conteggMusicPlayerOverlay');
     if (player?.classList.contains('show') && Number.isFinite(conteggMusicAudioEl.duration)) {
         const pslider = player.querySelector('.contegg-music-player-progress');
@@ -25418,6 +25472,169 @@ window.toggleMusicShuffle = toggleMusicShuffle;
 window.openMusicPlayerWindow = openMusicPlayerWindow;
 window.closeMusicPlayerWindow = closeMusicPlayerWindow;
 </script>
+
+
+<style id="CONTEGG-MUSIC-RIGHT-PANEL-STABLE-V33">
+/* V33: keep the now-playing column on one stable compositor layer. */
+.contegg-music-now {
+    background:#111113 !important;
+    border-left:1px solid rgba(255,255,255,.055) !important;
+    box-shadow:none !important;
+    contain:layout style !important;
+    transform:none !important;
+    filter:none !important;
+    backdrop-filter:none !important;
+    transition:none !important;
+    animation:none !important;
+}
+.contegg-music-now *,
+.contegg-music-now *::before,
+.contegg-music-now *::after {
+    transition:none !important;
+    animation:none !important;
+}
+.contegg-music-now-cover {
+    box-shadow:0 16px 44px rgba(0,0,0,.30) !important;
+    transform:none !important;
+}
+/* Native accent-color ranges can repaint/flicker in Chrome; draw stable tracks ourselves. */
+.contegg-music-now input[type="range"],
+.contegg-music-player-window input[type="range"] {
+    -webkit-appearance:none !important;
+    appearance:none !important;
+    height:20px !important;
+    background:transparent !important;
+    accent-color:auto !important;
+    outline:none !important;
+    transform:none !important;
+    filter:none !important;
+}
+.contegg-music-now input[type="range"]::-webkit-slider-runnable-track,
+.contegg-music-player-window input[type="range"]::-webkit-slider-runnable-track {
+    height:5px;
+    border-radius:999px;
+    background:#34343a;
+}
+.contegg-music-now input[type="range"]::-webkit-slider-thumb,
+.contegg-music-player-window input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance:none;
+    width:14px;
+    height:14px;
+    border-radius:50%;
+    background:#f1f1f3;
+    margin-top:-4.5px;
+    border:0;
+    box-shadow:none;
+}
+.contegg-music-now input[type="range"]::-moz-range-track,
+.contegg-music-player-window input[type="range"]::-moz-range-track {
+    height:5px;
+    border-radius:999px;
+    background:#34343a;
+}
+.contegg-music-now input[type="range"]::-moz-range-thumb,
+.contegg-music-player-window input[type="range"]::-moz-range-thumb {
+    width:14px;
+    height:14px;
+    border-radius:50%;
+    background:#f1f1f3;
+    border:0;
+    box-shadow:none;
+}
+.contegg-music-volume {
+    border-top:1px solid rgba(255,255,255,.055) !important;
+    background:transparent !important;
+}
+</style>
+
+
+<style id="CONTEGG-MUSIC-PAINT-FIX-V34">
+/* V34: Chrome paint stability. Do not isolate/contain the now-playing column. */
+.contegg-music-app-body {
+    background:#0f0f11 !important;
+    isolation:auto !important;
+    contain:none !important;
+    transform:none !important;
+    will-change:auto !important;
+}
+.contegg-music-now {
+    position:relative !important;
+    z-index:0 !important;
+    background:#111113 !important;
+    background-image:none !important;
+    background-color:#111113 !important;
+    contain:none !important;
+    content-visibility:visible !important;
+    isolation:auto !important;
+    transform:none !important;
+    translate:none !important;
+    will-change:auto !important;
+    backface-visibility:visible !important;
+    filter:none !important;
+    backdrop-filter:none !important;
+    -webkit-backdrop-filter:none !important;
+    transition:none !important;
+    animation:none !important;
+    box-shadow:none !important;
+    overflow-y:auto !important;
+    overflow-x:hidden !important;
+}
+.contegg-music-now::before,
+.contegg-music-now::after {
+    content:none !important;
+    display:none !important;
+}
+.contegg-music-now > * {
+    position:relative;
+    z-index:1;
+}
+/* Passive progress no longer uses a native range element, which was invalidating paint. */
+.contegg-music-progress-shell {
+    position:relative;
+    width:100%;
+    height:18px;
+    margin:30px 0 8px;
+    cursor:pointer;
+    background:transparent !important;
+    border:0 !important;
+    outline:none;
+    contain:none !important;
+    transform:none !important;
+}
+.contegg-music-progress-shell::before {
+    content:"";
+    position:absolute;
+    left:0;
+    right:0;
+    top:7px;
+    height:4px;
+    border-radius:999px;
+    background:#34343a;
+}
+.contegg-music-progress-fill {
+    position:absolute;
+    left:0;
+    top:7px;
+    height:4px;
+    width:0;
+    max-width:100%;
+    border-radius:999px;
+    background:#f1f1f3;
+    pointer-events:none;
+    transition:none !important;
+    animation:none !important;
+    transform:none !important;
+    will-change:auto !important;
+}
+.contegg-music-progress-shell:focus-visible::before {
+    box-shadow:0 0 0 2px rgba(255,255,255,.14);
+}
+/* Volume remains native but never recolors/recomposites the right-pane background. */
+.contegg-music-now .contegg-music-volume-slider {
+    contain:none !important;
+    will-change:auto !important;
+}
+</style>
 
 </body>
 </html>
