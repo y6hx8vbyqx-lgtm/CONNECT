@@ -9774,15 +9774,6 @@ if (msg.notificationAction === 'terminate_device' && msg.actionDeviceId) {
                 { fromChat: true }
             );
         });
-        sticker.addEventListener('contextmenu', e => {
-            e.preventDefault();
-            e.stopPropagation();
-            showConteggStickerContextMenu(e.clientX, e.clientY, {
-                url: sticker.dataset.stickerUrl || '',
-                id: sticker.dataset.stickerId || '',
-                ownerId: sticker.dataset.stickerOwner || ''
-            }, { fromChat: true });
-        });
     });
 
     div.querySelectorAll('.contegg-mention[data-mention-username]').forEach(btn => {
@@ -10060,7 +10051,6 @@ div.addEventListener('touchstart', (e) => {
         e.target.closest('.audio-waveform') ||
         e.target.closest('.audio-progress') ||
         e.target.closest('.msg-video') ||
-        e.target.closest('.contegg-chat-sticker') ||
         e.target.closest('.post-comments-btn')
     ) {
         return;
@@ -10118,6 +10108,22 @@ div.addEventListener('touchend', (e) => {
 
         if (!touchMoved) {
             ignoreNextClick = true;
+
+            const stickerEl = e.target.closest('.contegg-chat-sticker');
+            if (stickerEl) {
+                const rect = stickerEl.getBoundingClientRect();
+                showConteggStickerContextMenu(
+                    Math.min(rect.left + rect.width * 0.55, window.innerWidth - 16),
+                    Math.min(rect.top + rect.height * 0.42, window.innerHeight - 16),
+                    {
+                        url: stickerEl.dataset.stickerUrl || '',
+                        id: stickerEl.dataset.stickerId || '',
+                        ownerId: stickerEl.dataset.stickerOwner || ''
+                    },
+                    { fromChat: true }
+                );
+                return;
+            }
 
             const img = e.target.closest('.msg-image');
 
@@ -11116,6 +11122,7 @@ function getPointerPosition(e) {
 }
 
 async function showMsgActionsAt(x, y, id, msg) {
+    hideConteggStickerContextMenu?.();
     window.__justOpenedPanel = true;
     setTimeout(() => window.__justOpenedPanel = false, 250);
 
@@ -11839,6 +11846,8 @@ async function ctxReply() {
         replyText = '🎥 Видео';
     } else if (selectedMsgData.audioUrl) {
         replyText = '🎤 Голосовое';
+    } else if (selectedMsgData.stickerUrl) {
+        replyText = '🏷️ Стикер';
     }
 
     let senderName = 'Пользователь';
@@ -19401,6 +19410,9 @@ body.keyboard-no-transition .chat-input-bar {
     }
 
     function showConteggStickerContextMenu(x, y, sticker, options = {}) {
+        const normalMenu = document.getElementById('msgContextMenu');
+        if (normalMenu) normalMenu.style.display = 'none';
+
         const menu = document.getElementById('conteggStickerContextMenu');
         if (!menu || !sticker?.url) return;
 
