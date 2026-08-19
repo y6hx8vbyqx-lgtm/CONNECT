@@ -2347,6 +2347,9 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
             onclick="window.location.reload()"
             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.location.reload();}"
         >Contegg</span>
+        <button id="conteggMusicHeaderButton" class="contegg-music-header-button" type="button" title="Открыть текущую песню" aria-label="Открыть текущую песню" onclick="openMusicPlayerWindow()" style="display:none;">
+            <i class="fas fa-music"></i>
+        </button>
         <button
             class="navbar-btn contegg-create-tab-btn"
             onclick="showCreateMenu()"
@@ -2491,9 +2494,6 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
             <button class="btn btn-secondary" onclick="openAccountsFromSettings()">
                 <i class="fas fa-user-circle"></i> Аккаунты
             </button>
-            <button class="btn btn-secondary" onclick="openMusicSettings()">
-                <i class="fas fa-music"></i> Музыка
-            </button>
             <button class="btn btn-secondary" onclick="closeSettingsModal()">Закрыть</button>
         </div>
     </div>
@@ -2527,7 +2527,10 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
 <div class="contegg-music-editor-overlay" id="musicTrackEditorOverlay">
     <div class="contegg-music-editor-card">
         <div class="contegg-music-settings-head">
-            <div class="contegg-music-settings-title">Данные песни</div>
+            <div>
+                <div class="contegg-music-settings-title">Добавить песню</div>
+                <div style="font-size:13px;color:#9999a0;margin-top:5px;">Заполни данные трека перед добавлением в библиотеку</div>
+            </div>
             <button class="contegg-music-close" type="button" onclick="closeMusicTrackEditor()"><i class="fas fa-times"></i></button>
         </div>
         <div class="contegg-music-editor-grid">
@@ -2536,8 +2539,8 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
             </button>
             <div class="contegg-music-editor-fields">
                 <label>Название<input id="musicTrackTitleInput" maxlength="100" placeholder="Название песни"></label>
-                <label>Исполнитель<input id="musicTrackArtistInput" maxlength="100" placeholder="Исполнитель"></label>
-                <label>Текст песни<textarea id="musicTrackLyricsInput" maxlength="12000" placeholder="Текст песни (необязательно)"></textarea></label>
+                <label>Автор<input id="musicTrackArtistInput" maxlength="100" placeholder="Автор песни"></label>
+                <label>Текст песни<textarea id="musicTrackLyricsInput" maxlength="12000" placeholder="Текст песни"></textarea></label>
             </div>
         </div>
         <input id="musicCoverInput" type="file" accept="image/*" hidden>
@@ -2557,8 +2560,14 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
     <button type="button" onclick="musicTogglePlay(event)" id="conteggMusicMiniPlay"><i class="fas fa-pause"></i></button>
     <button type="button" onclick="musicPlayNext(event)"><i class="fas fa-forward-step"></i></button>
 </div>
+<div class="contegg-music-player-overlay" id="conteggMusicPlayerOverlay" aria-hidden="true" onclick="if(event.target===this) closeMusicPlayerWindow()">
+    <div class="contegg-music-player-window" id="conteggMusicPlayerWindow">
+        <button class="contegg-music-player-close" type="button" onclick="closeMusicPlayerWindow()" aria-label="Скрыть плеер"><i class="fas fa-times"></i></button>
+        <div id="conteggMusicPlayerContent"></div>
+    </div>
+</div>
 <audio id="conteggMusicAudio" preload="metadata"></audio>
-<input id="conteggMusicFilesInput" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.flac" multiple hidden>
+<input id="conteggMusicFilesInput" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.flac" onchange="handleMusicFiles(this.files); this.value='';" hidden>
 
 <div class="modal-overlay" id="devicesModal">
     <div class="modal-sheet">
@@ -12316,6 +12325,22 @@ const avHTML = myAvatarSrc
                     <span class="profile-cell-title">Контакты</span>
                     <span class="profile-cell-value" style="display:flex;align-items:center;gap:7px;">
                         ${Object.keys(contactsCache || {}).length}
+                        <i class="fas fa-chevron-right profile-cell-arrow"></i>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="profile-section">
+            <div class="profile-cell" onclick="openMusicSettings()">
+                <div class="profile-cell-icon" style="background:linear-gradient(145deg,rgba(250,45,72,.22),rgba(197,27,104,.20));color:#fa2d48;">
+                    <i class="fas fa-music"></i>
+                </div>
+                <div class="profile-cell-content">
+                    <span class="profile-cell-title">Музыка</span>
+                    <span class="profile-cell-value" style="display:flex;align-items:center;gap:7px;">
+                        Contegg Music
                         <i class="fas fa-chevron-right profile-cell-arrow"></i>
                     </span>
                 </div>
@@ -24573,6 +24598,28 @@ body.contegg-has-pinned-message #chatMessages {
 .contegg-music-app{position:fixed;inset:0;z-index:3200;background:#0f0f11;color:#f5f5f7;display:none;flex-direction:column}.contegg-music-app.show{display:flex}.contegg-music-app-topbar{height:64px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:space-between;padding:0 22px;flex:none;background:#111113}.contegg-music-brand{font-size:18px;font-weight:720;display:flex;align-items:center;gap:10px}.contegg-music-brand-dot{width:31px;height:31px;border-radius:9px;background:linear-gradient(145deg,#fa2d48,#c51b68);display:flex;align-items:center;justify-content:center;color:white}.contegg-music-app-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(420px,1fr) minmax(360px,480px);overflow:hidden}.contegg-music-library{overflow:auto;padding:34px 36px 70px}.contegg-music-now{border-left:1px solid rgba(255,255,255,.07);padding:34px 34px 40px;overflow:auto;background:radial-gradient(circle at 50% 15%,rgba(120,35,58,.18),transparent 42%),#111113}.contegg-music-library-head{display:flex;align-items:end;justify-content:space-between;margin-bottom:24px}.contegg-music-library-head h1{font-size:36px;margin:0;letter-spacing:-.04em}.contegg-music-library-head span{color:#909096;font-size:13px}.contegg-music-empty{height:60%;min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#8f8f96}.contegg-music-empty i{font-size:48px;color:#55555b;margin-bottom:16px}.contegg-music-track{display:grid;grid-template-columns:52px minmax(0,1fr) minmax(120px,.55fr) 70px;align-items:center;gap:13px;padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.055);border-radius:10px;cursor:pointer}.contegg-music-track:hover{background:rgba(255,255,255,.045)}.contegg-music-track.playing{background:rgba(250,45,72,.085)}.contegg-music-track-cover{width:48px;height:48px;border-radius:9px;background:#242428;display:flex;align-items:center;justify-content:center;overflow:hidden}.contegg-music-track-cover img{width:100%;height:100%;object-fit:cover}.contegg-music-track-title{font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.contegg-music-track-artist{color:#a0a0a7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.contegg-music-track-time{text-align:right;color:#85858c;font-size:13px}.contegg-music-now-cover{width:min(100%,390px);aspect-ratio:1;border-radius:20px;background:#242428;margin:6px auto 28px;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:72px;color:#666}.contegg-music-now-cover img{width:100%;height:100%;object-fit:cover}.contegg-music-now-title{font-size:27px;font-weight:760;letter-spacing:-.025em;margin-bottom:5px}.contegg-music-now-artist{font-size:18px;color:#b0b0b6}.contegg-music-progress{width:100%;margin:30px 0 8px;accent-color:#fa2d48}.contegg-music-time-row{display:flex;justify-content:space-between;color:#77777e;font-size:12px}.contegg-music-controls{display:flex;align-items:center;justify-content:center;gap:30px;margin:22px 0}.contegg-music-controls button{border:0;background:transparent;color:#eee;cursor:pointer;font-size:28px;width:50px;height:50px}.contegg-music-controls .main{width:64px;height:64px;border-radius:50%;background:#eee;color:#111;font-size:25px}.contegg-music-lyrics{margin-top:24px;border-top:1px solid rgba(255,255,255,.07);padding-top:22px}.contegg-music-lyrics h3{margin:0 0 12px;font-size:18px}.contegg-music-lyrics pre{white-space:pre-wrap;font:inherit;line-height:1.65;color:#b8b8be;margin:0}.contegg-music-no-lyrics{color:#696970}.contegg-music-beta{font-size:9px;color:#fa2d48;border:1px solid rgba(250,45,72,.35);padding:2px 5px;border-radius:6px;margin-left:4px;vertical-align:2px}.contegg-music-chat-avatar{background:linear-gradient(145deg,#fa2d48,#c51b68)!important}.contegg-music-mini{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:3100;width:min(470px,calc(100vw - 28px));height:58px;border-radius:16px;background:rgba(35,35,39,.96);border:1px solid rgba(255,255,255,.09);box-shadow:0 16px 40px rgba(0,0,0,.38);align-items:center;padding:7px;gap:10px;color:#fff}.contegg-music-mini-cover{width:44px;height:44px;border-radius:10px;background:#29292e;display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none}.contegg-music-mini-cover img{width:100%;height:100%;object-fit:cover}.contegg-music-mini-meta{flex:1;min-width:0;cursor:pointer}.contegg-music-mini-meta div,.contegg-music-mini-meta span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.contegg-music-mini-meta div{font-size:13px;font-weight:650}.contegg-music-mini-meta span{font-size:11px;color:#9d9da4;margin-top:2px}.contegg-music-mini button{width:36px;height:36px;border:0;background:transparent;color:#eee;border-radius:50%;cursor:pointer;font-size:16px}
 .contegg-music-editor-grid{display:grid;grid-template-columns:190px 1fr;gap:20px}.contegg-music-cover-edit{aspect-ratio:1;border:0;border-radius:18px;background:#242428;color:#aaa;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;overflow:hidden;cursor:pointer;background-size:cover;background-position:center}.contegg-music-cover-edit.has-cover{color:transparent}.contegg-music-editor-fields label{display:block;font-size:12px;color:#9999a0;margin-bottom:13px}.contegg-music-editor-fields input,.contegg-music-editor-fields textarea{width:100%;box-sizing:border-box;margin-top:6px;border:0;outline:0;background:#27272b;color:#fff;border-radius:12px;padding:11px 12px;font:inherit}.contegg-music-editor-fields textarea{min-height:130px;resize:vertical}.contegg-music-editor-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}.contegg-music-editor-actions .btn{width:auto;min-width:120px}
 @media(max-width:900px){.contegg-music-app-body{display:block;overflow:auto}.contegg-music-library{padding:22px 16px 30px;overflow:visible}.contegg-music-now{border-left:0;border-top:1px solid rgba(255,255,255,.07);padding:26px 20px 110px}.contegg-music-track{grid-template-columns:50px minmax(0,1fr) 54px}.contegg-music-track-artist{display:none}.contegg-music-library-head h1{font-size:30px}.contegg-music-settings-overlay,.contegg-music-editor-overlay{padding:8px;align-items:flex-end}.contegg-music-settings-card,.contegg-music-editor-card{border-radius:22px 22px 14px 14px;max-height:92vh}.contegg-music-editor-grid{grid-template-columns:1fr}.contegg-music-cover-edit{width:180px;margin:auto}.contegg-music-mini{bottom:76px}}
+
+/* V31: cover-derived Apple Music style glow + compact header player launcher */
+.contegg-music-track{
+    --music-accent: 250,45,72;
+    background:linear-gradient(90deg,rgba(var(--music-accent),.055),rgba(var(--music-accent),.018) 58%,transparent);
+    box-shadow:inset 3px 0 0 rgba(var(--music-accent),.26);
+}
+.contegg-music-track:hover{background:linear-gradient(90deg,rgba(var(--music-accent),.16),rgba(var(--music-accent),.055) 65%,transparent)}
+.contegg-music-track.playing{background:linear-gradient(90deg,rgba(var(--music-accent),.28),rgba(var(--music-accent),.075) 72%,transparent);box-shadow:inset 3px 0 0 rgb(var(--music-accent)),0 0 26px rgba(var(--music-accent),.11)}
+.contegg-music-settings-track{--music-accent:250,45,72;background:linear-gradient(90deg,rgba(var(--music-accent),.095),rgba(var(--music-accent),.02) 68%,#202023);box-shadow:inset 3px 0 0 rgba(var(--music-accent),.34)}
+.contegg-music-now{--music-accent:250,45,72;background:radial-gradient(circle at 50% 12%,rgba(var(--music-accent),.24),transparent 43%),linear-gradient(180deg,rgba(var(--music-accent),.055),transparent 45%),#111113}
+.contegg-music-now-cover{box-shadow:0 22px 60px rgba(var(--music-accent),.24)}
+.contegg-music-header-button{width:34px;height:34px;border:0;border-radius:10px;background:rgba(250,45,72,.13);color:#fa2d48;align-items:center;justify-content:center;cursor:pointer;font-size:15px;flex:none;margin-left:6px}.contegg-music-header-button:hover{background:rgba(250,45,72,.22)}
+.contegg-music-header-button.playing i{animation:conteggMusicPulse 1.5s ease-in-out infinite}@keyframes conteggMusicPulse{50%{transform:scale(1.13)}}
+/* old floating bar is intentionally retired; player opens from the header icon */
+#conteggMusicMini{display:none!important}
+.contegg-music-player-overlay{position:fixed;inset:0;z-index:3350;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:20px}.contegg-music-player-overlay.show{display:flex}
+.contegg-music-player-window{--music-accent:250,45,72;position:relative;width:min(500px,calc(100vw - 24px));max-height:min(860px,calc(100vh - 28px));overflow:auto;border-radius:28px;border:1px solid rgba(255,255,255,.09);background:radial-gradient(circle at 50% 7%,rgba(var(--music-accent),.30),transparent 38%),#151517;box-shadow:0 32px 100px rgba(0,0,0,.55),0 0 70px rgba(var(--music-accent),.13);padding:30px;color:#f5f5f7}
+.contegg-music-player-close{position:absolute;right:16px;top:16px;z-index:2;width:36px;height:36px;border:0;border-radius:50%;background:rgba(0,0,0,.32);color:#fff;cursor:pointer}
+.contegg-music-player-window .contegg-music-now-cover{width:min(100%,390px);margin:8px auto 26px}.contegg-music-player-window .contegg-music-now-title{padding-right:44px}
+.contegg-music-extra-controls{display:flex;justify-content:center;gap:14px;margin:4px 0 2px}.contegg-music-extra-controls button{height:40px;min-width:40px;padding:0 13px;border:0;border-radius:999px;background:rgba(255,255,255,.08);color:#c9c9cf;cursor:pointer}.contegg-music-extra-controls button.active{background:rgba(var(--music-accent),.22);color:#fff;box-shadow:inset 0 0 0 1px rgba(var(--music-accent),.34)}
+@media(max-width:900px){.contegg-music-player-overlay{padding:8px;align-items:flex-end}.contegg-music-player-window{width:100%;max-height:92vh;border-radius:26px 26px 14px 14px;padding:24px 20px 28px}.contegg-music-header-button{width:32px;height:32px}}
 </style>
 
 
@@ -24582,7 +24629,10 @@ let conteggMusicTracks = [];
 let conteggMusicCurrentTrackId = null;
 let conteggMusicEditorTrackId = null;
 let conteggMusicPendingCoverFile = null;
+let conteggMusicEditorIsNewUpload = false;
 let conteggMusicUploading = false;
+let conteggMusicShuffle = false;
+let conteggMusicAccentHydrating = false;
 
 function conteggMusicCollection() {
     return db.collection('users').doc(currentUser.uid).collection('musicTracks');
@@ -24595,10 +24645,84 @@ function formatMusicTime(value) {
     return `${m}:${s}`;
 }
 
+
+function musicAccentTuple(value) {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(?:rgb\()?\s*(\d{1,3})\s*[, ]\s*(\d{1,3})\s*[, ]\s*(\d{1,3})/i);
+    if (!match) return '250,45,72';
+    return `${Math.min(255,+match[1])},${Math.min(255,+match[2])},${Math.min(255,+match[3])}`;
+}
+
+function getDominantMusicColorFromImageSource(src) {
+    return new Promise(resolve => {
+        if (!src) { resolve('250,45,72'); return; }
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = 36; canvas.height = 36;
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                ctx.drawImage(img, 0, 0, 36, 36);
+                const data = ctx.getImageData(0,0,36,36).data;
+                let r=0,g=0,b=0,total=0;
+                for (let i=0;i<data.length;i+=16) {
+                    const a=data[i+3]; if (a<100) continue;
+                    const rr=data[i], gg=data[i+1], bb=data[i+2];
+                    const max=Math.max(rr,gg,bb), min=Math.min(rr,gg,bb);
+                    if (max < 26 || (max-min)<10) continue;
+                    r+=rr; g+=gg; b+=bb; total++;
+                }
+                if (!total) { resolve('250,45,72'); return; }
+                let rr=Math.round(r/total), gg=Math.round(g/total), bb=Math.round(b/total);
+                const mx=Math.max(rr,gg,bb);
+                if (mx < 120) { const k=120/Math.max(1,mx); rr=Math.min(255,Math.round(rr*k)); gg=Math.min(255,Math.round(gg*k)); bb=Math.min(255,Math.round(bb*k)); }
+                resolve(`${rr},${gg},${bb}`);
+            } catch(e) { resolve('250,45,72'); }
+        };
+        img.onerror = () => resolve('250,45,72');
+        img.src = src;
+    });
+}
+
+async function getDominantMusicColorFromFile(file) {
+    if (!file) return '250,45,72';
+    const url = URL.createObjectURL(file);
+    try { return await getDominantMusicColorFromImageSource(url); }
+    finally { URL.revokeObjectURL(url); }
+}
+
+async function hydrateMusicAccentColors() {
+    if (conteggMusicAccentHydrating || !currentUser) return;
+    const missing = conteggMusicTracks.filter(t => t.coverUrl && !t.accentColor).slice(0, 15);
+    if (!missing.length) return;
+    conteggMusicAccentHydrating = true;
+    try {
+        for (const track of missing) {
+            const accentColor = await getDominantMusicColorFromImageSource(track.coverUrl);
+            track.accentColor = accentColor;
+            try { await conteggMusicCollection().doc(track.id).set({ accentColor }, { merge:true }); } catch(e) {}
+        }
+        applyMusicAccentColors();
+    } finally { conteggMusicAccentHydrating = false; }
+}
+
+function applyMusicAccentColors() {
+    document.querySelectorAll('[data-music-track-id]').forEach(el => {
+        const track = conteggMusicTracks.find(t => t.id === el.dataset.musicTrackId);
+        if (track) el.style.setProperty('--music-accent', musicAccentTuple(track.accentColor));
+    });
+    const track = getCurrentMusicTrack();
+    const tuple = musicAccentTuple(track?.accentColor);
+    document.getElementById('conteggMusicNow')?.style.setProperty('--music-accent', tuple);
+    document.getElementById('conteggMusicPlayerWindow')?.style.setProperty('--music-accent', tuple);
+}
+
 async function loadConteggMusicTracks() {
     if (!currentUser) return [];
     const snap = await conteggMusicCollection().orderBy('createdAt', 'asc').get();
-    conteggMusicTracks = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    conteggMusicTracks = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(track => track.metadataComplete !== false);
+    setTimeout(() => hydrateMusicAccentColors().catch(()=>{}), 0);
     return conteggMusicTracks;
 }
 
@@ -24644,16 +24768,17 @@ async function renderMusicSettings() {
         <div class="contegg-music-upload-zone" onclick="document.getElementById('conteggMusicFilesInput').click()">
             <i class="fas fa-cloud-arrow-up"></i>
             <strong>Перетащите или выберите песни</strong>
-            <span>Оригинальный аудиофайл без сжатия · до ${CONTEGG_MUSIC_MAX_TRACKS} песен · сейчас ${conteggMusicTracks.length}/${CONTEGG_MUSIC_MAX_TRACKS}</span>
+            <span>По одной песне · после выбора заполни название, автора, текст и обложку · ${conteggMusicTracks.length}/${CONTEGG_MUSIC_MAX_TRACKS}</span>
         </div>
         <div class="contegg-music-settings-list">
             ${conteggMusicTracks.length ? conteggMusicTracks.map(track => musicSettingsTrackHtml(track)).join('') : '<div class="contegg-music-empty" style="min-height:160px"><i class="fas fa-music"></i><div>Здесь появятся ваши песни</div></div>'}
         </div>`;
+    applyMusicAccentColors();
 }
 
 function musicSettingsTrackHtml(track) {
     const cover = track.coverUrl ? `<img src="${esc(track.coverUrl)}">` : '<i class="fas fa-music"></i>';
-    return `<div class="contegg-music-settings-track">
+    return `<div class="contegg-music-settings-track" data-music-track-id="${track.id}" style="--music-accent:${musicAccentTuple(track.accentColor)}">
         <div class="contegg-music-settings-cover">${cover}</div>
         <div class="contegg-music-settings-meta"><strong>${esc(track.title || 'Без названия')}</strong><span>${esc(track.artist || 'Неизвестный исполнитель')}</span></div>
         <div class="contegg-music-track-actions">
@@ -24680,53 +24805,54 @@ async function setMusicShowInChats(value) {
 
 async function handleMusicFiles(files) {
     if (conteggMusicUploading || !currentUser) return;
-    const list = [...(files || [])].filter(file => file.type.startsWith('audio/') || /\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(file.name));
-    if (!list.length) return;
+
+    const file = [...(files || [])].find(file =>
+        file.type.startsWith('audio/') || /\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(file.name)
+    );
+    if (!file) return;
+
     await loadConteggMusicTracks();
-    const room = CONTEGG_MUSIC_MAX_TRACKS - conteggMusicTracks.length;
-    if (room <= 0) { toast('Можно загрузить максимум 15 песен'); return; }
-    const chosen = list.slice(0, room);
-    if (list.length > room) toast(`Будут загружены только ${room} песен`);
+    if (conteggMusicTracks.length >= CONTEGG_MUSIC_MAX_TRACKS) {
+        toast('Можно загрузить максимум 15 песен');
+        return;
+    }
+
     conteggMusicUploading = true;
     const zone = document.querySelector('.contegg-music-upload-zone');
-    if (zone) zone.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка музыки...</span></div>';
+    const oldZoneHtml = zone?.innerHTML || '';
+    if (zone) zone.innerHTML = '<div class="loader"><div class="spinner"></div><span>Загрузка песни...</span></div>';
+
     try {
-        for (const file of chosen) {
-            const uploaded = await uploadToSupabaseStorage(file, 'music/audio', { prefix: 'track' });
-            const baseName = file.name.replace(/\.[^.]+$/, '').trim() || 'Без названия';
-            const ref = await conteggMusicCollection().add({
-                title: baseName,
-                artist: '',
-                lyrics: '',
-                audioUrl: uploaded.url,
-                audioPath: uploaded.path,
-                coverUrl: '',
-                coverPath: '',
-                originalFileName: file.name,
-                mimeType: file.type || '',
-                size: file.size || 0,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            await loadConteggMusicTracks();
-            await openMusicTrackEditor(ref.id, true);
-        }
-        await renderMusicSettings();
-        if (document.getElementById('conteggMusicApp')?.classList.contains('show')) await renderMusicApp();
+        const uploaded = await uploadToSupabaseStorage(file, 'music/audio', { prefix: 'track' });
+        const baseName = file.name.replace(/\.[^.]+$/, '').trim() || '';
+        const ref = await conteggMusicCollection().add({
+            title: baseName,
+            artist: '',
+            lyrics: '',
+            audioUrl: uploaded.url,
+            audioPath: uploaded.path,
+            coverUrl: '',
+            coverPath: '',
+            originalFileName: file.name,
+            mimeType: file.type || '',
+            size: file.size || 0,
+            metadataComplete: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        await loadConteggMusicTracks();
+        await openMusicTrackEditor(ref.id, true);
     } catch (e) {
         console.error('music upload error', e);
-        toast('Не удалось загрузить одну из песен');
-        await renderMusicSettings();
+        toast('Не удалось загрузить песню');
     } finally {
         conteggMusicUploading = false;
+        if (zone && oldZoneHtml) zone.innerHTML = oldZoneHtml;
     }
 }
 
-document.getElementById('conteggMusicFilesInput')?.addEventListener('change', async e => {
-    const files = e.target.files;
-    e.target.value = '';
-    await handleMusicFiles(files);
-});
+// File selection is handled inline on #conteggMusicFilesInput so chooser and drag/drop share exactly the same path.
 
 document.addEventListener('dragover', e => {
     if (document.getElementById('musicSettingsOverlay')?.classList.contains('show')) e.preventDefault();
@@ -24734,14 +24860,22 @@ document.addEventListener('dragover', e => {
 document.addEventListener('drop', e => {
     if (!document.getElementById('musicSettingsOverlay')?.classList.contains('show')) return;
     e.preventDefault();
-    handleMusicFiles(e.dataTransfer?.files);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handleMusicFiles([file]);
 });
 
 async function openMusicTrackEditor(trackId, afterUpload = false) {
-    await loadConteggMusicTracks();
-    const track = conteggMusicTracks.find(t => t.id === trackId);
+    let track = null;
+    if (afterUpload) {
+        const fresh = await conteggMusicCollection().doc(trackId).get();
+        if (fresh.exists) track = { id: fresh.id, ...fresh.data() };
+    } else {
+        await loadConteggMusicTracks();
+        track = conteggMusicTracks.find(t => t.id === trackId);
+    }
     if (!track) return;
     conteggMusicEditorTrackId = trackId;
+    conteggMusicEditorIsNewUpload = !!afterUpload;
     conteggMusicPendingCoverFile = null;
     document.getElementById('musicTrackTitleInput').value = track.title || '';
     document.getElementById('musicTrackArtistInput').value = track.artist || '';
@@ -24752,10 +24886,24 @@ async function openMusicTrackEditor(trackId, afterUpload = false) {
     document.getElementById('musicTrackEditorOverlay').classList.add('show');
 }
 
-function closeMusicTrackEditor() {
+async function closeMusicTrackEditor() {
+    const pendingId = conteggMusicEditorTrackId;
+    const shouldDiscard = conteggMusicEditorIsNewUpload && pendingId;
+
     conteggMusicEditorTrackId = null;
+    conteggMusicEditorIsNewUpload = false;
     conteggMusicPendingCoverFile = null;
     document.getElementById('musicTrackEditorOverlay')?.classList.remove('show');
+
+    if (shouldDiscard) {
+        try {
+            await conteggMusicCollection().doc(pendingId).delete();
+            await loadConteggMusicTracks();
+            await renderMusicSettings();
+        } catch (e) {
+            console.warn('discard unfinished music track warning', e);
+        }
+    }
 }
 
 document.getElementById('musicCoverInput')?.addEventListener('change', e => {
@@ -24775,19 +24923,38 @@ async function saveMusicTrackEditor() {
     const btn = document.getElementById('musicTrackSaveBtn');
     btn.disabled = true;
     try {
+        const title = document.getElementById('musicTrackTitleInput').value.trim();
+        const artist = document.getElementById('musicTrackArtistInput').value.trim();
+        const lyrics = document.getElementById('musicTrackLyricsInput').value.trim();
+
+        if (!title) {
+            toast('Укажи название песни');
+            document.getElementById('musicTrackTitleInput').focus();
+            return;
+        }
+        if (!artist) {
+            toast('Укажи автора песни');
+            document.getElementById('musicTrackArtistInput').focus();
+            return;
+        }
+
         const update = {
-            title: document.getElementById('musicTrackTitleInput').value.trim() || 'Без названия',
-            artist: document.getElementById('musicTrackArtistInput').value.trim(),
-            lyrics: document.getElementById('musicTrackLyricsInput').value.trim(),
+            title,
+            artist,
+            lyrics,
+            metadataComplete: true,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
         if (conteggMusicPendingCoverFile) {
+            const accentColor = await getDominantMusicColorFromFile(conteggMusicPendingCoverFile);
             const uploaded = await uploadToSupabaseStorage(conteggMusicPendingCoverFile, 'music/covers', { prefix: 'cover' });
             update.coverUrl = uploaded.url;
             update.coverPath = uploaded.path;
+            update.accentColor = accentColor;
         }
         await conteggMusicCollection().doc(id).set(update, { merge: true });
-        closeMusicTrackEditor();
+        conteggMusicEditorIsNewUpload = false;
+        await closeMusicTrackEditor();
         await loadConteggMusicTracks();
         await renderMusicSettings();
         if (document.getElementById('conteggMusicApp')?.classList.contains('show')) await renderMusicApp();
@@ -24805,6 +24972,8 @@ async function deleteMusicTrack(id) {
             audio.pause(); audio.removeAttribute('src'); audio.load();
             conteggMusicCurrentTrackId = null;
             document.getElementById('conteggMusicMini').style.display = 'none';
+            document.getElementById('conteggMusicHeaderButton').style.display = 'none';
+            closeMusicPlayerWindow();
         }
         await conteggMusicCollection().doc(id).delete();
         await loadConteggMusicTracks();
@@ -24835,11 +25004,12 @@ async function renderMusicApp() {
         <div class="contegg-music-library-head"><div><h1>Медиатека</h1><span>${conteggMusicTracks.length} из ${CONTEGG_MUSIC_MAX_TRACKS} песен</span></div><button class="btn btn-primary" style="width:auto" onclick="openMusicSettings()"><i class="fas fa-plus"></i> Добавить</button></div>
         ${conteggMusicTracks.length ? conteggMusicTracks.map(track => musicLibraryTrackHtml(track)).join('') : '<div class="contegg-music-empty"><i class="fas fa-compact-disc"></i><strong>Музыки пока нет</strong><div style="margin-top:6px">Добавьте песни в настройках Contegg Музыки.</div></div>'}`;
     renderMusicNowPlaying();
+    applyMusicAccentColors();
 }
 
 function musicLibraryTrackHtml(track) {
     const cover = track.coverUrl ? `<img src="${esc(track.coverUrl)}">` : '<i class="fas fa-music"></i>';
-    return `<div class="contegg-music-track ${track.id === conteggMusicCurrentTrackId ? 'playing' : ''}" onclick="musicPlayTrack('${track.id}')">
+    return `<div class="contegg-music-track ${track.id === conteggMusicCurrentTrackId ? 'playing' : ''}" data-music-track-id="${track.id}" style="--music-accent:${musicAccentTuple(track.accentColor)}" onclick="musicPlayTrack('${track.id}')">
         <div class="contegg-music-track-cover">${cover}</div>
         <div class="contegg-music-track-title">${esc(track.title || 'Без названия')}</div>
         <div class="contegg-music-track-artist">${esc(track.artist || 'Неизвестный исполнитель')}</div>
@@ -24860,7 +25030,8 @@ async function musicPlayTrack(id) {
     try { await audio.play(); } catch(e) { console.warn('music play', e); }
     updateMusicSystemSession(track);
     updateMusicMini();
-    renderMusicApp();
+    if (document.getElementById('conteggMusicApp')?.classList.contains('show')) renderMusicApp();
+    else renderMusicPlayerWindow();
 }
 
 function musicTogglePlay(event) {
@@ -24874,9 +25045,24 @@ function musicTogglePlay(event) {
 function musicPlayNext(event) {
     event?.stopPropagation?.();
     if (!conteggMusicTracks.length) return;
-    const idx = Math.max(0, conteggMusicTracks.findIndex(t => t.id === conteggMusicCurrentTrackId));
-    musicPlayTrack(conteggMusicTracks[(idx + 1) % conteggMusicTracks.length].id);
+    let next = null;
+    if (conteggMusicShuffle && conteggMusicTracks.length > 1) {
+        const candidates = conteggMusicTracks.filter(t => t.id !== conteggMusicCurrentTrackId);
+        next = candidates[Math.floor(Math.random() * candidates.length)];
+    } else {
+        const idx = Math.max(0, conteggMusicTracks.findIndex(t => t.id === conteggMusicCurrentTrackId));
+        next = conteggMusicTracks[(idx + 1) % conteggMusicTracks.length];
+    }
+    if (next) musicPlayTrack(next.id);
 }
+
+function toggleMusicShuffle(event) {
+    event?.stopPropagation?.();
+    conteggMusicShuffle = !conteggMusicShuffle;
+    renderMusicNowPlaying();
+    renderMusicPlayerWindow();
+}
+
 function musicPlayPrevious(event) {
     event?.stopPropagation?.();
     if (!conteggMusicTracks.length) return;
@@ -24896,12 +25082,14 @@ function renderMusicNowPlaying() {
     const cover = track.coverUrl ? `<img src="${esc(track.coverUrl)}">` : '<i class="fas fa-music"></i>';
     const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
     const current = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    box.style.setProperty('--music-accent', musicAccentTuple(track.accentColor));
     box.innerHTML = `<div class="contegg-music-now-cover">${cover}</div>
         <div class="contegg-music-now-title">${esc(track.title || 'Без названия')}</div>
         <div class="contegg-music-now-artist">${esc(track.artist || 'Неизвестный исполнитель')}</div>
         <input class="contegg-music-progress" type="range" min="0" max="${duration || 1}" step="0.1" value="${Math.min(current,duration||1)}" oninput="musicSeek(this.value)">
         <div class="contegg-music-time-row"><span>${formatMusicTime(current)}</span><span>−${formatMusicTime(Math.max(0,duration-current))}</span></div>
         <div class="contegg-music-controls"><button onclick="musicPlayPrevious(event)"><i class="fas fa-backward-step"></i></button><button class="main" onclick="musicTogglePlay(event)"><i class="fas ${audio.paused ? 'fa-play' : 'fa-pause'}"></i></button><button onclick="musicPlayNext(event)"><i class="fas fa-forward-step"></i></button></div>
+        <div class="contegg-music-extra-controls"><button class="${conteggMusicShuffle ? 'active' : ''}" onclick="toggleMusicShuffle(event)" title="Перемешать"><i class="fas fa-shuffle"></i></button></div>
         <div class="contegg-music-lyrics"><h3>Текст</h3>${track.lyrics ? `<pre>${esc(track.lyrics)}</pre>` : '<div class="contegg-music-no-lyrics">Текст для этой песни не добавлен.</div>'}</div>`;
 }
 
@@ -24912,15 +25100,63 @@ function musicSeek(value) {
 
 function updateMusicMini() {
     const mini = document.getElementById('conteggMusicMini');
+    if (mini) mini.style.display = 'none';
     const track = getCurrentMusicTrack();
     const audio = document.getElementById('conteggMusicAudio');
-    if (!mini || !track) return;
-    mini.style.display = 'flex';
-    document.getElementById('conteggMusicMiniTitle').textContent = track.title || 'Без названия';
-    document.getElementById('conteggMusicMiniArtist').textContent = track.artist || 'Неизвестный исполнитель';
-    document.getElementById('conteggMusicMiniPlay').innerHTML = `<i class="fas ${audio.paused ? 'fa-play' : 'fa-pause'}"></i>`;
-    const cover = document.getElementById('conteggMusicMiniCover');
-    cover.innerHTML = track.coverUrl ? `<img src="${esc(track.coverUrl)}">` : '<i class="fas fa-music"></i>';
+    const button = document.getElementById('conteggMusicHeaderButton');
+    if (!button) return;
+    if (!track) {
+        button.style.display = 'none';
+        button.classList.remove('playing');
+        return;
+    }
+    button.style.display = 'inline-flex';
+    button.classList.toggle('playing', !audio.paused);
+    button.style.color = `rgb(${musicAccentTuple(track.accentColor)})`;
+    button.style.background = `rgba(${musicAccentTuple(track.accentColor)},.14)`;
+    button.title = `${track.title || 'Без названия'} — ${track.artist || 'Неизвестный исполнитель'}`;
+    renderMusicPlayerWindow();
+}
+
+
+function openMusicPlayerWindow() {
+    const track = getCurrentMusicTrack();
+    if (!track) return;
+    const overlay = document.getElementById('conteggMusicPlayerOverlay');
+    overlay?.classList.add('show');
+    overlay?.setAttribute('aria-hidden','false');
+    renderMusicPlayerWindow();
+}
+
+function closeMusicPlayerWindow() {
+    const overlay = document.getElementById('conteggMusicPlayerOverlay');
+    overlay?.classList.remove('show');
+    overlay?.setAttribute('aria-hidden','true');
+}
+
+function renderMusicPlayerWindow() {
+    const overlay = document.getElementById('conteggMusicPlayerOverlay');
+    const content = document.getElementById('conteggMusicPlayerContent');
+    const win = document.getElementById('conteggMusicPlayerWindow');
+    if (!content || !win) return;
+    const track = getCurrentMusicTrack();
+    const audio = document.getElementById('conteggMusicAudio');
+    if (!track) {
+        content.innerHTML = '<div class="contegg-music-empty"><i class="fas fa-headphones"></i><strong>Ничего не играет</strong></div>';
+        return;
+    }
+    win.style.setProperty('--music-accent', musicAccentTuple(track.accentColor));
+    const cover = track.coverUrl ? `<img src="${esc(track.coverUrl)}">` : '<i class="fas fa-music"></i>';
+    const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+    const current = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    content.innerHTML = `<div class="contegg-music-now-cover">${cover}</div>
+        <div class="contegg-music-now-title">${esc(track.title || 'Без названия')}</div>
+        <div class="contegg-music-now-artist">${esc(track.artist || 'Неизвестный исполнитель')}</div>
+        <input class="contegg-music-progress contegg-music-player-progress" type="range" min="0" max="${duration || 1}" step="0.1" value="${Math.min(current,duration||1)}" oninput="musicSeek(this.value)">
+        <div class="contegg-music-time-row"><span>${formatMusicTime(current)}</span><span>−${formatMusicTime(Math.max(0,duration-current))}</span></div>
+        <div class="contegg-music-controls"><button onclick="musicPlayPrevious(event)"><i class="fas fa-backward-step"></i></button><button class="main" onclick="musicTogglePlay(event)"><i class="fas ${audio.paused ? 'fa-play' : 'fa-pause'}"></i></button><button onclick="musicPlayNext(event)"><i class="fas fa-forward-step"></i></button></div>
+        <div class="contegg-music-extra-controls"><button class="${conteggMusicShuffle ? 'active' : ''}" onclick="toggleMusicShuffle(event)" title="Перемешать"><i class="fas fa-shuffle"></i></button><button onclick="openMusicApp(); closeMusicPlayerWindow();" title="Открыть Музыку"><i class="fas fa-up-right-and-down-left-from-center"></i></button></div>
+        <div class="contegg-music-lyrics"><h3>Текст</h3>${track.lyrics ? `<pre>${esc(track.lyrics)}</pre>` : '<div class="contegg-music-no-lyrics">Текст для этой песни не добавлен.</div>'}</div>`;
 }
 
 function updateMusicSystemSession(track) {
@@ -24936,8 +25172,8 @@ function updateMusicSystemSession(track) {
 }
 
 const conteggMusicAudioEl = document.getElementById('conteggMusicAudio');
-conteggMusicAudioEl?.addEventListener('play', () => { updateMusicMini(); renderMusicNowPlaying(); });
-conteggMusicAudioEl?.addEventListener('pause', () => { updateMusicMini(); renderMusicNowPlaying(); });
+conteggMusicAudioEl?.addEventListener('play', () => { updateMusicMini(); renderMusicNowPlaying(); renderMusicPlayerWindow(); });
+conteggMusicAudioEl?.addEventListener('pause', () => { updateMusicMini(); renderMusicNowPlaying(); renderMusicPlayerWindow(); });
 conteggMusicAudioEl?.addEventListener('ended', () => musicPlayNext());
 conteggMusicAudioEl?.addEventListener('timeupdate', () => {
     const app = document.getElementById('conteggMusicApp');
@@ -24952,8 +25188,15 @@ conteggMusicAudioEl?.addEventListener('timeupdate', () => {
         row.children[0].textContent = formatMusicTime(conteggMusicAudioEl.currentTime);
         row.children[1].textContent = `−${formatMusicTime(Math.max(0,conteggMusicAudioEl.duration-conteggMusicAudioEl.currentTime))}`;
     }
+    const player = document.getElementById('conteggMusicPlayerOverlay');
+    if (player?.classList.contains('show') && Number.isFinite(conteggMusicAudioEl.duration)) {
+        const pslider = player.querySelector('.contegg-music-player-progress');
+        const prow = player.querySelector('.contegg-music-time-row');
+        if (pslider) { pslider.max = conteggMusicAudioEl.duration; pslider.value = conteggMusicAudioEl.currentTime; }
+        if (prow) { prow.children[0].textContent = formatMusicTime(conteggMusicAudioEl.currentTime); prow.children[1].textContent = `−${formatMusicTime(Math.max(0,conteggMusicAudioEl.duration-conteggMusicAudioEl.currentTime))}`; }
+    }
 });
-conteggMusicAudioEl?.addEventListener('loadedmetadata', renderMusicNowPlaying);
+conteggMusicAudioEl?.addEventListener('loadedmetadata', () => { renderMusicNowPlaying(); renderMusicPlayerWindow(); });
 
 if ('mediaSession' in navigator) {
     try {
@@ -24980,6 +25223,10 @@ window.musicTogglePlay = musicTogglePlay;
 window.musicPlayNext = musicPlayNext;
 window.musicPlayPrevious = musicPlayPrevious;
 window.musicSeek = musicSeek;
+window.handleMusicFiles = handleMusicFiles;
+window.toggleMusicShuffle = toggleMusicShuffle;
+window.openMusicPlayerWindow = openMusicPlayerWindow;
+window.closeMusicPlayerWindow = closeMusicPlayerWindow;
 </script>
 
 </body>
