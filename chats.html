@@ -3416,6 +3416,8 @@ const CONTEGG_SUPER_ADMIN_EMAIL = 'wostdi@icloud.com';
 let usersDirectoryListener = null;
 let usersDirectoryRefreshTimer = null;
 let currentAdminTargetUser = null;
+let adminNeedsExternalRefresh = false;
+let adminActionInFlight = false;
 
     async function uploadFileToStorage(file, folder = 'uploads') {
     const uploaded = await uploadToSupabaseStorage(file, folder, {
@@ -15112,8 +15114,7 @@ async function applyAdminUserControls() {
         }
 
         renderAdminTargetUser(currentAdminTargetUser);
-        await loadAllUsers();
-        await loadChats();
+        adminNeedsExternalRefresh = true;
 
         toast('Изменения сохранены');
     } catch (e) {
@@ -15232,13 +15233,13 @@ async function selectAdminUserByUid(uid, mode = 'manage') {
 
         composer?.classList.remove('hidden');
         document.getElementById('adminDirectMessage')?.focus({ preventScroll: true });
-        composer?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        composer?.scrollIntoView({ behavior: 'auto', block: 'nearest' });
         return;
     }
 
     renderAdminTargetUser(user);
     document.getElementById('conteggAdminTargetCard')?.scrollIntoView({
-        behavior: 'smooth',
+        behavior: 'auto',
         block: 'nearest'
     });
 }
@@ -15723,6 +15724,8 @@ function bindAdminPanelInputs(root = document.getElementById('conteggAdminV6')) 
 
         if (actionButton) {
             event.preventDefault();
+            event.stopPropagation();
+
             const action = actionButton.dataset.adminV6Action;
 
             if (action === 'close') {
@@ -15730,57 +15733,49 @@ function bindAdminPanelInputs(root = document.getElementById('conteggAdminV6')) 
                 return;
             }
 
-            if (action === 'refresh-users') {
-                await loadAdminRegisteredUsers();
-                return;
-            }
+            // Do not allow repeated clicks to start overlapping Firestore/UI work.
+            if (adminActionInFlight) return;
+            adminActionInFlight = true;
+            actionButton.disabled = true;
 
-            if (action === 'lookup-user') {
-                await adminLookupUser();
-                return;
+            try {
+                if (action === 'refresh-users') await loadAdminRegisteredUsers();
+                else if (action === 'lookup-user') await adminLookupUser();
+                else if (action === 'send-direct') await sendAdminDirectMessage();
+                else if (action === 'copy-permanent') await copyAdminRegistrationCode('Ft$d$1Zq.^&HfshF~USnfo2J:x;44A');
+                else if (action === 'create-code') await createOneTimeRegistrationCode();
+                else if (action === 'copy-generated') {
+                    await copyAdminRegistrationCode(document.getElementById('adminGeneratedInviteCode')?.value || '');
+                }
+                else if (action === 'broadcast') await sendBroadcastFromPanel();
+            } finally {
+                adminActionInFlight = false;
+                if (actionButton.isConnected) actionButton.disabled = false;
             }
-
-            if (action === 'send-direct') {
-                await sendAdminDirectMessage();
-                return;
-            }
-
-            if (action === 'copy-permanent') {
-                await copyAdminRegistrationCode('Ft$d$1Zq.^&HfshF~USnfo2J:x;44A');
-                return;
-            }
-
-            if (action === 'create-code') {
-                await createOneTimeRegistrationCode();
-                return;
-            }
-
-            if (action === 'copy-generated') {
-                await copyAdminRegistrationCode(
-                    document.getElementById('adminGeneratedInviteCode')?.value || ''
-                );
-                return;
-            }
-
-            if (action === 'broadcast') {
-                await sendBroadcastFromPanel();
-                return;
-            }
+            return;
         }
 
         const userButton = event.target.closest('[data-admin-action][data-admin-user]');
         if (userButton) {
             event.preventDefault();
-            await selectAdminUserByUid(
-                userButton.dataset.adminUser,
-                userButton.dataset.adminAction
-            );
+            event.stopPropagation();
+            if (adminActionInFlight) return;
+
+            adminActionInFlight = true;
+            userButton.disabled = true;
+            try {
+                await selectAdminUserByUid(userButton.dataset.adminUser, userButton.dataset.adminAction);
+            } finally {
+                adminActionInFlight = false;
+                if (userButton.isConnected) userButton.disabled = false;
+            }
             return;
         }
 
         const copyCode = event.target.closest('[data-copy-one-time-code]');
         if (copyCode) {
             event.preventDefault();
+            event.stopPropagation();
             await copyAdminRegistrationCode(copyCode.dataset.copyOneTimeCode || '');
             return;
         }
@@ -15788,17 +15783,24 @@ function bindAdminPanelInputs(root = document.getElementById('conteggAdminV6')) 
         const disableCode = event.target.closest('[data-disable-code]');
         if (disableCode) {
             event.preventDefault();
-            await disableAdminRegistrationCode(disableCode.dataset.disableCode || '');
+            event.stopPropagation();
+            if (adminActionInFlight) return;
+
+            adminActionInFlight = true;
+            disableCode.disabled = true;
+            try {
+                await disableAdminRegistrationCode(disableCode.dataset.disableCode || '');
+            } finally {
+                adminActionInFlight = false;
+                if (disableCode.isConnected) disableCode.disabled = false;
+            }
         }
     });
 
     root.addEventListener('keydown', event => {
-        if (
-            event.key === 'Enter' &&
-            event.target?.id === 'adminUserLookup'
-        ) {
+        if (event.key === 'Enter' && event.target?.id === 'adminUserLookup') {
             event.preventDefault();
-            adminLookupUser();
+            if (!adminActionInFlight) adminLookupUser();
         }
     });
 
@@ -15827,55 +15829,56 @@ function openAdminPanel() {
         return;
     }
 
-    // Admin is its own screen. No chat remains active under it.
     if (currentChatId || document.body.classList.contains('chat-open')) {
         closeChatUIOnly();
     }
 
-    // Kill every legacy admin surface before opening the new one.
     document.body.classList.remove('contegg-admin-workspace-open');
 
     const oldWorkspace = document.getElementById('conteggAdminWorkspace');
     if (oldWorkspace) {
         oldWorkspace.setAttribute('aria-hidden', 'true');
         oldWorkspace.style.display = 'none';
+        oldWorkspace.style.visibility = 'hidden';
+        oldWorkspace.style.opacity = '0';
+        oldWorkspace.style.pointerEvents = 'none';
     }
 
     const oldModal = document.getElementById('adminPanelModal');
-    oldModal?.classList.remove('show');
+    if (oldModal) {
+        oldModal.classList.remove('show');
+        oldModal.style.visibility = 'hidden';
+        oldModal.style.opacity = '0';
+        oldModal.style.pointerEvents = 'none';
+    }
 
     currentAdminTargetUser = null;
+    adminActionInFlight = false;
 
     const root = ensureAdminV6Shell();
-    root.innerHTML = getAdminPanelMarkup();
-    root.dataset.bound = '';
+
+    // Build once per opening. Never animate/rebuild the whole root after it becomes visible.
+    if (!root.querySelector('.contegg-admin-v6-page')) {
+        root.innerHTML = getAdminPanelMarkup();
+        root.dataset.bound = '';
+        bindAdminPanelInputs(root);
+    }
+
+    root.classList.add('is-open');
     root.setAttribute('aria-hidden', 'false');
-
     document.body.classList.add('contegg-admin-v6-open');
-    bindAdminPanelInputs(root);
-
-    requestAnimationFrame(() => {
-        root.classList.add('is-open');
-    });
 }
 
 function closeAdminPanel(options = {}) {
     const root = document.getElementById('conteggAdminV6');
 
-    document.body.classList.remove(
-        'contegg-admin-v6-open',
-        'contegg-admin-workspace-open'
-    );
+    document.body.classList.remove('contegg-admin-v6-open', 'contegg-admin-workspace-open');
 
     if (root) {
         root.classList.remove('is-open');
         root.setAttribute('aria-hidden', 'true');
-
-        setTimeout(() => {
-            if (!document.body.classList.contains('contegg-admin-v6-open')) {
-                root.innerHTML = '';
-            }
-        }, 180);
+        root.innerHTML = '';
+        root.dataset.bound = '';
     }
 
     const oldWorkspace = document.getElementById('conteggAdminWorkspace');
@@ -15889,15 +15892,23 @@ function closeAdminPanel(options = {}) {
 
     const oldModal = document.getElementById('adminPanelModal');
     if (oldModal) {
-        if (oldModal.classList.contains('show')) {
-            oldModal.classList.remove('show');
-        }
+        oldModal.classList.remove('show');
         oldModal.style.visibility = 'hidden';
         oldModal.style.opacity = '0';
         oldModal.style.pointerEvents = 'none';
     }
 
     currentAdminTargetUser = null;
+    adminActionInFlight = false;
+
+    // Refresh the ordinary messenger only after the admin UI is gone.
+    if (adminNeedsExternalRefresh && !options.keepChatState) {
+        adminNeedsExternalRefresh = false;
+        Promise.resolve()
+            .then(() => loadAllUsers())
+            .then(() => loadChats())
+            .catch(console.error);
+    }
 }
 
 function closeAdminWorkspaceBeforeOpeningChat() {
@@ -24285,6 +24296,70 @@ body.contegg-has-pinned-message #chatMessages {
     translate: none !important;
     opacity: 1 !important;
     will-change: auto !important;
+}
+</style>
+
+
+<style id="CONTEGG-ADMIN-V27-STABILITY">
+/* Admin is a static workspace: no compositor animations, no layout bouncing. */
+#conteggAdminV6,
+#conteggAdminV6 * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+    will-change: auto !important;
+}
+
+#conteggAdminV6 {
+    transform: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    background: #0b0b0d !important;
+}
+
+#conteggAdminV6.is-open {
+    transform: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+#conteggAdminV6 .contegg-admin-v6-page,
+#conteggAdminV6 .contegg-admin-v6-scroll,
+#conteggAdminV6 .contegg-admin-v6-card,
+#conteggAdminV6 .contegg-admin-v6-users,
+#conteggAdminV6 .contegg-admin-v6-codes {
+    transform: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+}
+
+#conteggAdminV6 .contegg-admin-v6-scroll {
+    overscroll-behavior: contain;
+    overflow-anchor: none;
+}
+
+#conteggAdminV6 button,
+#conteggAdminV6 input,
+#conteggAdminV6 textarea,
+#conteggAdminV6 select {
+    transform: none !important;
+}
+
+#conteggAdminV6 button:disabled {
+    opacity: .55;
+    cursor: default;
+}
+
+#conteggAdminV6 .contegg-admin-user-row,
+#conteggAdminV6 .contegg-admin-target-card,
+#conteggAdminV6 .contegg-admin-control-row {
+    contain: layout style;
+}
+
+#conteggAdminV6 img {
+    display:block;
 }
 </style>
 
