@@ -3156,6 +3156,38 @@ const CONTEGG_DRAFT_PREFIX = 'contegg_draft_v2_';
 
 // Message feed lifecycle / lazy history
 const CHAT_MESSAGE_PAGE_SIZE = 10;
+
+function getChatMessagePageSize() {
+    return window.innerWidth >= 1200 ? 15 : CHAT_MESSAGE_PAGE_SIZE;
+}
+
+function isWithinOlderHistoryPrefetchZone(container) {
+    if (!container) return false;
+
+    // Desktop: preload when the user is about THREE loaded messages away
+    // from the oldest currently loaded message.
+    if (window.innerWidth >= 1200) {
+        const messages = [...container.querySelectorAll(':scope > .msg')];
+
+        if (!messages.length) return false;
+
+        const containerTop = container.getBoundingClientRect().top;
+
+        let firstVisibleIndex = messages.findIndex(msg => {
+            const rect = msg.getBoundingClientRect();
+            return rect.bottom > containerTop + 4;
+        });
+
+        if (firstVisibleIndex < 0) {
+            firstVisibleIndex = messages.length - 1;
+        }
+
+        return firstVisibleIndex <= 3;
+    }
+
+    // Keep the old mobile/tablet behavior.
+    return container.scrollTop <= 180;
+}
 let chatMessagesGeneration = 0;
 let chatHistoryOldestDoc = null;
 let chatHistoryHasMore = false;
@@ -8586,7 +8618,7 @@ async function markAsRead() {
     try {
         const snap = await ref.collection('messages')
             .orderBy('timestamp', 'desc')
-            .limit(CHAT_MESSAGE_PAGE_SIZE)
+            .limit(getChatMessagePageSize())
             .get();
 
         if (currentChatId === chatId) {
@@ -8740,15 +8772,15 @@ function bindLazyChatHistoryScroll() {
     chatHistoryScrollBound = true;
 
     container.addEventListener('scroll', () => {
-        if (container.scrollTop > 180) return;
+        if (!isWithinOlderHistoryPrefetchZone(container)) return;
         if (!chatHistoryHasMore || chatHistoryLoadingOlder) return;
         if (!currentChatId || currentChatId !== chatHistoryActiveChatId) return;
 
-        loadOlderMessages();
+        loadOlderMessages({ prefetch: window.innerWidth >= 1200 });
     }, { passive: true });
 }
 
-async function loadOlderMessages() {
+async function loadOlderMessages(options = {}) {
     const container = document.getElementById('chatMessages');
     const chatId = chatHistoryActiveChatId;
     const generation = chatMessagesGeneration;
@@ -8769,9 +8801,10 @@ async function loadOlderMessages() {
     const oldScrollHeight = container.scrollHeight;
     const oldScrollTop = container.scrollTop;
 
+    const showLoader = options.prefetch !== true;
     let topLoader = container.querySelector('.contegg-history-top-loader');
 
-    if (!topLoader) {
+    if (showLoader && !topLoader) {
         topLoader = document.createElement('div');
         topLoader.className = 'contegg-history-top-loader';
         topLoader.innerHTML = '<div class="spinner"></div>';
@@ -8784,7 +8817,7 @@ async function loadOlderMessages() {
             .collection('messages')
             .orderBy('timestamp', 'asc')
             .endBefore(chatHistoryOldestDoc)
-            .limitToLast(CHAT_MESSAGE_PAGE_SIZE)
+            .limitToLast(getChatMessagePageSize())
             .get();
 
         if (
@@ -8796,7 +8829,7 @@ async function loadOlderMessages() {
             return;
         }
 
-        topLoader.remove();
+        topLoader?.remove();
 
         if (snap.empty) {
             chatHistoryHasMore = false;
@@ -8804,7 +8837,7 @@ async function loadOlderMessages() {
         }
 
         chatHistoryOldestDoc = snap.docs[0];
-        chatHistoryHasMore = snap.size === CHAT_MESSAGE_PAGE_SIZE;
+        chatHistoryHasMore = snap.size === getChatMessagePageSize();
 
         acknowledgeMessageDocs(snap.docs, { read: true }).catch(() => {});
 
@@ -8869,7 +8902,7 @@ async function loadMessages() {
             .doc(chatId)
             .collection('messages')
             .orderBy('timestamp', 'asc')
-            .limitToLast(CHAT_MESSAGE_PAGE_SIZE)
+            .limitToLast(getChatMessagePageSize())
             .onSnapshot(snap => {
                 if (
                     generation !== chatMessagesGeneration ||
@@ -8886,7 +8919,7 @@ async function loadMessages() {
                     container.dataset.lastDateKey = '';
 
                     chatHistoryOldestDoc = snap.docs[0] || null;
-                    chatHistoryHasMore = snap.size === CHAT_MESSAGE_PAGE_SIZE;
+                    chatHistoryHasMore = snap.size === getChatMessagePageSize();
 
                     acknowledgeMessageDocs(snap.docs, { read: true }).catch(() => {});
 
@@ -18578,7 +18611,6 @@ body.keyboard-no-transition .chat-input-bar {
                         </div>
                         <div id="conteggSidePanelContent"></div>
                     </aside>
-                    <button id="conteggDesktopRightToggle" type="button" aria-label="Скрыть боковую панель"><i class="fas fa-chevron-right"></i></button>
                 </main>`;
             document.body.insertBefore(shell, document.body.firstChild);
         }
@@ -18635,21 +18667,20 @@ body.keyboard-no-transition .chat-input-bar {
     let rightPanelInitialized = false;
     function initRightPanel() {
         if (rightPanelInitialized) return;
-        const toggle = document.getElementById('conteggDesktopRightToggle');
+
         const tabs = [...document.querySelectorAll('.contegg-side-tab')];
-        if (!toggle || !tabs.length) return;
+        if (!tabs.length) return;
+
         rightPanelInitialized = true;
 
-        toggle.addEventListener('click', () => {
-            document.body.classList.toggle('contegg-right-collapsed');
-            const collapsed = document.body.classList.contains('contegg-right-collapsed');
-            toggle.setAttribute('aria-label', collapsed ? 'Открыть боковую панель' : 'Скрыть боковую панель');
-        });
+        // Permanent desktop side panel.
+        document.body.classList.remove('contegg-right-collapsed');
 
         tabs.forEach(tab => tab.addEventListener('click', () => {
             tabs.forEach(x => x.classList.toggle('active', x === tab));
             renderSideTab(tab.dataset.sideTab);
         }));
+
         renderSideTab('emoji');
     }
 
@@ -22955,6 +22986,30 @@ body.contegg-has-pinned-message #chatMessages {
     }, true);
 })();
 </script>
+
+
+<style id="CONTEGG-DESKTOP-STATIC-EMOJI-3MSG-PREFETCH-V16">
+@media (min-width:1200px) {
+    #conteggDesktopRightToggle {
+        display:none !important;
+    }
+
+    #conteggDesktopChatPane,
+    body.contegg-right-collapsed #conteggDesktopChatPane {
+        right:var(--contegg-desktop-right) !important;
+        transition:none !important;
+    }
+
+    #conteggDesktopRightPanel,
+    body.contegg-right-collapsed #conteggDesktopRightPanel {
+        display:flex !important;
+        transform:none !important;
+        opacity:1 !important;
+        pointer-events:auto !important;
+        transition:none !important;
+    }
+}
+</style>
 
 </body>
 </html>
