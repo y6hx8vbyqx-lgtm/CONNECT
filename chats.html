@@ -2960,6 +2960,39 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
     </div>
 </div>
 
+
+<input id="conteggStickerFileInput" type="file" accept="image/*" style="display:none;">
+
+<div class="modal-overlay" id="conteggStickerEditorModal">
+    <div class="modal-sheet contegg-sticker-editor-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Новый стикер</div>
+        <div class="modal-content contegg-sticker-editor-content">
+            <div class="contegg-sticker-canvas-wrap">
+                <canvas id="conteggStickerEditorCanvas" width="512" height="512"></canvas>
+            </div>
+            <div class="contegg-sticker-editor-hint">Перетащите картинку. Ползунком можно сделать её меньше — свободное место останется прозрачным.</div>
+            <label class="contegg-sticker-scale-row">
+                <span><i class="fas fa-compress-alt"></i></span>
+                <input id="conteggStickerScale" type="range" min="35" max="135" value="100" step="1">
+                <span><i class="fas fa-expand-alt"></i></span>
+            </label>
+            <button class="btn btn-primary" type="button" onclick="saveConteggStickerFromEditor()">Сохранить стикер</button>
+            <button class="btn btn-secondary" type="button" onclick="closeConteggStickerEditor()" style="margin-top:8px;">Отмена</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="conteggStickerChatModal">
+    <div class="modal-sheet contegg-sticker-chat-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Стикер</div>
+        <div class="modal-content" id="conteggStickerChatModalContent"></div>
+    </div>
+</div>
+
+<div id="conteggStickerContextMenu" class="contegg-sticker-context-menu"></div>
+
 <div class="modal-overlay" id="userProfileModal">
     <div class="modal-sheet">
         <div class="modal-handle"></div>
@@ -3326,6 +3359,20 @@ let contactsCache = {};
 let contactsLoaded = false;
 let contactsListener = null;
 let activeContactEditUid = null;
+
+
+// ===== STICKERS V19 =====
+const CONTEGG_MAX_CREATED_STICKERS = 4;
+const CONTEGG_MAX_SAVED_STICKERS = 16;
+let conteggStickerEditorImage = null;
+let conteggStickerEditorObjectUrl = '';
+let conteggStickerEditorScale = 1;
+let conteggStickerEditorOffsetX = 0;
+let conteggStickerEditorOffsetY = 0;
+let conteggStickerEditorDragging = false;
+let conteggStickerEditorDragStart = null;
+let conteggStickerMenuSticker = null;
+let conteggStickerPanelRenderToken = 0;
 
 let selectedGroupUsers = new Set();
 let preselectedGroupUsers = [];
@@ -9434,14 +9481,15 @@ function renderMessage(id, msg, options = {}) {
     const hasImage = !!msg.imageUrl;
 const hasVideo = !!msg.videoUrl;
 const hasAudio = !!msg.audioUrl;
-const hasVisualMedia = hasImage || hasVideo;
+const hasSticker = !!msg.stickerUrl;
+const hasVisualMedia = hasImage || hasVideo || hasSticker;
 const hasCaption = !!(msg.text && msg.text.trim());
     
     const exists = container.querySelector?.(`[data-msg-id="${id}"]`);
     if (exists) return;
     
     const div = document.createElement('div');
-  div.className = `msg ${isOut ? 'msg-out' : 'msg-in'} ${options.animate ? 'imessage-new' : ''} ${hasVisualMedia ? 'msg-visual-media' : ''} ${hasAudio ? 'msg-voice-media' : ''}`;
+  div.className = `msg ${isOut ? 'msg-out' : 'msg-in'} ${options.animate ? 'imessage-new' : ''} ${hasVisualMedia ? 'msg-visual-media' : ''} ${hasAudio ? 'msg-voice-media' : ''} ${hasSticker ? 'msg-sticker-only' : ''}`;
     div.setAttribute('data-msg-id', id);
     div.setAttribute('data-sender-id', msg.senderId || '');
     div.dataset.renderSignature = getMessageRenderSignature(msg);
@@ -9524,6 +9572,21 @@ if (msg.replyTo) {
         }).catch(console.error);
     }
     
+if (msg.stickerUrl) {
+    html += `
+        <button
+            type="button"
+            class="contegg-chat-sticker"
+            data-sticker-url="${esc(msg.stickerUrl)}"
+            data-sticker-id="${esc(msg.stickerId || '')}"
+            data-sticker-owner="${esc(msg.stickerOwnerId || '')}"
+            title="Стикер"
+        >
+            <img src="${esc(msg.stickerUrl)}" alt="Sticker" draggable="false">
+        </button>
+    `;
+}
+
 if (msg.videoUrl) {
     html += `
         <div class="media-card video-card">
@@ -9664,6 +9727,28 @@ if (msg.notificationAction === 'terminate_device' && msg.actionDeviceId) {
         html += `<div class="msg-time ${hasVisualMedia && !hasCaption ? 'msg-time-overlay' : ''}">${buildMessageTimeText(msg, isOut, d)}</div>`;
     }
     div.innerHTML = html;
+
+    div.querySelectorAll('.contegg-chat-sticker').forEach(sticker => {
+        sticker.addEventListener('click', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            openConteggStickerFromChat({
+                url: sticker.dataset.stickerUrl || '',
+                id: sticker.dataset.stickerId || '',
+                ownerId: sticker.dataset.stickerOwner || ''
+            });
+        });
+        sticker.addEventListener('contextmenu', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            showConteggStickerContextMenu(e.clientX, e.clientY, {
+                url: sticker.dataset.stickerUrl || '',
+                id: sticker.dataset.stickerId || '',
+                ownerId: sticker.dataset.stickerOwner || ''
+            }, { fromChat: true });
+        });
+    });
 
     div.querySelectorAll('.contegg-mention[data-mention-username]').forEach(btn => {
         btn.addEventListener('click', async e => {
@@ -9880,12 +9965,14 @@ div.addEventListener('click', (e) => {
     if (e.target.closest('.reaction-badge')) return;
     if (e.target.closest('.contegg-profile-trigger')) return;
     if (e.target.closest('.contegg-forwarded-from')) return;
+    if (e.target.closest('.contegg-chat-sticker')) return;
 
     if (
         e.target.closest('.audio-play-btn') ||
         e.target.closest('.audio-waveform') ||
         e.target.closest('.audio-progress') ||
         e.target.closest('.msg-video') ||
+        e.target.closest('.contegg-chat-sticker') ||
         e.target.closest('.post-comments-btn')
     ) {
         return;
@@ -9938,6 +10025,7 @@ div.addEventListener('touchstart', (e) => {
         e.target.closest('.audio-waveform') ||
         e.target.closest('.audio-progress') ||
         e.target.closest('.msg-video') ||
+        e.target.closest('.contegg-chat-sticker') ||
         e.target.closest('.post-comments-btn')
     ) {
         return;
@@ -19041,6 +19129,410 @@ body.keyboard-no-transition .chat-input-bar {
         initRightPanel();
     }
 
+
+    async function getConteggCreatedStickers() {
+        if (!currentUser?.uid) return [];
+        const snap = await db.collection('users').doc(currentUser.uid)
+            .collection('createdStickers').orderBy('createdAt', 'desc').get();
+        return snap.docs.map(doc => ({ id: doc.id, ...doc.data(), owned: true }));
+    }
+
+    async function getConteggSavedStickers() {
+        if (!currentUser?.uid) return [];
+        const snap = await db.collection('users').doc(currentUser.uid)
+            .collection('savedStickers').orderBy('savedAt', 'desc').get();
+        return snap.docs.map(doc => ({ id: doc.id, ...doc.data(), saved: true }));
+    }
+
+    async function isConteggStickerSaved(sticker) {
+        if (!currentUser?.uid || !sticker?.url) return false;
+        const key = getConteggStickerSaveKey(sticker);
+        const snap = await db.collection('users').doc(currentUser.uid)
+            .collection('savedStickers').doc(key).get();
+        return snap.exists;
+    }
+
+    function getConteggStickerSaveKey(sticker) {
+        if (sticker?.ownerId && sticker?.id) return `${sticker.ownerId}_${sticker.id}`;
+        let hash = 2166136261;
+        const value = String(sticker?.url || '');
+        for (let i = 0; i < value.length; i++) {
+            hash ^= value.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+        return `url_${(hash >>> 0).toString(36)}`;
+    }
+
+    async function renderConteggStickerSidePanel(content) {
+        const token = ++conteggStickerPanelRenderToken;
+        content.innerHTML = '<div class="contegg-sticker-panel-loading"><div class="spinner"></div></div>';
+
+        try {
+            const [created, saved] = await Promise.all([
+                getConteggCreatedStickers(),
+                getConteggSavedStickers()
+            ]);
+            if (token !== conteggStickerPanelRenderToken || !content.isConnected) return;
+
+            const createdKeys = new Set(created.map(s => `${s.ownerId || currentUser.uid}_${s.id}`));
+            const visibleSaved = saved.filter(s => !createdKeys.has(`${s.ownerId || s.sourceOwnerId || ''}_${s.sourceStickerId || s.id}`));
+
+            const grid = document.createElement('div');
+            grid.className = 'contegg-sticker-grid';
+
+            const add = document.createElement('button');
+            add.type = 'button';
+            add.className = 'contegg-sticker-cell contegg-sticker-add';
+            add.innerHTML = '<i class="fas fa-plus"></i><span>Создать</span>';
+            add.title = `Создать стикер (${created.length}/${CONTEGG_MAX_CREATED_STICKERS})`;
+            add.disabled = created.length >= CONTEGG_MAX_CREATED_STICKERS;
+            add.addEventListener('click', () => {
+                if (add.disabled) {
+                    toast('Можно создать максимум 4 стикера');
+                    return;
+                }
+                document.getElementById('conteggStickerFileInput')?.click();
+            });
+            grid.appendChild(add);
+
+            const all = [
+                ...created.map(s => ({ ...s, ownerId: s.ownerId || currentUser.uid, source: 'created' })),
+                ...visibleSaved.map(s => ({
+                    ...s,
+                    id: s.sourceStickerId || s.stickerId || s.id,
+                    ownerId: s.sourceOwnerId || s.ownerId || '',
+                    source: 'saved'
+                }))
+            ];
+
+            all.forEach(sticker => {
+                const cell = document.createElement('button');
+                cell.type = 'button';
+                cell.className = 'contegg-sticker-cell';
+                cell.innerHTML = `<img src="${esc(sticker.url || '')}" alt="Sticker" draggable="false">`;
+                cell.addEventListener('click', () => sendConteggSticker(sticker));
+                cell.addEventListener('contextmenu', e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showConteggStickerContextMenu(e.clientX, e.clientY, sticker, { fromPanel: true });
+                });
+                grid.appendChild(cell);
+            });
+
+            content.replaceChildren(grid);
+        } catch (e) {
+            console.error('render stickers:', e);
+            content.innerHTML = '<div class="contegg-panel-placeholder"><i class="far fa-sticky-note"></i><div>Не удалось загрузить стикеры</div></div>';
+        }
+    }
+
+    async function sendConteggSticker(sticker) {
+        if (!currentChatId || !sticker?.url) {
+            toast('Сначала откройте чат');
+            return;
+        }
+        if (!(await canSendToCurrentChat())) {
+            toast('Нет права отправлять сообщения');
+            return;
+        }
+
+        try {
+            const msg = {
+                type: 'sticker',
+                stickerUrl: sticker.url,
+                stickerId: sticker.id || sticker.sourceStickerId || '',
+                stickerOwnerId: sticker.ownerId || sticker.sourceOwnerId || '',
+                senderId: currentUser.uid,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                deliveredTo: [currentUser.uid],
+                readBy: [currentUser.uid]
+            };
+            const createdMessageRef = await db.collection('chats').doc(currentChatId)
+                .collection('messages').add(msg);
+            const unreadFor = await getUnreadRecipientsForCurrentChat();
+            const update = {
+                lastMessage: 'Стикер',
+                lastSender: currentUser.uid,
+                lastMessageId: createdMessageRef.id,
+                lastMessageTime: firebase.firestore.FieldValue.serverTimestamp()
+            };
+            if (unreadFor.length) update.unreadFor = firebase.firestore.FieldValue.arrayUnion(...unreadFor);
+            await db.collection('chats').doc(currentChatId).update(update);
+        } catch (e) {
+            console.error('send sticker:', e);
+            toast('Не удалось отправить стикер');
+        }
+    }
+
+    async function saveConteggStickerToSaved(sticker) {
+        if (!currentUser?.uid || !sticker?.url) return;
+        const existing = await getConteggSavedStickers();
+        const key = getConteggStickerSaveKey(sticker);
+        if (existing.some(s => s.id === key)) {
+            toast('Стикер уже сохранён');
+            return;
+        }
+        if (existing.length >= CONTEGG_MAX_SAVED_STICKERS) {
+            toast('Можно сохранить максимум 16 стикеров');
+            return;
+        }
+        await db.collection('users').doc(currentUser.uid)
+            .collection('savedStickers').doc(key).set({
+                url: sticker.url,
+                sourceStickerId: sticker.id || sticker.sourceStickerId || '',
+                sourceOwnerId: sticker.ownerId || sticker.sourceOwnerId || '',
+                savedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        toast('Стикер сохранён');
+        refreshConteggStickerTabIfVisible();
+    }
+
+    async function removeConteggStickerFromSaved(sticker) {
+        if (!currentUser?.uid || !sticker?.url) return;
+        const key = getConteggStickerSaveKey(sticker);
+        await db.collection('users').doc(currentUser.uid)
+            .collection('savedStickers').doc(key).delete();
+        toast('Удалено из сохранённых');
+        refreshConteggStickerTabIfVisible();
+    }
+
+    async function deleteConteggCreatedSticker(sticker) {
+        if (!currentUser?.uid || !sticker?.id) return;
+        if ((sticker.ownerId || currentUser.uid) !== currentUser.uid) return;
+        if (!confirm('Удалить этот стикер из вашего списка? У пользователей, которые уже сохранили его, он останется.')) return;
+        await db.collection('users').doc(currentUser.uid)
+            .collection('createdStickers').doc(sticker.id).delete();
+        // Deliberately do NOT delete the Supabase object. Existing messages and
+        // other users' saved copies must continue to work.
+        toast('Стикер удалён из вашего списка');
+        refreshConteggStickerTabIfVisible();
+    }
+
+    function refreshConteggStickerTabIfVisible() {
+        const active = document.querySelector('.contegg-side-tab.active');
+        if (active?.dataset.sideTab === 'stickers') renderSideTab('stickers');
+    }
+
+    async function openConteggStickerFromChat(sticker) {
+        const modal = document.getElementById('conteggStickerChatModal');
+        const content = document.getElementById('conteggStickerChatModalContent');
+        if (!modal || !content || !sticker?.url) return;
+        const saved = await isConteggStickerSaved(sticker);
+        content.innerHTML = `
+            <div class="contegg-sticker-chat-preview"><img src="${esc(sticker.url)}" alt="Sticker"></div>
+            <button class="btn btn-primary" type="button" id="conteggStickerChatSaveBtn">
+                ${saved ? 'Удалить из сохранённых' : 'Сохранить стикер'}
+            </button>
+            <button class="btn btn-secondary" type="button" onclick="closeConteggStickerChatModal()" style="margin-top:8px;">Закрыть</button>
+        `;
+        content.querySelector('#conteggStickerChatSaveBtn')?.addEventListener('click', async () => {
+            const nowSaved = await isConteggStickerSaved(sticker);
+            if (nowSaved) await removeConteggStickerFromSaved(sticker);
+            else await saveConteggStickerToSaved(sticker);
+            closeConteggStickerChatModal();
+        });
+        modal.classList.add('show');
+    }
+
+    function closeConteggStickerChatModal() {
+        document.getElementById('conteggStickerChatModal')?.classList.remove('show');
+    }
+
+    async function showConteggStickerContextMenu(x, y, sticker, options = {}) {
+        const menu = document.getElementById('conteggStickerContextMenu');
+        if (!menu || !sticker?.url) return;
+        conteggStickerMenuSticker = sticker;
+        const saved = await isConteggStickerSaved(sticker);
+        const owned = (sticker.ownerId || '') === currentUser.uid || sticker.source === 'created';
+        menu.innerHTML = `
+            <button type="button" data-sticker-menu="save"><i class="far fa-bookmark"></i>${saved ? 'Удалить из сохранённых' : 'Добавить в сохранённые'}</button>
+            ${owned ? '<button type="button" class="danger" data-sticker-menu="delete"><i class="far fa-trash-alt"></i>Удалить мой стикер</button>' : ''}
+        `;
+        menu.style.display = 'block';
+        const margin = 8;
+        const rect = menu.getBoundingClientRect();
+        menu.style.left = `${Math.max(margin, Math.min(x, window.innerWidth - rect.width - margin))}px`;
+        menu.style.top = `${Math.max(margin, Math.min(y, window.innerHeight - rect.height - margin))}px`;
+    }
+
+    function hideConteggStickerContextMenu() {
+        const menu = document.getElementById('conteggStickerContextMenu');
+        if (menu) menu.style.display = 'none';
+        conteggStickerMenuSticker = null;
+    }
+
+    document.getElementById('conteggStickerContextMenu')?.addEventListener('click', async e => {
+        const action = e.target.closest('[data-sticker-menu]')?.dataset.stickerMenu;
+        const sticker = conteggStickerMenuSticker;
+        if (!action || !sticker) return;
+        e.preventDefault();
+        e.stopPropagation();
+        hideConteggStickerContextMenu();
+        if (action === 'save') {
+            if (await isConteggStickerSaved(sticker)) await removeConteggStickerFromSaved(sticker);
+            else await saveConteggStickerToSaved(sticker);
+        } else if (action === 'delete') {
+            await deleteConteggCreatedSticker(sticker);
+        }
+    });
+
+    document.addEventListener('pointerdown', e => {
+        const menu = document.getElementById('conteggStickerContextMenu');
+        if (menu?.style.display === 'block' && !menu.contains(e.target)) hideConteggStickerContextMenu();
+    }, true);
+
+    document.getElementById('conteggStickerFileInput')?.addEventListener('change', e => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (file) openConteggStickerEditor(file);
+    });
+
+    async function openConteggStickerEditor(file) {
+        if (!file?.type?.startsWith('image/')) {
+            toast('Выберите изображение');
+            return;
+        }
+        const created = await getConteggCreatedStickers();
+        if (created.length >= CONTEGG_MAX_CREATED_STICKERS) {
+            toast('Можно создать максимум 4 стикера');
+            return;
+        }
+        if (conteggStickerEditorObjectUrl) URL.revokeObjectURL(conteggStickerEditorObjectUrl);
+        conteggStickerEditorObjectUrl = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+            conteggStickerEditorImage = img;
+            conteggStickerEditorScale = 1;
+            conteggStickerEditorOffsetX = 0;
+            conteggStickerEditorOffsetY = 0;
+            const range = document.getElementById('conteggStickerScale');
+            if (range) range.value = '100';
+            drawConteggStickerEditor();
+            document.getElementById('conteggStickerEditorModal')?.classList.add('show');
+        };
+        img.onerror = () => toast('Не удалось открыть изображение');
+        img.src = conteggStickerEditorObjectUrl;
+    }
+
+    function closeConteggStickerEditor() {
+        document.getElementById('conteggStickerEditorModal')?.classList.remove('show');
+        conteggStickerEditorImage = null;
+        conteggStickerEditorDragging = false;
+        if (conteggStickerEditorObjectUrl) {
+            URL.revokeObjectURL(conteggStickerEditorObjectUrl);
+            conteggStickerEditorObjectUrl = '';
+        }
+    }
+
+    function getConteggStickerDrawRect() {
+        const img = conteggStickerEditorImage;
+        if (!img) return null;
+        const size = 512;
+        const contain = Math.min(size / img.naturalWidth, size / img.naturalHeight);
+        const scale = contain * conteggStickerEditorScale;
+        const w = img.naturalWidth * scale;
+        const h = img.naturalHeight * scale;
+        return {
+            x: (size - w) / 2 + conteggStickerEditorOffsetX,
+            y: (size - h) / 2 + conteggStickerEditorOffsetY,
+            w, h
+        };
+    }
+
+    function roundedRectPath(ctx, x, y, w, h, radius) {
+        const r = Math.max(0, Math.min(radius, w / 2, h / 2));
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+    }
+
+    function drawConteggStickerEditor() {
+        const canvas = document.getElementById('conteggStickerEditorCanvas');
+        const img = conteggStickerEditorImage;
+        if (!canvas || !img) return;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, 512, 512);
+        const rect = getConteggStickerDrawRect();
+        if (!rect) return;
+        ctx.save();
+        roundedRectPath(ctx, rect.x, rect.y, rect.w, rect.h, Math.min(rect.w, rect.h) * 0.11);
+        ctx.clip();
+        ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h);
+        ctx.restore();
+    }
+
+    document.getElementById('conteggStickerScale')?.addEventListener('input', e => {
+        conteggStickerEditorScale = Number(e.target.value || 100) / 100;
+        drawConteggStickerEditor();
+    });
+
+    const stickerCanvas = document.getElementById('conteggStickerEditorCanvas');
+    stickerCanvas?.addEventListener('pointerdown', e => {
+        if (!conteggStickerEditorImage) return;
+        conteggStickerEditorDragging = true;
+        conteggStickerEditorDragStart = {
+            x: e.clientX,
+            y: e.clientY,
+            ox: conteggStickerEditorOffsetX,
+            oy: conteggStickerEditorOffsetY
+        };
+        try { stickerCanvas.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    stickerCanvas?.addEventListener('pointermove', e => {
+        if (!conteggStickerEditorDragging || !conteggStickerEditorDragStart) return;
+        const rect = stickerCanvas.getBoundingClientRect();
+        const ratio = 512 / Math.max(1, rect.width);
+        conteggStickerEditorOffsetX = conteggStickerEditorDragStart.ox + (e.clientX - conteggStickerEditorDragStart.x) * ratio;
+        conteggStickerEditorOffsetY = conteggStickerEditorDragStart.oy + (e.clientY - conteggStickerEditorDragStart.y) * ratio;
+        drawConteggStickerEditor();
+    });
+    function stopStickerDrag(e) {
+        conteggStickerEditorDragging = false;
+        conteggStickerEditorDragStart = null;
+        try { stickerCanvas?.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+    stickerCanvas?.addEventListener('pointerup', stopStickerDrag);
+    stickerCanvas?.addEventListener('pointercancel', stopStickerDrag);
+
+    async function saveConteggStickerFromEditor() {
+        const canvas = document.getElementById('conteggStickerEditorCanvas');
+        if (!canvas || !conteggStickerEditorImage || !currentUser?.uid) return;
+        const created = await getConteggCreatedStickers();
+        if (created.length >= CONTEGG_MAX_CREATED_STICKERS) {
+            toast('Можно создать максимум 4 стикера');
+            return;
+        }
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (!blob) {
+            toast('Не удалось создать стикер');
+            return;
+        }
+        try {
+            const file = new File([blob], `sticker_${Date.now()}.png`, { type: 'image/png' });
+            const uploaded = await uploadToSupabaseStorage(file, 'stickers', {
+                prefix: `${currentUser.uid}_${Date.now()}`,
+                cacheControl: '31536000'
+            });
+            const ref = db.collection('users').doc(currentUser.uid).collection('createdStickers').doc();
+            await ref.set({
+                url: uploaded.url,
+                storagePath: uploaded.path || '',
+                ownerId: currentUser.uid,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            closeConteggStickerEditor();
+            toast('Стикер создан');
+            refreshConteggStickerTabIfVisible();
+        } catch (e) {
+            console.error('save sticker:', e);
+            toast('Не удалось сохранить стикер');
+        }
+    }
+
     function renderSideTab(name) {
         const content = document.getElementById('conteggSidePanelContent');
         if (!content) return;
@@ -19069,11 +19561,14 @@ body.keyboard-no-transition .chat-input-bar {
             return;
         }
 
+        if (name === 'stickers') {
+            renderConteggStickerSidePanel(content);
+            return;
+        }
+
         const empty = document.createElement('div');
         empty.className = 'contegg-panel-placeholder';
-        empty.innerHTML = name === 'stickers'
-            ? '<i class="far fa-sticky-note"></i><div>Стикеры появятся здесь</div>'
-            : '<i class="fas fa-film"></i><div>GIF-панель появится здесь</div>';
+        empty.innerHTML = '<i class="fas fa-film"></i><div>GIF-панель появится здесь</div>';
         content.appendChild(empty);
     }
 
@@ -19096,6 +19591,13 @@ body.keyboard-no-transition .chat-input-bar {
 
         renderSideTab('emoji');
     }
+
+
+    window.openConteggStickerFromChat = openConteggStickerFromChat;
+    window.showConteggStickerContextMenu = showConteggStickerContextMenu;
+    window.closeConteggStickerChatModal = closeConteggStickerChatModal;
+    window.saveConteggStickerFromEditor = saveConteggStickerFromEditor;
+    window.closeConteggStickerEditor = closeConteggStickerEditor;
 
     function restoreFromDesktopToPhone() {
         const app = document.querySelector('.app-container');
@@ -23152,7 +23654,9 @@ body.contegg-has-pinned-message #chatMessages {
         groupCropSettingsModal: 'closeGroupCropSettings',
         forwardMessageModal: 'closeForwardMessageModal',
         conteggContactEditModal: 'closeContactEditor',
-        conteggContactsManagerModal: 'closeContactsManager'
+        conteggContactsManagerModal: 'closeContactsManager',
+        conteggStickerEditorModal: 'closeConteggStickerEditor',
+        conteggStickerChatModal: 'closeConteggStickerChatModal'
     };
 
     let drag = null;
@@ -23421,6 +23925,125 @@ body.contegg-has-pinned-message #chatMessages {
         pointer-events:auto !important;
         transition:none !important;
     }
+}
+</style>
+
+
+<style id="CONTEGG-STICKERS-V19">
+.contegg-sticker-grid {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+    padding:8px;
+    align-content:start;
+}
+.contegg-sticker-cell {
+    position:relative;
+    width:100%;
+    aspect-ratio:1;
+    min-width:0;
+    border:0;
+    border-radius:14px;
+    background:transparent;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:7px;
+    cursor:pointer;
+    overflow:hidden;
+    transition:background .14s ease, transform .14s ease;
+}
+.contegg-sticker-cell:hover { background:rgba(255,255,255,.055); }
+.contegg-sticker-cell:active { transform:scale(.97); }
+.contegg-sticker-cell img { width:100%; height:100%; object-fit:contain; display:block; pointer-events:none; }
+.contegg-sticker-add {
+    border:1px dashed rgba(255,255,255,.14);
+    color:var(--accent);
+    flex-direction:column;
+    gap:6px;
+    font-size:11px;
+}
+.contegg-sticker-add i { font-size:22px; }
+.contegg-sticker-add:disabled { opacity:.35; cursor:not-allowed; }
+.contegg-sticker-panel-loading { min-height:140px; display:flex; align-items:center; justify-content:center; }
+
+.msg-sticker-only {
+    background:transparent !important;
+    padding:2px !important;
+    box-shadow:none !important;
+    max-width:min(245px,58%) !important;
+}
+.msg-sticker-only .msg-time {
+    position:absolute;
+    right:8px;
+    bottom:7px;
+    padding:2px 6px;
+    border-radius:999px;
+    background:rgba(0,0,0,.42);
+    color:#fff !important;
+    font-size:9px;
+    backdrop-filter:blur(8px);
+}
+.contegg-chat-sticker {
+    width:min(220px,46vw);
+    aspect-ratio:1;
+    border:0;
+    padding:0;
+    margin:0;
+    background:transparent;
+    display:block;
+    cursor:pointer;
+}
+.contegg-chat-sticker img { width:100%; height:100%; object-fit:contain; display:block; pointer-events:none; }
+
+.contegg-sticker-context-menu {
+    position:fixed;
+    z-index:2147483000;
+    min-width:210px;
+    padding:6px;
+    border:1px solid rgba(255,255,255,.10);
+    border-radius:14px;
+    background:rgba(28,28,30,.97);
+    box-shadow:0 18px 40px rgba(0,0,0,.38);
+    backdrop-filter:blur(24px) saturate(150%);
+    display:none;
+}
+.contegg-sticker-context-menu button {
+    width:100%; border:0; background:transparent; color:var(--text-primary);
+    display:flex; align-items:center; gap:9px; padding:10px 11px; border-radius:10px; cursor:pointer; text-align:left;
+}
+.contegg-sticker-context-menu button:hover { background:rgba(255,255,255,.06); }
+.contegg-sticker-context-menu button.danger { color:#ff453a; }
+.contegg-sticker-context-menu i { width:18px; text-align:center; }
+
+.contegg-sticker-editor-sheet { max-height:min(88dvh,760px); overflow:hidden; }
+.contegg-sticker-editor-content { overflow:auto; }
+.contegg-sticker-canvas-wrap {
+    width:min(320px,78vw);
+    aspect-ratio:1;
+    margin:0 auto 12px;
+    border-radius:18px;
+    overflow:hidden;
+    background-color:#2a2a2d;
+    background-image:
+      linear-gradient(45deg,rgba(255,255,255,.055) 25%,transparent 25%),
+      linear-gradient(-45deg,rgba(255,255,255,.055) 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,rgba(255,255,255,.055) 75%),
+      linear-gradient(-45deg,transparent 75%,rgba(255,255,255,.055) 75%);
+    background-size:24px 24px;
+    background-position:0 0,0 12px,12px -12px,-12px 0;
+    touch-action:none;
+}
+#conteggStickerEditorCanvas { width:100%; height:100%; display:block; touch-action:none; cursor:grab; }
+#conteggStickerEditorCanvas:active { cursor:grabbing; }
+.contegg-sticker-editor-hint { color:var(--text-secondary); font-size:11px; line-height:1.4; margin:0 2px 12px; text-align:center; }
+.contegg-sticker-scale-row { display:grid; grid-template-columns:24px 1fr 24px; gap:8px; align-items:center; margin-bottom:14px; color:var(--text-secondary); }
+.contegg-sticker-scale-row input { width:100%; }
+.contegg-sticker-chat-preview { width:min(260px,70vw); aspect-ratio:1; margin:0 auto 14px; display:flex; align-items:center; justify-content:center; }
+.contegg-sticker-chat-preview img { width:100%; height:100%; object-fit:contain; }
+@media (max-width:767px) {
+    .contegg-chat-sticker { width:min(205px,58vw); }
+    .msg-sticker-only { max-width:64% !important; }
 }
 </style>
 
