@@ -3197,6 +3197,7 @@ let groupSettingsCropper = null;
 let usersCache = {};
 let usersCachePromises = {};
 let savedChatId = null;
+let savedChatResolvePromise = null;
 let groupSettingsAvatarBase64 = null;
 let isCurrentUserDeveloper = false;
 let linkedAccounts = [];
@@ -5676,45 +5677,186 @@ function closeImagePreview() {
 }
 
 async function getOrCreateSavedChat() {
-    if (savedChatId) return savedChatId;
-    
-    const savedChatsRef = db.collection('chats');
-    const query = await savedChatsRef.where('isSaved', '==', true).where('ownerId', '==', currentUser.uid).get();
-    
-    if (!query.empty) {
-        savedChatId = query.docs[0].id;
-        return savedChatId;
+    if (!currentUser?.uid) {
+        throw new Error('Пользователь не авторизован');
     }
-    
-    const newChat = {
-        isSaved: true,
-        isGroup: false,
-        ownerId: currentUser.uid,
-        participants: [currentUser.uid],
-        name: 'Избранное',
-        lastMessage: '',
-        lastMessageTime: new Date(),
-        createdAt: new Date(),
-        unreadFor: []
-    };
-    
-    const docRef = await db.collection('chats').add(newChat);
-    savedChatId = docRef.id;
-    return savedChatId;
+
+    // If another startup/click is already resolving Favorites, reuse it.
+    if (savedChatResolvePromise) {
+        return savedChatResolvePromise;
+    }
+
+    savedChatResolvePromise = (async () => {
+        const uid = currentUser.uid;
+        const chatsRef = db.collection('chats');
+
+        // 1. Re-check cached ID. It may point to a deleted/stale document.
+        if (savedChatId) {
+            try {
+                const cachedSnap = await chatsRef.doc(savedChatId).get();
+
+                if (cachedSnap.exists) {
+                    const data = cachedSnap.data() || {};
+
+                    if (
+                        data.isSaved === true &&
+                        (
+                            data.ownerId === uid ||
+                            data.participants?.includes(uid)
+                        )
+                    ) {
+                        // Repair old Favorites docs so loadChats() can always find them.
+                        await cachedSnap.ref.set({
+                            isSaved: true,
+                            isGroup: false,
+                            ownerId: uid,
+                            participants: [uid],
+                            name: 'Избранное'
+                        }, { merge:true });
+
+                        return savedChatId;
+                    }
+                }
+            } catch (e) {
+                console.warn('Favorites cached id check:', e);
+            }
+
+            savedChatId = null;
+        }
+
+        let foundDoc = null;
+
+        // 2. Search by ONE field only, then filter locally.
+        // This does not require the old isSaved+ownerId composite index.
+        try {
+            const ownerSnap = await chatsRef
+                .where('ownerId', '==', uid)
+                .get();
+
+            foundDoc = ownerSnap.docs.find(doc => {
+                const data = doc.data() || {};
+                return data.isSaved === true;
+            }) || null;
+        } catch (e) {
+            console.warn('Favorites owner lookup:', e);
+        }
+
+        // 3. Legacy fallback: some old Favorites docs had no ownerId,
+        // but did contain the user in participants.
+        if (!foundDoc) {
+            try {
+                const participantSnap = await chatsRef
+                    .where('participants', 'array-contains', uid)
+                    .get();
+
+                foundDoc = participantSnap.docs.find(doc => {
+                    const data = doc.data() || {};
+                    return data.isSaved === true;
+                }) || null;
+            } catch (e) {
+                console.warn('Favorites participants lookup:', e);
+            }
+        }
+
+        if (foundDoc) {
+            savedChatId = foundDoc.id;
+
+            await foundDoc.ref.set({
+                isSaved: true,
+                isGroup: false,
+                isSystem: false,
+                isChannel: false,
+                ownerId: uid,
+                participants: [uid],
+                name: 'Избранное',
+                unreadFor: []
+            }, { merge:true });
+
+            return savedChatId;
+        }
+
+        // 4. No previous Favorites chat exists. Use a deterministic ID so
+        // startup and a fast user click can never create two copies.
+        const deterministicId = `saved_${uid}`;
+        const ref = chatsRef.doc(deterministicId);
+        const snap = await ref.get();
+
+        if (!snap.exists) {
+            await ref.set({
+                isSaved: true,
+                isGroup: false,
+                isSystem: false,
+                isChannel: false,
+                ownerId: uid,
+                participants: [uid],
+                name: 'Избранное',
+                lastMessage: '',
+                lastMessageTime: firebase.firestore.FieldValue.serverTimestamp(),
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                unreadFor: []
+            });
+        } else {
+            await ref.set({
+                isSaved: true,
+                isGroup: false,
+                isSystem: false,
+                isChannel: false,
+                ownerId: uid,
+                participants: [uid],
+                name: 'Избранное',
+                unreadFor: []
+            }, { merge:true });
+        }
+
+        savedChatId = deterministicId;
+        return savedChatId;
+    })();
+
+    try {
+        return await savedChatResolvePromise;
+    } finally {
+        savedChatResolvePromise = null;
+    }
 }
 
 async function openSavedChat() {
     closeAdminWorkspaceBeforeOpeningChat();
 
-    currentChatIsSaved = true;
-    currentChatIsGroup = false;
-    currentChatIsSystem = false;
-    currentChatIsChannel = false;
-    currentChatUser = null;
-    const chatId = await getOrCreateSavedChat();
-    currentChatId = chatId;
-    clearChatNavbarActions();
-    await openSavedChatUI();
+    try {
+        const chatId = await getOrCreateSavedChat();
+
+        if (!chatId) {
+            throw new Error('Не удалось получить ID Избранного');
+        }
+
+        currentChatId = chatId;
+        currentChatIsSaved = true;
+        currentChatIsGroup = false;
+        currentChatIsSystem = false;
+        currentChatIsChannel = false;
+        currentChatUser = null;
+
+        clearChatNavbarActions();
+
+        // Clear any previous feed immediately so an old chat can never remain
+        // visible while Favorites is being mounted.
+        prepareMessageViewportForChat(chatId);
+
+        await openSavedChatUI();
+
+    } catch (e) {
+        console.error('openSavedChat:', e);
+
+        // Never leave a half-open/stuck chat state after a Firestore error.
+        currentChatIsSaved = false;
+
+        const messages = document.getElementById('chatMessages');
+        if (messages?.dataset.activeChatId && messages.dataset.activeChatId !== currentChatId) {
+            messages.replaceChildren();
+        }
+
+        toast('Не удалось открыть Избранное. Попробуйте ещё раз.');
+    }
 }
 
 async function openSavedChatUI() {
