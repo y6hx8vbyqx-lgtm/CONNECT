@@ -22206,219 +22206,6 @@ body.contegg-has-pinned-message #chatMessages {
     }
 }
 </style>
-
-
-<style id="CONTEGG-CREATE-MENU-SWIPE-V10">
-/* Create menu only — keep every other modal untouched. */
-#createMenuModal .contegg-create-menu-sheet {
-    overflow:hidden;
-    touch-action:none;
-    will-change:transform;
-}
-
-#createMenuModal .contegg-create-menu-handle {
-    cursor:grab;
-    touch-action:none;
-}
-
-#createMenuModal .contegg-create-menu-handle:active {
-    cursor:grabbing;
-}
-
-/* The two blue actions must read as two separate buttons, not one block. */
-#createMenuModal .modal-content {
-    display:flex;
-    flex-direction:column;
-    gap:10px;
-}
-
-#createMenuModal .modal-content > .btn {
-    margin-top:0 !important;
-    flex:0 0 auto;
-}
-
-#createMenuModal .modal-content > .btn-secondary {
-    margin-top:2px !important;
-}
-
-/* Slightly soften the menu actions to match the rest of Contegg UI. */
-#createMenuModal .btn-primary {
-    min-height:48px;
-}
-
-#createMenuModal .btn-primary + .btn-primary {
-    margin-top:0 !important;
-}
-
-#createMenuModal.contegg-create-dragging {
-    transition:none !important;
-}
-
-#createMenuModal.contegg-create-dragging .contegg-create-menu-sheet {
-    transition:none !important;
-}
-
-@media (max-width:767px) {
-    #createMenuModal .contegg-create-menu-handle {
-        width:40px;
-        height:5px;
-        margin-top:9px;
-        margin-bottom:15px;
-    }
-}
-</style>
-
-
-<script id="CONTEGG-CREATE-MENU-SWIPE-CONTROLLER-V10">
-(() => {
-    if (window.__conteggCreateMenuSwipeV10) return;
-    window.__conteggCreateMenuSwipeV10 = true;
-
-    let dragging = false;
-    let pointerId = null;
-    let startY = 0;
-    let currentY = 0;
-    let startedAt = 0;
-
-    function getParts() {
-        return {
-            modal: document.getElementById('createMenuModal'),
-            sheet: document.getElementById('createMenuSheet')
-        };
-    }
-
-    function canStartDrag(event, sheet) {
-        if (!sheet) return false;
-
-        // Allow dragging from the handle/title/top area.
-        // Buttons and form controls must keep their normal click behavior.
-        if (event.target.closest('button, input, textarea, select, a')) return false;
-
-        const rect = sheet.getBoundingClientRect();
-        const localY = event.clientY - rect.top;
-
-        return localY >= 0 && localY <= 86;
-    }
-
-    function beginDrag(event) {
-        const { modal, sheet } = getParts();
-
-        if (
-            !modal?.classList.contains('show') ||
-            !sheet ||
-            !canStartDrag(event, sheet)
-        ) {
-            return;
-        }
-
-        dragging = true;
-        pointerId = event.pointerId;
-        startY = event.clientY;
-        currentY = 0;
-        startedAt = performance.now();
-
-        modal.classList.add('contegg-create-dragging');
-
-        sheet.style.transition = 'none';
-        modal.style.transition = 'none';
-
-        try {
-            sheet.setPointerCapture(pointerId);
-        } catch (_) {}
-    }
-
-    function moveDrag(event) {
-        if (!dragging || event.pointerId !== pointerId) return;
-
-        const { modal, sheet } = getParts();
-        if (!modal || !sheet) return;
-
-        let delta = event.clientY - startY;
-
-        // Upward movement gets strong resistance.
-        if (delta < 0) {
-            delta *= 0.12;
-        }
-
-        currentY = Math.max(-10, delta);
-
-        if (currentY > 0) {
-            event.preventDefault();
-        }
-
-        sheet.style.transform = `translate3d(0, ${currentY}px, 0)`;
-
-        const progress = Math.min(1, Math.max(0, currentY / Math.max(sheet.offsetHeight, 320)));
-        modal.style.opacity = String(1 - progress * 0.58);
-    }
-
-    function endDrag(event) {
-        if (!dragging || event.pointerId !== pointerId) return;
-
-        const { modal, sheet } = getParts();
-
-        dragging = false;
-
-        try {
-            sheet?.releasePointerCapture(pointerId);
-        } catch (_) {}
-
-        pointerId = null;
-
-        if (!modal || !sheet) return;
-
-        modal.classList.remove('contegg-create-dragging');
-
-        const elapsed = Math.max(1, performance.now() - startedAt);
-        const velocity = currentY / elapsed;
-
-        const distanceThreshold = Math.min(
-            150,
-            Math.max(86, sheet.offsetHeight * 0.25)
-        );
-
-        const shouldClose =
-            currentY >= distanceThreshold ||
-            (currentY > 38 && velocity > 0.65);
-
-        if (shouldClose) {
-            closeCreateMenu({ animateDown:true });
-            currentY = 0;
-            return;
-        }
-
-        // Not far enough: spring neatly back into place.
-        sheet.style.transition = 'transform 260ms cubic-bezier(.22,1,.36,1)';
-        sheet.style.transform = 'translate3d(0,0,0)';
-
-        modal.style.transition = 'opacity 220ms ease';
-        modal.style.opacity = '1';
-
-        setTimeout(() => {
-            if (modal.classList.contains('show')) {
-                resetCreateMenuDragStyles();
-            }
-        }, 270);
-
-        currentY = 0;
-    }
-
-    document.addEventListener('pointerdown', event => {
-        if (event.button !== undefined && event.button !== 0) return;
-
-        const sheet = event.target.closest('#createMenuSheet');
-        if (!sheet) return;
-
-        beginDrag(event);
-    }, { passive:false });
-
-    document.addEventListener('pointermove', moveDrag, { passive:false });
-    document.addEventListener('pointerup', endDrag, { passive:true });
-    document.addEventListener('pointercancel', endDrag, { passive:true });
-})();
-</script>
-
-
 <style id="CONTEGG-CONTACTS-V11">
 .contegg-contact-private-note {
     margin:12px auto 4px;
@@ -22675,6 +22462,337 @@ body.contegg-has-pinned-message #chatMessages {
     box-shadow:0 0 0 2px rgba(10,132,255,.34);
 }
 </style>
+
+
+<style id="CONTEGG-CREATE-MENU-GAP-V13">
+#createMenuModal .modal-content {
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+}
+
+#createMenuModal .modal-content > .btn {
+    margin-top:0 !important;
+    flex:0 0 auto;
+}
+
+#createMenuModal .modal-content > .btn-secondary {
+    margin-top:2px !important;
+}
+
+#createMenuModal .btn-primary {
+    min-height:48px;
+}
+</style>
+
+
+<style id="CONTEGG-GLOBAL-SHEET-SWIPE-V13">
+/*
+   All classic Contegg .modal-sheet windows can be pulled down to dismiss.
+   Only the top/handle area starts the gesture, so scrolling/forms keep working.
+*/
+.modal-overlay > .modal-sheet {
+    will-change:transform;
+}
+
+.modal-overlay > .modal-sheet > .modal-handle {
+    cursor:grab;
+    touch-action:none;
+}
+
+.modal-overlay > .modal-sheet > .modal-handle:active {
+    cursor:grabbing;
+}
+
+.modal-overlay.contegg-sheet-dragging {
+    transition:none !important;
+}
+
+.modal-overlay.contegg-sheet-dragging > .modal-sheet {
+    transition:none !important;
+}
+
+/* The top title zone is also a valid grab area without changing its design. */
+.modal-overlay > .modal-sheet > .modal-title {
+    touch-action:none;
+    user-select:none;
+    -webkit-user-select:none;
+}
+
+@media (max-width:767px) {
+    .modal-overlay > .modal-sheet > .modal-handle {
+        min-height:5px;
+    }
+}
+</style>
+
+
+<script id="CONTEGG-GLOBAL-SHEET-SWIPE-CONTROLLER-V13">
+(() => {
+    if (window.__conteggGlobalSheetSwipeV13) return;
+    window.__conteggGlobalSheetSwipeV13 = true;
+
+    const EXCLUDED_MODAL_IDS = new Set([
+        // Legacy admin surface is retired/hidden by the new admin workspace.
+        'adminPanelModal'
+    ]);
+
+    const CLOSE_HANDLERS = {
+        accountSwitcherModal: 'closeAccountSwitcher',
+        addAccountModal: 'closeAddAccountModal',
+        settingsModal: 'closeSettingsModal',
+        devicesModal: 'closeDevicesModal',
+        deviceDetailsModal: 'closeDeviceDetailsModal',
+        groupModal: 'closeGroupModal',
+        createMenuModal: 'closeCreateMenu',
+        channelModal: 'closeChannelModal',
+        channelCropModal: 'closeChannelCrop',
+        channelSettingsModal: 'closeChannelSettings',
+        postCommentsModal: 'closePostComments',
+        channelCropSettingsModal: 'closeChannelCropSettings',
+        profileEditModal: 'closeProfileEdit',
+        changeEmailModal: 'closeChangeEmailModal',
+        deleteAccountModal: 'closeDeleteAccountModal',
+        changePasswordModal: 'closeChangePasswordModal',
+        cropModal: 'closeCrop',
+        groupCropModal: 'closeGroupCrop',
+        channelMediaComposerModal: 'closeChannelMediaComposer',
+        photoEditModal: 'cancelPhotoEditor',
+        userProfileModal: 'closeUserProfile',
+        profileQrModal: 'closeProfileQrModal',
+        groupSettingsModal: 'closeGroupSettings',
+        groupCropSettingsModal: 'closeGroupCropSettings',
+        forwardMessageModal: 'closeForwardMessageModal',
+        conteggContactEditModal: 'closeContactEditor',
+        conteggContactsManagerModal: 'closeContactsManager'
+    };
+
+    let drag = null;
+
+    function resetInlineStyles(modal, sheet) {
+        if (sheet) {
+            sheet.style.removeProperty('transition');
+            sheet.style.removeProperty('transform');
+        }
+
+        if (modal) {
+            modal.style.removeProperty('transition');
+            modal.style.removeProperty('opacity');
+            modal.classList.remove('contegg-sheet-dragging');
+        }
+    }
+
+    function callNativeClose(modal) {
+        if (!modal) return;
+
+        const handlerName = CLOSE_HANDLERS[modal.id];
+        const handler = handlerName && window[handlerName];
+
+        if (typeof handler === 'function') {
+            try {
+                handler();
+                return;
+            } catch (error) {
+                console.error(`sheet close handler ${handlerName}:`, error);
+            }
+        }
+
+        // Safe fallback for simple future modal sheets.
+        modal.classList.remove('show');
+    }
+
+    function isEligible(modal, sheet) {
+        return (
+            modal &&
+            sheet &&
+            modal.classList.contains('modal-overlay') &&
+            modal.classList.contains('show') &&
+            !EXCLUDED_MODAL_IDS.has(modal.id)
+        );
+    }
+
+    function isStartZone(event, sheet) {
+        if (!sheet) return false;
+
+        // Interactive controls must remain fully interactive.
+        if (
+            event.target.closest(
+                'button, input, textarea, select, a, video, audio, canvas, ' +
+                '[contenteditable="true"], .cropper-container, .photo-editor-stage'
+            )
+        ) {
+            return false;
+        }
+
+        const handle = event.target.closest('.modal-handle');
+        const title = event.target.closest('.modal-title');
+
+        if (handle || title) return true;
+
+        // Also allow a narrow blank strip at the very top of the sheet.
+        const rect = sheet.getBoundingClientRect();
+        const localY = event.clientY - rect.top;
+
+        return localY >= 0 && localY <= 54;
+    }
+
+    function begin(event) {
+        if (drag) return;
+        if (event.button !== undefined && event.button !== 0) return;
+
+        const sheet = event.target.closest('.modal-overlay > .modal-sheet');
+        const modal = sheet?.parentElement;
+
+        if (!isEligible(modal, sheet) || !isStartZone(event, sheet)) return;
+
+        drag = {
+            modal,
+            sheet,
+            pointerId: event.pointerId,
+            startY: event.clientY,
+            y: 0,
+            startedAt: performance.now()
+        };
+
+        modal.classList.add('contegg-sheet-dragging');
+        sheet.style.transition = 'none';
+        modal.style.transition = 'none';
+
+        try {
+            sheet.setPointerCapture(event.pointerId);
+        } catch (_) {}
+    }
+
+    function move(event) {
+        if (!drag || event.pointerId !== drag.pointerId) return;
+
+        const { modal, sheet, startY } = drag;
+        let delta = event.clientY - startY;
+
+        // Pulling upward is allowed only with rubber-band resistance.
+        if (delta < 0) {
+            delta *= 0.10;
+        }
+
+        delta = Math.max(-8, delta);
+        drag.y = delta;
+
+        if (delta > 0) {
+            event.preventDefault();
+        }
+
+        sheet.style.transform = `translate3d(0, ${delta}px, 0)`;
+
+        const sheetHeight = Math.max(sheet.offsetHeight, 280);
+        const progress = Math.min(1, Math.max(0, delta / sheetHeight));
+
+        modal.style.opacity = String(1 - progress * 0.62);
+    }
+
+    function finish(event) {
+        if (!drag || event.pointerId !== drag.pointerId) return;
+
+        const state = drag;
+        drag = null;
+
+        const { modal, sheet, y, startedAt, pointerId } = state;
+
+        try {
+            sheet.releasePointerCapture(pointerId);
+        } catch (_) {}
+
+        modal.classList.remove('contegg-sheet-dragging');
+
+        const elapsed = Math.max(1, performance.now() - startedAt);
+        const velocity = y / elapsed;
+
+        const threshold = Math.min(
+            170,
+            Math.max(88, sheet.offsetHeight * 0.24)
+        );
+
+        const shouldDismiss =
+            y >= threshold ||
+            (y > 40 && velocity > 0.62);
+
+        if (shouldDismiss) {
+            const travel = Math.max(
+                window.innerHeight,
+                sheet.offsetHeight + 120
+            );
+
+            sheet.style.transition =
+                'transform 230ms cubic-bezier(.22,.8,.3,1)';
+            sheet.style.transform =
+                `translate3d(0, ${travel}px, 0)`;
+
+            modal.style.transition = 'opacity 205ms ease';
+            modal.style.opacity = '0';
+
+            setTimeout(() => {
+                // Run each modal's real cleanup logic only after the sheet
+                // has visually left the screen.
+                callNativeClose(modal);
+
+                requestAnimationFrame(() => {
+                    resetInlineStyles(modal, sheet);
+                });
+            }, 225);
+
+            return;
+        }
+
+        // Not enough distance: spring back to the exact original position.
+        sheet.style.transition =
+            'transform 270ms cubic-bezier(.22,1,.36,1)';
+        sheet.style.transform = 'translate3d(0,0,0)';
+
+        modal.style.transition = 'opacity 220ms ease';
+        modal.style.opacity = '1';
+
+        setTimeout(() => {
+            if (modal.classList.contains('show')) {
+                resetInlineStyles(modal, sheet);
+            }
+        }, 280);
+    }
+
+    document.addEventListener('pointerdown', begin, { passive:false });
+    document.addEventListener('pointermove', move, { passive:false });
+    document.addEventListener('pointerup', finish, { passive:true });
+    document.addEventListener('pointercancel', finish, { passive:true });
+
+    // If another control closes a modal while it is being dragged,
+    // never leave stale inline transforms behind.
+    const observer = new MutationObserver(records => {
+        for (const record of records) {
+            const modal = record.target;
+
+            if (
+                modal instanceof HTMLElement &&
+                modal.classList.contains('modal-overlay') &&
+                !modal.classList.contains('show')
+            ) {
+                const sheet = modal.querySelector(':scope > .modal-sheet');
+                resetInlineStyles(modal, sheet);
+
+                if (drag?.modal === modal) {
+                    drag = null;
+                }
+            }
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.modal-overlay').forEach(modal => {
+            observer.observe(modal, {
+                attributes:true,
+                attributeFilter:['class']
+            });
+        });
+    }, { once:true });
+})();
+</script>
 
 </body>
 </html>
