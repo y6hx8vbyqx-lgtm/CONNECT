@@ -19163,8 +19163,8 @@ body.keyboard-no-transition .chat-input-bar {
         return `url_${(hash >>> 0).toString(36)}`;
     }
 
-    async function renderConteggStickerSidePanel(content) {
-        const token = ++conteggStickerPanelRenderToken;
+    async function renderConteggStickerSidePanel(content, token) {
+        if (!content || token !== conteggStickerPanelRenderToken) return;
         content.innerHTML = '<div class="contegg-sticker-panel-loading"><div class="spinner"></div></div>';
 
         try {
@@ -19310,7 +19310,12 @@ body.keyboard-no-transition .chat-input-bar {
 
     function refreshConteggStickerTabIfVisible() {
         const active = document.querySelector('.contegg-side-tab.active');
-        if (active?.dataset.sideTab === 'stickers') renderSideTab('stickers');
+        if (active?.dataset.sideTab !== 'stickers') return;
+
+        requestAnimationFrame(() => {
+            const stillActive = document.querySelector('.contegg-side-tab.active');
+            if (stillActive?.dataset.sideTab === 'stickers') renderSideTab('stickers');
+        });
     }
 
     async function openConteggStickerFromChat(sticker) {
@@ -19415,7 +19420,13 @@ body.keyboard-no-transition .chat-input-bar {
     }
 
     function closeConteggStickerEditor() {
-        document.getElementById('conteggStickerEditorModal')?.classList.remove('show');
+        const modal = document.getElementById('conteggStickerEditorModal');
+        const sheet = modal?.querySelector('.contegg-sticker-editor-sheet');
+        modal?.classList.remove('show');
+        modal?.style.removeProperty('opacity');
+        modal?.style.removeProperty('transition');
+        sheet?.style.removeProperty('transform');
+        sheet?.style.removeProperty('transition');
         conteggStickerEditorImage = null;
         conteggStickerEditorDragging = false;
         if (conteggStickerEditorObjectUrl) {
@@ -19536,7 +19547,14 @@ body.keyboard-no-transition .chat-input-bar {
     function renderSideTab(name) {
         const content = document.getElementById('conteggSidePanelContent');
         if (!content) return;
+
+        // Every tab switch invalidates every older asynchronous sticker render.
+        // A Firestore response from the previous tab can never overwrite the new one.
+        const token = ++conteggStickerPanelRenderToken;
+
+        content.classList.add('contegg-side-content-switching');
         content.replaceChildren();
+        content.scrollTop = 0;
 
         if (name === 'emoji') {
             const grid = document.createElement('div');
@@ -19558,11 +19576,16 @@ body.keyboard-no-transition .chat-input-bar {
                 grid.appendChild(b);
             });
             content.appendChild(grid);
+            requestAnimationFrame(() => content.classList.remove('contegg-side-content-switching'));
             return;
         }
 
         if (name === 'stickers') {
-            renderConteggStickerSidePanel(content);
+            renderConteggStickerSidePanel(content, token).finally(() => {
+                if (token === conteggStickerPanelRenderToken) {
+                    content.classList.remove('contegg-side-content-switching');
+                }
+            });
             return;
         }
 
@@ -19570,6 +19593,7 @@ body.keyboard-no-transition .chat-input-bar {
         empty.className = 'contegg-panel-placeholder';
         empty.innerHTML = '<i class="fas fa-film"></i><div>GIF-панель появится здесь</div>';
         content.appendChild(empty);
+        requestAnimationFrame(() => content.classList.remove('contegg-side-content-switching'));
     }
 
     let rightPanelInitialized = false;
@@ -23624,7 +23648,10 @@ body.contegg-has-pinned-message #chatMessages {
 
     const EXCLUDED_MODAL_IDS = new Set([
         // Legacy admin surface is retired/hidden by the new admin workspace.
-        'adminPanelModal'
+        'adminPanelModal',
+        // Sticker editor has its own canvas drag gesture; generic sheet dragging
+        // on desktop caused Chrome compositing glitches and clipped frames.
+        'conteggStickerEditorModal'
     ]);
 
     const CLOSE_HANDLERS = {
@@ -24044,6 +24071,117 @@ body.contegg-has-pinned-message #chatMessages {
 @media (max-width:767px) {
     .contegg-chat-sticker { width:min(205px,58vw); }
     .msg-sticker-only { max-width:64% !important; }
+}
+</style>
+
+
+<style id="CONTEGG-STICKERS-STABILITY-V20">
+/* Right panel owns its paint area. Sticker/emoji tab swaps cannot affect chat geometry. */
+@media (min-width:1200px) {
+    #conteggDesktopRightPanel {
+        overflow:hidden !important;
+        contain:layout paint !important;
+        isolation:isolate !important;
+        backface-visibility:hidden !important;
+    }
+
+    #conteggSidePanelContent {
+        position:relative !important;
+        width:100% !important;
+        min-width:0 !important;
+        min-height:0 !important;
+        flex:1 1 0 !important;
+        overflow-y:auto !important;
+        overflow-x:hidden !important;
+        overscroll-behavior:contain !important;
+        transform:none !important;
+        translate:none !important;
+        will-change:auto !important;
+        contain:layout paint !important;
+        background:rgba(22,22,24,.98) !important;
+    }
+
+    #conteggSidePanelContent.contegg-side-content-switching {
+        pointer-events:none;
+    }
+
+    .contegg-sticker-grid,
+    .contegg-emoji-grid {
+        width:100% !important;
+        min-width:0 !important;
+        box-sizing:border-box !important;
+        transform:none !important;
+        will-change:auto !important;
+    }
+
+    .contegg-sticker-cell {
+        min-height:0 !important;
+        contain:layout paint !important;
+    }
+
+    /* Sticker editor is a separate stable desktop layer, not a bottom sheet
+       participating in the desktop shell's transformed/composited geometry. */
+    #conteggStickerEditorModal.modal-overlay,
+    #conteggStickerChatModal.modal-overlay {
+        position:fixed !important;
+        inset:0 !important;
+        width:100vw !important;
+        height:100vh !important;
+        height:100dvh !important;
+        align-items:center !important;
+        justify-content:center !important;
+        padding:24px !important;
+        background:rgba(0,0,0,.68) !important;
+        backdrop-filter:none !important;
+        -webkit-backdrop-filter:none !important;
+        contain:strict !important;
+        isolation:isolate !important;
+        transform:none !important;
+    }
+
+    #conteggStickerEditorModal .contegg-sticker-editor-sheet,
+    #conteggStickerChatModal .contegg-sticker-chat-sheet {
+        position:relative !important;
+        width:min(470px,calc(100vw - 48px)) !important;
+        max-width:470px !important;
+        max-height:min(760px,calc(100dvh - 48px)) !important;
+        margin:0 !important;
+        border-radius:20px !important;
+        overflow:hidden !important;
+        transform:translate3d(0,18px,0) scale(.985) !important;
+        transition:transform .20s cubic-bezier(.2,.8,.2,1), opacity .18s ease !important;
+        opacity:0 !important;
+        box-shadow:0 28px 80px rgba(0,0,0,.58) !important;
+        padding-bottom:0 !important;
+        contain:layout paint !important;
+        backface-visibility:hidden !important;
+    }
+
+    #conteggStickerEditorModal.show .contegg-sticker-editor-sheet,
+    #conteggStickerChatModal.show .contegg-sticker-chat-sheet {
+        transform:translate3d(0,0,0) scale(1) !important;
+        opacity:1 !important;
+    }
+
+    #conteggStickerEditorModal .contegg-sticker-editor-content {
+        max-height:calc(100dvh - 130px) !important;
+        overflow-y:auto !important;
+        overflow-x:hidden !important;
+        overscroll-behavior:contain !important;
+        padding-bottom:20px !important;
+    }
+
+    #conteggStickerEditorModal .contegg-sticker-canvas-wrap {
+        width:min(310px,68vh) !important;
+        max-width:100% !important;
+        flex:none !important;
+        transform:none !important;
+    }
+
+    #conteggStickerEditorCanvas {
+        transform:none !important;
+        will-change:auto !important;
+    }
 }
 </style>
 
