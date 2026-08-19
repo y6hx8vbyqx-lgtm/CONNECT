@@ -549,18 +549,20 @@
         .chat-nav-icon-btn:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
         .chat-nav-icon-btn:active { transform: scale(0.97); }
         .contegg-chat-header-menu {
-            position: absolute;
-            top: calc(100% + 8px);
-            right: 0;
-            min-width: 240px;
-            background: rgba(28,28,30,0.98);
+            position: fixed;
+            top: 0;
+            left: 0;
+            min-width: 260px;
+            max-width: min(320px, calc(100vw - 16px));
+            background: rgba(28,28,30,0.985);
             border: 1px solid rgba(255,255,255,0.08);
             border-radius: 16px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+            box-shadow: 0 20px 42px rgba(0,0,0,0.42);
             padding: 6px;
-            z-index: 30;
+            z-index: 2147482500;
             display: none;
             backdrop-filter: blur(22px);
+            -webkit-backdrop-filter: blur(22px);
         }
         .contegg-chat-header-menu.show { display:block; animation: conteggMenuIn .16s ease; }
         @keyframes conteggMenuIn { from { opacity:0; transform: translateY(-6px) scale(.98);} to {opacity:1; transform: translateY(0) scale(1);} }
@@ -14170,7 +14172,24 @@ async function createGroup() {
 
 function closeChatHeaderMenu() {
     const menu = document.getElementById('chatHeaderMoreMenu');
-    if (menu) menu.classList.remove('show');
+    if (!menu) return;
+
+    menu.classList.remove('show');
+    menu.style.removeProperty('display');
+    menu.style.removeProperty('visibility');
+}
+
+function ensureChatHeaderPortalMenu() {
+    let menu = document.getElementById('chatHeaderMoreMenu');
+
+    if (!menu) {
+        menu = document.createElement('div');
+        menu.id = 'chatHeaderMoreMenu';
+        menu.className = 'contegg-chat-header-menu';
+        document.body.appendChild(menu);
+    }
+
+    return menu;
 }
 
 function renderDirectChatNavbarActions() {
@@ -14181,35 +14200,99 @@ function renderDirectChatNavbarActions() {
         <button class="chat-nav-icon-btn" type="button" title="Поиск сообщений" onclick="openChatMessageSearch(event)">
             <i class="fas fa-search"></i>
         </button>
-        <button class="chat-nav-icon-btn" type="button" title="Ещё" onclick="toggleChatHeaderMenu(event)">
+        <button class="chat-nav-icon-btn" id="chatHeaderMoreButton" type="button" title="Ещё" onclick="toggleChatHeaderMenu(event)">
             <i class="fas fa-ellipsis-h"></i>
         </button>
-        <div class="contegg-chat-header-menu" id="chatHeaderMoreMenu">
-            <button type="button" onclick="createGroupWithCurrentContact()"><i class="fas fa-user-friends"></i><span>Создать группу с этим контактом</span></button>
-            <button type="button" onclick="openCurrentChatProfileFromMenu()"><i class="fas fa-user"></i><span>Профиль</span></button>
-            <button type="button" onclick="deleteCurrentChatForMe()"><i class="fas fa-trash-alt"></i><span>Удалить чат у себя</span></button>
-            <button type="button" class="danger" onclick="deleteCurrentChatForBoth()"><i class="fas fa-trash"></i><span>Удалить чат у обоих</span></button>
-        </div>
+    `;
+
+    const menu = ensureChatHeaderPortalMenu();
+    menu.innerHTML = `
+        <button type="button" onclick="createGroupWithCurrentContact()"><i class="fas fa-user-friends"></i><span>Создать группу с этим контактом</span></button>
+        <button type="button" onclick="openCurrentChatProfileFromMenu()"><i class="fas fa-user"></i><span>Профиль</span></button>
+        <button type="button" onclick="openCurrentChatQrFromMenu()"><i class="fas fa-qrcode"></i><span>QR-код</span></button>
+        <button type="button" onclick="deleteCurrentChatForMe()"><i class="fas fa-trash-alt"></i><span>Удалить чат у себя</span></button>
+        <button type="button" class="danger" onclick="deleteCurrentChatForBoth()"><i class="fas fa-trash"></i><span>Удалить чат у обоих</span></button>
     `;
 }
 
+function positionChatHeaderMenu(anchorButton, menu) {
+    if (!anchorButton || !menu) return;
+
+    const rect = anchorButton.getBoundingClientRect();
+    const menuWidth = Math.min(300, Math.max(260, menu.offsetWidth || 260));
+    const gap = 8;
+    const margin = 8;
+
+    let left = rect.right - menuWidth;
+    left = Math.max(margin, Math.min(left, window.innerWidth - menuWidth - margin));
+
+    let top = rect.bottom + gap;
+
+    const estimatedHeight = menu.offsetHeight || 245;
+    if (top + estimatedHeight > window.innerHeight - margin) {
+        top = Math.max(margin, rect.top - estimatedHeight - gap);
+    }
+
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+}
+
 function toggleChatHeaderMenu(event) {
+    event?.preventDefault?.();
     event?.stopPropagation?.();
-    const menu = document.getElementById('chatHeaderMoreMenu');
-    if (!menu) return;
-    menu.classList.toggle('show');
+
+    const button = event?.currentTarget || document.getElementById('chatHeaderMoreButton');
+    const menu = ensureChatHeaderPortalMenu();
+    if (!button || !menu) return;
+
+    const willOpen = !menu.classList.contains('show');
+    closeChatHeaderMenu();
+
+    if (!willOpen) return;
+
+    menu.classList.add('show');
+    menu.style.visibility = 'hidden';
+    menu.style.display = 'block';
+
+    positionChatHeaderMenu(button, menu);
+
+    menu.style.visibility = 'visible';
 }
 
 document.addEventListener('click', (event) => {
     const menu = document.getElementById('chatHeaderMoreMenu');
     const actions = document.getElementById('chatNavbarActions');
     if (!menu || !actions) return;
-    if (!actions.contains(event.target)) closeChatHeaderMenu();
+
+    if (!menu.contains(event.target) && !actions.contains(event.target)) {
+        closeChatHeaderMenu();
+    }
 });
+
+window.addEventListener('resize', () => {
+    const menu = document.getElementById('chatHeaderMoreMenu');
+    if (menu?.classList.contains('show')) closeChatHeaderMenu();
+});
+
+window.addEventListener('scroll', () => {
+    const menu = document.getElementById('chatHeaderMoreMenu');
+    if (menu?.classList.contains('show')) closeChatHeaderMenu();
+}, true);
 
 function openCurrentChatProfileFromMenu() {
     closeChatHeaderMenu();
     viewChatUserProfile();
+}
+
+function openCurrentChatQrFromMenu() {
+    closeChatHeaderMenu();
+
+    if (!currentChatUser?.uid) {
+        toast('QR-код доступен только для личного чата');
+        return;
+    }
+
+    openProfileQr(currentChatUser.uid);
 }
 
 function createGroupWithCurrentContact() {
