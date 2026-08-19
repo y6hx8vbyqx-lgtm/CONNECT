@@ -9757,25 +9757,6 @@ if (msg.notificationAction === 'terminate_device' && msg.actionDeviceId) {
     }
     div.innerHTML = html;
 
-    div.querySelectorAll('.contegg-chat-sticker').forEach(sticker => {
-        sticker.addEventListener('click', e => {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            const rect = sticker.getBoundingClientRect();
-            showConteggStickerContextMenu(
-                Math.min(rect.left + rect.width * 0.55, window.innerWidth - 16),
-                Math.min(rect.top + rect.height * 0.42, window.innerHeight - 16),
-                {
-                    url: sticker.dataset.stickerUrl || '',
-                    id: sticker.dataset.stickerId || '',
-                    ownerId: sticker.dataset.stickerOwner || ''
-                },
-                { fromChat: true }
-            );
-        });
-    });
-
     div.querySelectorAll('.contegg-mention[data-mention-username]').forEach(btn => {
         btn.addEventListener('click', async e => {
             e.preventDefault();
@@ -9991,14 +9972,12 @@ div.addEventListener('click', (e) => {
     if (e.target.closest('.reaction-badge')) return;
     if (e.target.closest('.contegg-profile-trigger')) return;
     if (e.target.closest('.contegg-forwarded-from')) return;
-    if (e.target.closest('.contegg-chat-sticker')) return;
 
     if (
         e.target.closest('.audio-play-btn') ||
         e.target.closest('.audio-waveform') ||
         e.target.closest('.audio-progress') ||
         e.target.closest('.msg-video') ||
-        e.target.closest('.contegg-chat-sticker') ||
         e.target.closest('.post-comments-btn')
     ) {
         return;
@@ -10019,6 +9998,20 @@ div.addEventListener('click', (e) => {
 
     selectedMsgId = id;
     selectedMsgData = msg;
+
+    if (msg.stickerUrl) {
+        showConteggStickerContextMenu(
+            p.x,
+            p.y,
+            {
+                url: msg.stickerUrl || '',
+                id: msg.stickerId || '',
+                ownerId: msg.stickerOwnerId || ''
+            },
+            { fromChat: true }
+        );
+        return;
+    }
 
     showReactionsPanel(p.x, p.y, id);
 });
@@ -19413,6 +19406,9 @@ body.keyboard-no-transition .chat-input-bar {
         const normalMenu = document.getElementById('msgContextMenu');
         if (normalMenu) normalMenu.style.display = 'none';
 
+        const reactions = document.getElementById('reactionsPanel');
+        if (reactions) reactions.style.display = 'none';
+
         const menu = document.getElementById('conteggStickerContextMenu');
         if (!menu || !sticker?.url) return;
 
@@ -19437,7 +19433,7 @@ body.keyboard-no-transition .chat-input-bar {
         } else {
             menu.innerHTML = `
                 <button type="button" data-sticker-menu="save">
-                    <i class="far fa-bookmark"></i>${saved ? 'Удалить из сохранённых' : 'Сохранить стикер'}
+                    <i class="far fa-bookmark"></i>${saved ? 'Удалить из сохранённых' : 'Добавить стикер'}
                 </button>
             `;
         }
@@ -24288,6 +24284,31 @@ body.contegg-has-pinned-message #chatMessages {
         will-change:auto !important;
     }
 }
+</style>
+
+
+<style id="CONTEGG-STICKER-NORMAL-MESSAGE-V24">
+#conteggStickerContextMenu {
+    position:fixed !important;
+    z-index:2147483000 !important;
+    min-width:190px;
+    max-width:min(290px, calc(100vw - 20px));
+    padding:6px !important;
+    border:0.5px solid rgba(255,255,255,.11) !important;
+    border-radius:15px !important;
+    background:rgba(31,31,33,.98) !important;
+    box-shadow:0 12px 34px rgba(0,0,0,.34) !important;
+    backdrop-filter:none !important;
+    -webkit-backdrop-filter:none !important;
+}
+#conteggStickerContextMenu button {
+    width:100%; min-height:40px; display:flex; align-items:center; gap:9px;
+    padding:8px 11px; border:0; border-radius:11px; background:transparent;
+    color:var(--text-primary); font-size:13px; text-align:left; cursor:pointer;
+}
+#conteggStickerContextMenu button:hover { background:rgba(255,255,255,.07); }
+#conteggStickerContextMenu button.danger { color:var(--danger, #ff453a); }
+#conteggStickerContextMenu button i { width:17px; text-align:center; }
 </style>
 
 </body>
