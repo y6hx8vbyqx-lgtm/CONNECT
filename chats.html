@@ -19180,32 +19180,20 @@ body.keyboard-no-transition .chat-input-bar {
             const grid = document.createElement('div');
             grid.className = 'contegg-sticker-grid';
 
-            const add = document.createElement('button');
-            add.type = 'button';
-            add.className = 'contegg-sticker-cell contegg-sticker-add';
-            add.innerHTML = '<i class="fas fa-plus"></i><span>Создать</span>';
-            add.title = `Создать стикер (${created.length}/${CONTEGG_MAX_CREATED_STICKERS})`;
-            add.disabled = created.length >= CONTEGG_MAX_CREATED_STICKERS;
-            add.addEventListener('click', () => {
-                if (add.disabled) {
-                    toast('Можно создать максимум 4 стикера');
-                    return;
-                }
-                document.getElementById('conteggStickerFileInput')?.click();
-            });
-            grid.appendChild(add);
+            const createdStickers = created.map(s => ({
+                ...s,
+                ownerId: s.ownerId || currentUser.uid,
+                source: 'created'
+            }));
 
-            const all = [
-                ...created.map(s => ({ ...s, ownerId: s.ownerId || currentUser.uid, source: 'created' })),
-                ...visibleSaved.map(s => ({
-                    ...s,
-                    id: s.sourceStickerId || s.stickerId || s.id,
-                    ownerId: s.sourceOwnerId || s.ownerId || '',
-                    source: 'saved'
-                }))
-            ];
+            const savedStickers = visibleSaved.map(s => ({
+                ...s,
+                id: s.sourceStickerId || s.stickerId || s.id,
+                ownerId: s.sourceOwnerId || s.ownerId || '',
+                source: 'saved'
+            }));
 
-            all.forEach(sticker => {
+            const appendStickerCell = sticker => {
                 const cell = document.createElement('button');
                 cell.type = 'button';
                 cell.className = 'contegg-sticker-cell';
@@ -19217,7 +19205,26 @@ body.keyboard-no-transition .chat-input-bar {
                     showConteggStickerContextMenu(e.clientX, e.clientY, sticker, { fromPanel: true });
                 });
                 grid.appendChild(cell);
-            });
+            };
+
+            // Own stickers occupy the first cells. The plus button always sits
+            // in the NEXT free own-sticker cell, exactly like Telegram.
+            createdStickers.forEach(appendStickerCell);
+
+            if (createdStickers.length < CONTEGG_MAX_CREATED_STICKERS) {
+                const add = document.createElement('button');
+                add.type = 'button';
+                add.className = 'contegg-sticker-cell contegg-sticker-add';
+                add.innerHTML = '<i class="fas fa-plus"></i><span>Создать</span>';
+                add.title = `Создать стикер (${createdStickers.length}/${CONTEGG_MAX_CREATED_STICKERS})`;
+                add.addEventListener('click', () => {
+                    document.getElementById('conteggStickerFileInput')?.click();
+                });
+                grid.appendChild(add);
+            }
+
+            // Saved stickers continue after the user's own creation slots.
+            savedStickers.forEach(appendStickerCell);
 
             content.replaceChildren(grid);
         } catch (e) {
