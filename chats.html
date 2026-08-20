@@ -2544,10 +2544,10 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
                 <label>Название<input id="musicTrackTitleInput" maxlength="100" placeholder="Название песни"></label>
                 <label>Автор<input id="musicTrackArtistInput" maxlength="100" placeholder="Автор песни"></label>
                 <div class="contegg-music-trim-fields">
-                    <label>Начало воспроизведения<input id="musicTrackStartInput" type="text" inputmode="decimal" placeholder="0:00"></label>
-                    <label>Конец воспроизведения<input id="musicTrackEndInput" type="text" inputmode="decimal" placeholder="до конца"></label>
+                    <label>Начало воспроизведения<input id="musicTrackStartInput" type="text" inputmode="numeric" placeholder="0:00" onblur="normalizeMusicTrimInput(this)"></label>
+                    <label>Конец воспроизведения<input id="musicTrackEndInput" type="text" inputmode="numeric" placeholder="до конца" onblur="normalizeMusicTrimInput(this)"></label>
                 </div>
-                <div class="contegg-music-trim-hint">Можно указать секунды или время в формате 1:23. Пустой конец = до конца файла.</div>
+                <div class="contegg-music-trim-hint">Можно просто цифрами: 32 = 0:32, 123 = 1:23, 1212 = 12:12. Пустой конец = до конца файла.</div>
                 <label>Текст песни<textarea id="musicTrackLyricsInput" maxlength="12000" placeholder="Текст песни"></textarea></label>
             </div>
         </div>
@@ -24696,15 +24696,34 @@ function formatMusicTime(value) {
 function parseMusicTrimTime(value) {
     const raw = String(value ?? '').trim();
     if (!raw) return null;
-    if (/^\d+(?:[.,]\d+)?$/.test(raw)) {
-        const n = Number(raw.replace(',', '.'));
-        return Number.isFinite(n) ? Math.max(0, n) : null;
+
+    // Fast compact input:
+    // 32   -> 0:32
+    // 123  -> 1:23
+    // 1212 -> 12:12
+    // The last two digits are seconds, everything before them is minutes.
+    if (/^\d+$/.test(raw)) {
+        const digits = raw.replace(/^0+(?=\d)/, '') || '0';
+        if (digits.length <= 2) return Math.max(0, Number(digits));
+        const minutes = Number(digits.slice(0, -2)) || 0;
+        const seconds = Number(digits.slice(-2)) || 0;
+        return Math.max(0, minutes * 60 + seconds);
     }
+
     const parts = raw.split(':').map(x => Number(x.replace(',', '.')));
     if (parts.some(x => !Number.isFinite(x) || x < 0)) return null;
     if (parts.length === 2) return parts[0] * 60 + parts[1];
     if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
     return null;
+}
+
+function normalizeMusicTrimInput(input) {
+    if (!input) return;
+    const raw = String(input.value || '').trim();
+    if (!raw) return;
+    const parsed = parseMusicTrimTime(raw);
+    if (parsed == null) return;
+    input.value = formatMusicTime(parsed);
 }
 
 function getMusicTrackBounds(track, mediaDuration = 0) {
@@ -25351,7 +25370,7 @@ function renderMusicNowPlaying(force = false) {
     const progressFill = box.querySelector('.contegg-music-progress-fill');
     if (progressFill) {
         const ratio = duration > 0 ? Math.min(1, Math.max(0, current / duration)) : 0;
-        progressFill.style.width = `${ratio * 100}%`;
+        progressFill.style.transform = `scaleX(${ratio})`;
     }
     const timeRow = box.querySelector('.contegg-music-time-row');
     if (timeRow?.children?.length >= 2) {
@@ -25485,7 +25504,23 @@ function updateMusicSystemSession(track) {
     } catch(e) {}
 }
 
-console.log('%cContegg build: V35', 'color:#fa2d48;font-weight:800', '• Music mobile + trim + close/hide');
+
+let conteggMusicPaintTimer = 0;
+let conteggMusicLastPaintAt = 0;
+function scheduleMusicPlaybackPaint() {
+    const now = performance.now();
+    const wait = Math.max(0, 180 - (now - conteggMusicLastPaintAt));
+    if (conteggMusicPaintTimer) return;
+    conteggMusicPaintTimer = window.setTimeout(() => {
+        conteggMusicPaintTimer = 0;
+        conteggMusicLastPaintAt = performance.now();
+        // renderMusicNowPlaying no longer rebuilds the pane for the same track;
+        // it only mutates the tiny progress/time/play controls.
+        renderMusicNowPlaying();
+    }, wait);
+}
+
+console.log('%cContegg build: V36', 'color:#fa2d48;font-weight:800', '• Music list paint + compact time input');
 
 const conteggMusicAudioEl = document.getElementById('conteggMusicAudio');
 try {
@@ -25506,7 +25541,7 @@ conteggMusicAudioEl?.addEventListener('timeupdate', () => {
         }
     }
     const app = document.getElementById('conteggMusicApp');
-    if (app?.classList.contains('show')) renderMusicNowPlaying();
+    if (app?.classList.contains('show')) scheduleMusicPlaybackPaint();
     const player = document.getElementById('conteggMusicPlayerOverlay');
     if (player?.classList.contains('show') && Number.isFinite(conteggMusicAudioEl.duration)) {
         const pslider = player.querySelector('.contegg-music-player-progress');
@@ -25562,6 +25597,7 @@ window.musicPlayNext = musicPlayNext;
 window.musicPlayPrevious = musicPlayPrevious;
 window.musicSeek = musicSeek;
 window.setMusicVolume = setMusicVolume;
+window.normalizeMusicTrimInput = normalizeMusicTrimInput;
 window.handleMusicFiles = handleMusicFiles;
 window.toggleMusicShuffle = toggleMusicShuffle;
 window.openMusicPlayerWindow = openMusicPlayerWindow;
@@ -25778,6 +25814,91 @@ window.closeMusicPlayerWindow = closeMusicPlayerWindow;
     .contegg-music-library{padding-left:9px!important;padding-right:9px!important}.contegg-music-library-head h1{font-size:24px!important}
     .contegg-music-library-actions .btn{padding:0 10px!important}.contegg-music-track{grid-template-columns:46px minmax(0,1fr) 30px!important}.contegg-music-track-cover{width:46px!important;height:46px!important}
     .contegg-music-settings-card,.contegg-music-editor-card,.contegg-music-player-window{max-height:83vh!important}
+}
+</style>
+
+
+<style id="CONTEGG-MUSIC-LIST-PAINT-V36">
+/* Keep the music button visually grouped with the create button. */
+.navbar { column-gap:8px !important; }
+.navbar-title.contegg-reload-title { margin-right:auto !important; }
+#conteggMusicHeaderButton.contegg-music-header-button {
+    margin-left:0 !important;
+    margin-right:2px !important;
+    flex:0 0 28px !important;
+}
+.navbar-btn.contegg-create-tab-btn { margin-left:0 !important; }
+
+/* Library must never share a layout repaint with the live progress animation. */
+.contegg-music-app-body {
+    display:flex !important;
+    min-width:0 !important;
+    min-height:0 !important;
+}
+.contegg-music-library {
+    flex:1 1 auto !important;
+    min-width:0 !important;
+    min-height:0 !important;
+    background:#0f0f11 !important;
+    background-image:none !important;
+    box-shadow:none !important;
+    filter:none !important;
+    transform:none !important;
+    transition:none !important;
+    animation:none !important;
+    will-change:auto !important;
+}
+.contegg-music-now {
+    flex:0 0 min(480px,36vw) !important;
+    width:min(480px,36vw) !important;
+    min-width:360px !important;
+}
+#conteggMusicTrackList {
+    display:flex !important;
+    flex-direction:column !important;
+    gap:12px !important;
+    background:#0f0f11 !important;
+    transform:none !important;
+    filter:none !important;
+    transition:none !important;
+    animation:none !important;
+}
+.contegg-music-track {
+    margin:0 !important;
+    border:1px solid rgba(var(--music-accent),.10) !important;
+    border-bottom-color:rgba(var(--music-accent),.10) !important;
+    background:rgba(var(--music-accent),.055) !important;
+    background-image:none !important;
+    box-shadow:none !important;
+    transform:none !important;
+    filter:none !important;
+    backdrop-filter:none !important;
+    -webkit-backdrop-filter:none !important;
+    transition:none !important;
+    animation:none !important;
+    will-change:auto !important;
+}
+.contegg-music-track:hover { background:rgba(var(--music-accent),.095) !important; box-shadow:none !important; }
+.contegg-music-track.playing { background:rgba(var(--music-accent),.14) !important; border-color:rgba(var(--music-accent),.20) !important; box-shadow:none !important; }
+.contegg-music-track::before,.contegg-music-track::after { content:none !important; display:none !important; }
+
+/* Progress updates use compositor-only scaleX; no width/layout invalidation. */
+.contegg-music-progress-fill {
+    width:100% !important;
+    transform:scaleX(0);
+    transform-origin:left center !important;
+    transition:none !important;
+    will-change:transform !important;
+}
+.contegg-music-time-row { font-variant-numeric:tabular-nums; }
+.contegg-music-time-row > span { min-width:44px; }
+.contegg-music-time-row > span:last-child { text-align:right; }
+
+@media(max-width:900px){
+    .contegg-music-app-body { display:flex !important; flex-direction:column !important; overflow-y:auto !important; }
+    .contegg-music-library { flex:0 0 auto !important; width:auto !important; overflow:visible !important; }
+    .contegg-music-now { flex:0 0 auto !important; width:auto !important; min-width:0 !important; }
+    #conteggMusicTrackList { gap:11px !important; }
 }
 </style>
 
