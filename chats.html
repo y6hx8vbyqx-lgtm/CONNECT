@@ -2516,7 +2516,10 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
 <div class="contegg-music-app" id="conteggMusicApp" aria-hidden="true">
     <div class="contegg-music-app-topbar">
         <div class="contegg-music-brand"><span class="contegg-music-brand-dot"><i class="fas fa-music"></i></span> Contegg Музыка</div>
-        <button class="contegg-music-app-close" type="button" onclick="closeMusicApp()" aria-label="Закрыть"><i class="fas fa-times"></i></button>
+        <div class="contegg-music-app-window-actions">
+            <button class="contegg-music-app-hide" type="button" onclick="hideMusicApp()" aria-label="Скрыть" title="Скрыть"><i class="fas fa-minus"></i></button>
+            <button class="contegg-music-app-close" type="button" onclick="stopAndCloseMusicApp()" aria-label="Закрыть музыку" title="Закрыть музыку"><i class="fas fa-times"></i></button>
+        </div>
     </div>
     <div class="contegg-music-app-body">
         <section class="contegg-music-library" id="conteggMusicLibrary"></section>
@@ -2540,6 +2543,11 @@ body.contegg-starting-up > *:not(#conteggStartupLoader) {
             <div class="contegg-music-editor-fields">
                 <label>Название<input id="musicTrackTitleInput" maxlength="100" placeholder="Название песни"></label>
                 <label>Автор<input id="musicTrackArtistInput" maxlength="100" placeholder="Автор песни"></label>
+                <div class="contegg-music-trim-fields">
+                    <label>Начало воспроизведения<input id="musicTrackStartInput" type="text" inputmode="decimal" placeholder="0:00"></label>
+                    <label>Конец воспроизведения<input id="musicTrackEndInput" type="text" inputmode="decimal" placeholder="до конца"></label>
+                </div>
+                <div class="contegg-music-trim-hint">Можно указать секунды или время в формате 1:23. Пустой конец = до конца файла.</div>
                 <label>Текст песни<textarea id="musicTrackLyricsInput" maxlength="12000" placeholder="Текст песни"></textarea></label>
             </div>
         </div>
@@ -24685,6 +24693,29 @@ function formatMusicTime(value) {
     return `${m}:${s}`;
 }
 
+function parseMusicTrimTime(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return null;
+    if (/^\d+(?:[.,]\d+)?$/.test(raw)) {
+        const n = Number(raw.replace(',', '.'));
+        return Number.isFinite(n) ? Math.max(0, n) : null;
+    }
+    const parts = raw.split(':').map(x => Number(x.replace(',', '.')));
+    if (parts.some(x => !Number.isFinite(x) || x < 0)) return null;
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return null;
+}
+
+function getMusicTrackBounds(track, mediaDuration = 0) {
+    const duration = Number.isFinite(mediaDuration) && mediaDuration > 0 ? mediaDuration : (Number(track?.duration) || 0);
+    const start = Math.max(0, Math.min(Number(track?.startTime) || 0, duration || Infinity));
+    let end = Number(track?.endTime);
+    if (!Number.isFinite(end) || end <= start) end = duration > start ? duration : 0;
+    if (duration > 0) end = Math.min(end, duration);
+    return { start, end, segmentDuration: end > start ? end - start : Math.max(0, duration - start) };
+}
+
 
 function musicAccentTuple(value) {
     const raw = String(value || '').trim();
@@ -25024,6 +25055,8 @@ async function openMusicTrackEditor(trackId, afterUpload = false) {
     conteggMusicPendingCoverFile = null;
     document.getElementById('musicTrackTitleInput').value = track.title || '';
     document.getElementById('musicTrackArtistInput').value = track.artist || '';
+    document.getElementById('musicTrackStartInput').value = Number(track.startTime) > 0 ? formatMusicTime(Number(track.startTime)) : '0:00';
+    document.getElementById('musicTrackEndInput').value = Number(track.endTime) > 0 ? formatMusicTime(Number(track.endTime)) : '';
     document.getElementById('musicTrackLyricsInput').value = track.lyrics || '';
     const cover = document.getElementById('musicEditorCover');
     cover.style.backgroundImage = track.coverUrl ? `url("${track.coverUrl.replace(/"/g,'')}")` : '';
@@ -25070,6 +25103,10 @@ async function saveMusicTrackEditor() {
     try {
         const title = document.getElementById('musicTrackTitleInput').value.trim();
         const artist = document.getElementById('musicTrackArtistInput').value.trim();
+        const startRaw = document.getElementById('musicTrackStartInput').value;
+        const endRaw = document.getElementById('musicTrackEndInput').value;
+        const startTime = parseMusicTrimTime(startRaw);
+        const endTime = String(endRaw || '').trim() ? parseMusicTrimTime(endRaw) : null;
         const lyrics = document.getElementById('musicTrackLyricsInput').value.trim();
 
         if (!title) {
@@ -25083,9 +25120,15 @@ async function saveMusicTrackEditor() {
             return;
         }
 
+        if (startTime == null) { toast('Проверь время начала'); return; }
+        if (String(endRaw || '').trim() && endTime == null) { toast('Проверь время конца'); return; }
+        if (endTime != null && endTime <= startTime) { toast('Конец должен быть позже начала'); return; }
+
         const update = {
             title,
             artist,
+            startTime: startTime || 0,
+            endTime: endTime || 0,
             lyrics,
             metadataComplete: true,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -25135,10 +25178,27 @@ async function openMusicApp() {
     await renderMusicApp();
 }
 
-function closeMusicApp() {
+function hideMusicApp() {
     const app = document.getElementById('conteggMusicApp');
     app?.classList.remove('show');
     app?.setAttribute('aria-hidden','true');
+}
+
+function closeMusicApp() {
+    hideMusicApp();
+}
+
+function stopAndCloseMusicApp() {
+    const audio = document.getElementById('conteggMusicAudio');
+    try { audio.pause(); } catch(e) {}
+    try { audio.removeAttribute('src'); audio.load(); } catch(e) {}
+    conteggMusicCurrentTrackId = null;
+    conteggMusicNowRenderedTrackId = null;
+    closeMusicPlayerWindow();
+    hideMusicApp();
+    const button = document.getElementById('conteggMusicHeaderButton');
+    if (button) { button.style.display = 'none'; button.classList.remove('playing'); }
+    updateMusicLibraryPlaybackState();
 }
 
 async function renderMusicApp() {
@@ -25184,9 +25244,17 @@ async function musicPlayTrack(id, options = {}) {
     if (changedTrack) {
         conteggMusicCurrentTrackId = id;
         audio.src = track.audioUrl;
+        audio.dataset.conteggNeedsTrimStart = '1';
         if (conteggMusicShuffle && options.fromShuffle !== true) resetMusicShuffleCycle(id);
     }
-    try { await audio.play(); } catch(e) { console.warn('music play', e); }
+    try {
+        if (audio.readyState >= 1) {
+            const bounds = getMusicTrackBounds(track, audio.duration);
+            if (changedTrack || audio.currentTime < bounds.start || (bounds.end > 0 && audio.currentTime >= bounds.end)) audio.currentTime = bounds.start;
+            audio.dataset.conteggNeedsTrimStart = '';
+        }
+        await audio.play();
+    } catch(e) { console.warn('music play', e); }
     updateMusicSystemSession(track);
     updateMusicMini();
     updateMusicLibraryPlaybackState();
@@ -25276,8 +25344,10 @@ function renderMusicNowPlaying(force = false) {
     }
 
     // From here on: only mutate tiny live elements. Never rebuild the whole pane.
-    const duration = Number.isFinite(audio?.duration) ? audio.duration : 0;
-    const current = Number.isFinite(audio?.currentTime) ? audio.currentTime : 0;
+    const rawDuration = Number.isFinite(audio?.duration) ? audio.duration : 0;
+    const bounds = getMusicTrackBounds(track, rawDuration);
+    const duration = bounds.segmentDuration;
+    const current = Math.max(0, (Number.isFinite(audio?.currentTime) ? audio.currentTime : bounds.start) - bounds.start);
     const progressFill = box.querySelector('.contegg-music-progress-fill');
     if (progressFill) {
         const ratio = duration > 0 ? Math.min(1, Math.max(0, current / duration)) : 0;
@@ -25305,7 +25375,9 @@ function seekMusicFromStableBar(bar, clientX) {
     const rect = bar.getBoundingClientRect();
     if (!rect.width) return;
     const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    audio.currentTime = ratio * audio.duration;
+    const track = getCurrentMusicTrack();
+    const bounds = getMusicTrackBounds(track, audio.duration);
+    audio.currentTime = bounds.start + ratio * (bounds.segmentDuration || audio.duration);
     renderMusicNowPlaying();
 }
 
@@ -25330,7 +25402,9 @@ if (!window.__conteggMusicStableSeekBound) {
 
 function musicSeek(value) {
     const audio = document.getElementById('conteggMusicAudio');
-    if (Number.isFinite(audio.duration)) audio.currentTime = Math.min(audio.duration, Math.max(0, Number(value) || 0));
+    if (!Number.isFinite(audio.duration)) return;
+    const bounds = getMusicTrackBounds(getCurrentMusicTrack(), audio.duration);
+    audio.currentTime = Math.min(bounds.end || audio.duration, bounds.start + Math.max(0, Number(value) || 0));
 }
 
 function updateMusicMini() {
@@ -25347,8 +25421,8 @@ function updateMusicMini() {
     }
     button.style.display = 'inline-flex';
     button.classList.toggle('playing', !audio.paused);
-    button.style.color = `rgb(${musicAccentTuple(track.accentColor)})`;
-    button.style.background = `rgba(${musicAccentTuple(track.accentColor)},.14)`;
+    button.style.color = '';
+    button.style.background = '';
     button.title = `${track.title || 'Без названия'} — ${track.artist || 'Неизвестный исполнитель'}`;
     if (document.getElementById('conteggMusicPlayerOverlay')?.classList.contains('show')) {
         renderMusicPlayerWindow();
@@ -25384,8 +25458,10 @@ function renderMusicPlayerWindow() {
     }
     win.style.setProperty('--music-accent', musicAccentTuple(track.accentColor));
     const cover = track.coverUrl ? `<img src="${esc(track.coverUrl)}">` : '<i class="fas fa-music"></i>';
-    const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
-    const current = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    const rawDuration = Number.isFinite(audio.duration) ? audio.duration : 0;
+    const bounds = getMusicTrackBounds(track, rawDuration);
+    const duration = bounds.segmentDuration;
+    const current = Math.max(0, (Number.isFinite(audio.currentTime) ? audio.currentTime : bounds.start) - bounds.start);
     content.innerHTML = `<div class="contegg-music-now-cover">${cover}</div>
         <div class="contegg-music-now-title">${esc(track.title || 'Без названия')}</div>
         <div class="contegg-music-now-artist">${esc(track.artist || 'Неизвестный исполнитель')}</div>
@@ -25409,7 +25485,7 @@ function updateMusicSystemSession(track) {
     } catch(e) {}
 }
 
-console.log('%cContegg build: V34', 'color:#fa2d48;font-weight:800', '• Music paint fix');
+console.log('%cContegg build: V35', 'color:#fa2d48;font-weight:800', '• Music mobile + trim + close/hide');
 
 const conteggMusicAudioEl = document.getElementById('conteggMusicAudio');
 try {
@@ -25420,19 +25496,36 @@ conteggMusicAudioEl?.addEventListener('play', () => { updateMusicMini(); updateM
 conteggMusicAudioEl?.addEventListener('pause', () => { updateMusicMini(); updateMusicLibraryPlaybackState(); renderMusicNowPlaying(); if (document.getElementById('conteggMusicPlayerOverlay')?.classList.contains('show')) renderMusicPlayerWindow(); });
 conteggMusicAudioEl?.addEventListener('ended', () => musicPlayNext());
 conteggMusicAudioEl?.addEventListener('timeupdate', () => {
+    const track = getCurrentMusicTrack();
+    if (track && Number.isFinite(conteggMusicAudioEl.duration)) {
+        const bounds = getMusicTrackBounds(track, conteggMusicAudioEl.duration);
+        if (bounds.end > bounds.start && conteggMusicAudioEl.currentTime >= bounds.end - 0.08) {
+            conteggMusicAudioEl.currentTime = bounds.end;
+            musicPlayNext();
+            return;
+        }
+    }
     const app = document.getElementById('conteggMusicApp');
     if (app?.classList.contains('show')) renderMusicNowPlaying();
     const player = document.getElementById('conteggMusicPlayerOverlay');
     if (player?.classList.contains('show') && Number.isFinite(conteggMusicAudioEl.duration)) {
         const pslider = player.querySelector('.contegg-music-player-progress');
         const prow = player.querySelector('.contegg-music-time-row');
-        if (pslider) { pslider.max = conteggMusicAudioEl.duration; pslider.value = conteggMusicAudioEl.currentTime; }
-        if (prow) { prow.children[0].textContent = formatMusicTime(conteggMusicAudioEl.currentTime); prow.children[1].textContent = `−${formatMusicTime(Math.max(0,conteggMusicAudioEl.duration-conteggMusicAudioEl.currentTime))}`; }
+        const track = getCurrentMusicTrack();
+        const bounds = getMusicTrackBounds(track, conteggMusicAudioEl.duration);
+        const segmentCurrent = Math.max(0, conteggMusicAudioEl.currentTime - bounds.start);
+        if (pslider) { pslider.max = bounds.segmentDuration || 1; pslider.value = Math.min(segmentCurrent, bounds.segmentDuration || 1); }
+        if (prow) { prow.children[0].textContent = formatMusicTime(segmentCurrent); prow.children[1].textContent = `−${formatMusicTime(Math.max(0,(bounds.segmentDuration || 0)-segmentCurrent))}`; }
     }
 });
 conteggMusicAudioEl?.addEventListener('loadedmetadata', () => {
     const track = getCurrentMusicTrack();
     if (track && Number.isFinite(conteggMusicAudioEl.duration) && conteggMusicAudioEl.duration > 0) {
+        const bounds = getMusicTrackBounds(track, conteggMusicAudioEl.duration);
+        if (conteggMusicAudioEl.dataset.conteggNeedsTrimStart === '1' || conteggMusicAudioEl.currentTime < bounds.start || (bounds.end > 0 && conteggMusicAudioEl.currentTime >= bounds.end)) {
+            try { conteggMusicAudioEl.currentTime = bounds.start; } catch(e) {}
+            conteggMusicAudioEl.dataset.conteggNeedsTrimStart = '';
+        }
         track.duration = conteggMusicAudioEl.duration;
         updateMusicLibrarySummary();
         conteggMusicCollection().doc(track.id).set({ duration: conteggMusicAudioEl.duration }, { merge:true }).catch(()=>{});
@@ -25461,6 +25554,8 @@ window.saveMusicTrackEditor = saveMusicTrackEditor;
 window.deleteMusicTrack = deleteMusicTrack;
 window.openMusicApp = openMusicApp;
 window.closeMusicApp = closeMusicApp;
+window.hideMusicApp = hideMusicApp;
+window.stopAndCloseMusicApp = stopAndCloseMusicApp;
 window.musicPlayTrack = musicPlayTrack;
 window.musicTogglePlay = musicTogglePlay;
 window.musicPlayNext = musicPlayNext;
@@ -25633,6 +25728,56 @@ window.closeMusicPlayerWindow = closeMusicPlayerWindow;
 .contegg-music-now .contegg-music-volume-slider {
     contain:none !important;
     will-change:auto !important;
+}
+</style>
+
+
+<style id="CONTEGG-MUSIC-UX-V35">
+/* Quiet header affordance: visible when useful, not competing with Contegg branding. */
+.contegg-music-header-button{
+    width:28px!important;height:28px!important;margin-left:4px!important;border-radius:8px!important;
+    background:rgba(255,255,255,.045)!important;color:#85858c!important;border:1px solid rgba(255,255,255,.035)!important;
+    box-shadow:none!important;opacity:.78!important;font-size:12px!important;transition:none!important;animation:none!important;
+}
+.contegg-music-header-button:hover{background:rgba(255,255,255,.075)!important;color:#b5b5bb!important;opacity:1!important}
+.contegg-music-header-button.playing i{animation:none!important;transform:none!important}
+.contegg-music-app-window-actions{display:flex;align-items:center;gap:7px}
+.contegg-music-app-hide,.contegg-music-app-close{width:34px;height:34px;border:0;border-radius:50%;background:rgba(255,255,255,.07);color:#d4d4d8;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.contegg-music-app-hide:hover{background:rgba(255,255,255,.11)}
+.contegg-music-app-close:hover{background:rgba(255,69,58,.14);color:#ff6b63}
+.contegg-music-trim-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.contegg-music-trim-hint{font-size:11px;color:#74747c;margin:-5px 0 13px;line-height:1.4}
+
+/* Phone-specific music UI. Same visual language, different geometry. */
+@media(max-width:700px){
+    .contegg-music-app-topbar{height:56px;padding:0 12px 0 14px;position:sticky;top:0;z-index:20;background:#111113}
+    .contegg-music-brand{font-size:16px;gap:8px}.contegg-music-brand-dot{width:27px;height:27px;border-radius:8px;font-size:12px}
+    .contegg-music-app-hide,.contegg-music-app-close{width:31px;height:31px;font-size:13px}
+    .contegg-music-app-body{display:flex!important;flex-direction:column;overflow-y:auto!important;overflow-x:hidden!important;background:#0f0f11!important}
+    .contegg-music-library{padding:18px 12px 24px!important;overflow:visible!important;contain:none!important;min-height:auto}
+    .contegg-music-library-head{position:static!important;margin:0 0 14px!important;padding:0!important;background:transparent!important;align-items:center!important;gap:10px}
+    .contegg-music-library-head h1{font-size:27px!important}.contegg-music-library-head span{font-size:11px!important}
+    .contegg-music-library-actions{gap:6px!important}.contegg-music-shuffle-library{width:36px!important;height:36px!important;border-radius:10px!important}
+    .contegg-music-library-actions .btn{height:36px!important;padding:0 12px!important;font-size:13px!important}
+    .contegg-music-track{grid-template-columns:50px minmax(0,1fr) 34px!important;gap:11px!important;min-height:64px!important;margin-bottom:10px!important;padding:7px 8px!important;border-radius:13px!important}
+    .contegg-music-track-cover{width:50px!important;height:50px!important;border-radius:11px!important}.contegg-music-track-title{font-size:14px!important}.contegg-music-track-artist{display:none!important}.contegg-music-track-time{font-size:12px!important}
+    .contegg-music-library-footer{padding:10px 0 0!important;font-size:11px!important}
+    .contegg-music-now{border-left:0!important;border-top:1px solid rgba(255,255,255,.055)!important;padding:22px 16px 30px!important;overflow:visible!important;min-height:auto;background:#111113!important}
+    .contegg-music-now-cover{width:min(72vw,270px)!important;margin:0 auto 20px!important;border-radius:18px!important}.contegg-music-now-title{font-size:24px!important}.contegg-music-now-artist{font-size:14px!important;margin-top:4px!important}
+    .contegg-music-controls{margin:18px 0 8px!important}.contegg-music-controls button{width:48px!important;height:48px!important}.contegg-music-controls button.main{width:58px!important;height:58px!important}
+    .contegg-music-volume{margin-top:14px!important;padding-top:14px!important}.contegg-music-lyrics pre{font-size:13px!important;line-height:1.55!important}
+    .contegg-music-settings-overlay,.contegg-music-editor-overlay,.contegg-music-player-overlay{padding:7px!important;align-items:flex-end!important}
+    .contegg-music-settings-card,.contegg-music-editor-card{width:100%!important;max-height:86vh!important;border-radius:20px 20px 12px 12px!important;padding:17px!important}
+    .contegg-music-settings-head{margin-bottom:16px!important}.contegg-music-settings-title{font-size:21px!important}.contegg-music-welcome h2{font-size:28px!important}
+    .contegg-music-editor-grid{display:block!important}.contegg-music-cover-edit{width:132px!important;margin:0 auto 17px!important;border-radius:15px!important}.contegg-music-editor-fields textarea{min-height:92px!important}
+    .contegg-music-trim-fields{grid-template-columns:1fr 1fr;gap:8px}.contegg-music-editor-actions{position:sticky;bottom:-17px;background:#171719;padding:10px 0 2px;margin-top:12px!important}
+    .contegg-music-player-window{width:100%!important;max-height:86vh!important;border-radius:22px 22px 12px 12px!important;padding:20px 16px 22px!important}
+    .contegg-music-player-window .contegg-music-now-cover{width:min(68vw,250px)!important;margin:4px auto 18px!important}.contegg-music-player-window .contegg-music-now-title{font-size:24px!important}
+}
+@media(max-width:390px){
+    .contegg-music-library{padding-left:9px!important;padding-right:9px!important}.contegg-music-library-head h1{font-size:24px!important}
+    .contegg-music-library-actions .btn{padding:0 10px!important}.contegg-music-track{grid-template-columns:46px minmax(0,1fr) 30px!important}.contegg-music-track-cover{width:46px!important;height:46px!important}
+    .contegg-music-settings-card,.contegg-music-editor-card,.contegg-music-player-window{max-height:83vh!important}
 }
 </style>
 
