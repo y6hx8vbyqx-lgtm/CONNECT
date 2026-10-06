@@ -10200,6 +10200,8 @@ div.addEventListener('touchstart', (e) => {
         return;
     }
 
+    if (touchTimer) clearTimeout(touchTimer);
+    if (e.touches.length !== 1) { touchTimer = null; return; }
     const t = e.touches[0];
 
     touchMoved = false;
@@ -10219,6 +10221,7 @@ div.addEventListener('touchstart', (e) => {
 
 div.addEventListener('touchmove', (e) => {
     const t = e.touches[0];
+    if (!t) return;
 
     if (
         Math.abs(t.clientX - touchStartX) > 10 ||
@@ -10257,6 +10260,7 @@ div.addEventListener('touchend', (e) => {
 
             if (img) {
                 viewImage(img.src);
+                setTimeout(() => { ignoreNextClick = false; }, 350);
                 return;
             }
 
@@ -10270,6 +10274,13 @@ div.addEventListener('touchend', (e) => {
     setTimeout(() => {
         ignoreNextClick = false;
     }, 350);
+}, { passive: true });
+
+div.addEventListener('touchcancel', () => {
+    clearTimeout(touchTimer);
+    touchTimer = null;
+    touchMoved = true;
+    ignoreNextClick = false;
 }, { passive: true });
 
 container.appendChild(div);
@@ -11244,12 +11255,29 @@ function getPointerPosition(e) {
     const touch = e.touches?.[0] || e.changedTouches?.[0];
 
     return {
-        x: touch?.clientX || e.clientX || window.innerWidth / 2,
-        y: touch?.clientY || e.clientY || window.innerHeight / 2
+        x: touch?.clientX ?? e.clientX ?? window.innerWidth / 2,
+        y: touch?.clientY ?? e.clientY ?? window.innerHeight / 2
     };
 }
 
+let conteggMessageMenuRequest = 0;
+function conteggPlaceMessageMenu(x, y) {
+    const menu = document.getElementById('msgContextMenu');
+    if (!menu || menu.style.display === 'none') return;
+    const vp = window.visualViewport;
+    const left = vp?.offsetLeft || 0, top = vp?.offsetTop || 0;
+    const width = vp?.width || window.innerWidth;
+    const height = vp?.height || window.innerHeight;
+    menu.style.maxHeight = Math.max(40, height - 20) + 'px';
+    menu.style.left = Math.max(left + 10, Math.min(x, left + width - menu.offsetWidth - 10)) + 'px';
+    menu.style.top = Math.max(top + 10, Math.min(y, top + height - menu.offsetHeight - 10)) + 'px';
+}
 async function showMsgActionsAt(x, y, id, msg) {
+    if (!id || !msg || !currentUser || !currentChatId) return;
+    const request = ++conteggMessageMenuRequest;
+    const targetChat = currentChatId;
+    const targetUid = currentUser.uid;
+    const stale = () => request !== conteggMessageMenuRequest || currentChatId !== targetChat || currentUser?.uid !== targetUid || selectedMsgId !== id;
     window.__justOpenedPanel = true;
     setTimeout(() => window.__justOpenedPanel = false, 250);
 
@@ -11260,6 +11288,9 @@ async function showMsgActionsAt(x, y, id, msg) {
     const editItem = document.getElementById('ctxEditItem');
     const deleteBothItem = document.getElementById('ctxDeleteForBothItem');
 
+    if (!menu || !editItem || !deleteBothItem) return;
+    menu.style.display = 'none';
+    try {
     const isMyMessage = msg.senderId === currentUser.uid;
     const copyItem = document.getElementById('ctxCopyItem');
     if (copyItem) copyItem.style.display = (msg.text || msg.caption) ? 'flex' : 'none';
@@ -11270,6 +11301,7 @@ let canDeleteForAll = false;
 
 if (currentChatIsChannel) {
     const chatDoc = await db.collection('chats').doc(currentChatId).get();
+    if (stale()) return;
     const chat = chatDoc.data();
 
     const isOwner = chat?.ownerId === currentUser.uid;
@@ -11297,7 +11329,8 @@ if (currentChatIsChannel) {
     if (isCurrentUserDeveloper) {
         canDeleteForAll = true;
     } else if (currentChatIsGroup) {
-        canDeleteForAll = await isGroupAdmin(currentChatId, currentUser.uid);
+        canDeleteForAll = await isGroupAdmin(targetChat, targetUid);
+        if (stale()) return;
     } else {
         canDeleteForAll = isMyMessage;
     }
@@ -11308,13 +11341,21 @@ if (currentChatIsChannel) {
     editItem.style.display = isMyMessage && msg.text ? 'flex' : 'none';
 }
     
-    const menuW = Math.min(340, window.innerWidth - 20);
-    const menuH = 390;
-    menu.style.left = Math.max(10, Math.min(x, window.innerWidth - menuW - 10)) + 'px';
-    menu.style.top = Math.max(10, Math.min(y, window.innerHeight - menuH - 10)) + 'px';
+    if (stale()) return;
+    const panel = document.getElementById('reactionsPanel');
+    if (panel) {
+        menu.prepend(panel);
+        panel.dataset.msgId = id;
+        panel.dataset.chatId = targetChat;
+        panel.classList.remove('expanded');
+        panel.style.display = 'flex';
+    }
     menu.style.display = 'block';
-
-    document.getElementById('reactionsPanel').style.display = 'none';
+    conteggPlaceMessageMenu(x, y);
+    } catch (error) {
+        if (!stale()) toast('Не удалось открыть меню. Попробуйте ещё раз');
+        console.warn('Message menu:', error);
+    }
 }
 
 function showMsgActions(e, id, msg) {
@@ -11361,6 +11402,8 @@ function toggleReactionPanelExpanded(event) {
     const panel = document.getElementById('reactionsPanel');
     if (!panel) return;
     panel.classList.toggle('expanded');
+    const menu = document.getElementById('msgContextMenu');
+    conteggPlaceMessageMenu(parseFloat(menu.style.left) || 10, parseFloat(menu.style.top) || 10);
 }
 
 async function ctxDeleteForMe() {
@@ -12039,86 +12082,52 @@ function ctxReaction() {
 function showReactionsPanelForMsg(id, msg, e) {
     let x = e.touches?.[0]?.clientX || e.clientX || window.innerWidth / 2;
     let y = e.touches?.[0]?.clientY || e.clientY || window.innerHeight / 2;
+    selectedMsgId = id;
+    selectedMsgData = msg;
     showReactionsPanel(x, y, id);
 }
 
 function showReactionsPanel(x, y, msgId) {
-    window.__justOpenedPanel = true;
-    setTimeout(() => window.__justOpenedPanel = false, 250);
-    const panel = document.getElementById('reactionsPanel');
-    panel.setAttribute('data-msg-id', msgId || '');
-    panel.classList.remove('expanded');
+    if (!msgId || msgId !== selectedMsgId || !selectedMsgData) return;
+    void showMsgActionsAt(x, y, msgId, selectedMsgData);
+}
 
-    const panelWidth = Math.min(620, window.innerWidth - 20);
-    let left = x - panelWidth / 2;
-    let top = y - 44;
-
-    if (left < 10) left = 10;
-    if (left + panelWidth > window.innerWidth - 10) left = window.innerWidth - panelWidth - 10;
-    if (top < 10) top = 10;
-    if (top + 100 > window.innerHeight) top = window.innerHeight - 110;
-
-    panel.style.width = panelWidth + 'px';
-    panel.style.left = left + 'px';
-    panel.style.top = top + 'px';
-    panel.style.display = 'flex';
-    document.getElementById('msgContextMenu').style.display = 'none';
-
-    const closeHandler = (e) => {
-        if (!panel.contains(e.target) && !e.target.closest('.reaction-badge')) {
-            panel.style.display = 'none';
-            document.removeEventListener('click', closeHandler);
-        }
-    };
-    setTimeout(() => document.addEventListener('click', closeHandler), 10);
+async function conteggToggleMessageReaction(chatId, msgId, uid, emoji) {
+    if (!chatId || !msgId || !uid || !emoji) return;
+    const ref = db.collection('chats').doc(chatId).collection('messages').doc(msgId);
+    try {
+        const removed = await db.runTransaction(async transaction => {
+            const snapshot = await transaction.get(ref);
+            if (!snapshot.exists) throw new Error('Message no longer exists');
+            const reactions = { ...(snapshot.data()?.reactions || {}) };
+            const remove = reactions[uid] === emoji;
+            if (remove) delete reactions[uid];
+            else reactions[uid] = emoji;
+            transaction.update(ref, { reactions });
+            return remove;
+        });
+        toast(removed ? 'Реакция убрана' : `Реакция ${emoji} добавлена`);
+    } catch (error) {
+        console.warn('Message reaction:', error);
+        toast('Не удалось изменить реакцию');
+    }
 }
 
 async function addReaction(emoji) {
     const panel = document.getElementById('reactionsPanel');
-    const msgId = panel.getAttribute('data-msg-id');
+    if (!panel) return;
+    const msgId = panel.dataset.msgId;
+    const chatId = panel.dataset.chatId;
+    const uid = currentUser?.uid;
     panel.style.display = 'none';
-    
-    if (!msgId || !currentChatId) return;
-    
-    try {
-        const ref = db.collection('chats').doc(currentChatId).collection('messages').doc(msgId);
-        const doc = await ref.get();
-        const reactions = doc.data()?.reactions || {};
-        
-        if (reactions[currentUser.uid] === emoji) {
-            delete reactions[currentUser.uid];
-            toast(`Реакция убрана`);
-        } else {
-            reactions[currentUser.uid] = emoji;
-            toast(`Реакция ${emoji} добавлена`);
-        }
-        
-        await ref.update({ reactions });
-    } catch (e) { 
-        toast('Ошибка при добавлении реакции'); 
-    }
+    document.getElementById('msgContextMenu').style.display = 'none';
+    ++conteggMessageMenuRequest;
+    if (chatId !== currentChatId) return;
+    await conteggToggleMessageReaction(chatId, msgId, uid, emoji);
 }
 
 async function toggleReaction(msgId, emoji) {
-    if (!currentChatId) return;
-    
-    try {
-        const ref = db.collection('chats').doc(currentChatId).collection('messages').doc(msgId);
-        const doc = await ref.get();
-        const reactions = doc.data()?.reactions || {};
-        
-        if (reactions[currentUser.uid] === emoji) {
-            delete reactions[currentUser.uid];
-            toast(`Реакция убрана`);
-        } else {
-            reactions[currentUser.uid] = emoji;
-            toast(`Реакция ${emoji} добавлена`);
-        }
-        
-        await ref.update({ reactions });
-    } catch (e) { 
-        toast('Ошибка при изменении реакции'); 
-    }
+    await conteggToggleMessageReaction(currentChatId, msgId, currentUser?.uid, emoji);
 }
 
 async function ctxDelete() {
@@ -16787,10 +16796,11 @@ if (window.__justOpenedPanel) return;
         document.getElementById('searchResults').style.display = 'none';
     }
     if (!e.target.closest('.context-menu')) {
+        ++conteggMessageMenuRequest;
         document.getElementById('msgContextMenu').style.display = 'none';
         document.getElementById('chatContextMenu').style.display = 'none';
     }
-    if (!e.target.closest('.reactions-panel')) {
+    if (!e.target.closest('.reactions-panel') && !e.target.closest('#msgContextMenu')) {
         document.getElementById('reactionsPanel').style.display = 'none';
     }
 });
@@ -25900,6 +25910,16 @@ window.closeMusicPlayerWindow = closeMusicPlayerWindow;
     .contegg-music-now { flex:0 0 auto !important; width:auto !important; min-width:0 !important; }
     #conteggMusicTrackList { gap:11px !important; }
 }
+</style>
+
+
+<style id="contegg-unified-message-menu">
+#msgContextMenu.contegg-message-menu { width: min(294px, calc(100vw - 20px)) !important; overflow-y: auto !important; overscroll-behavior: contain; }
+#msgContextMenu #reactionsPanel.reactions-panel { position: relative !important; inset: auto !important; width: 100% !important; max-width: 100% !important; min-height: 42px !important; padding: 5px 35px 5px 5px !important; margin: 0 0 4px !important; border-radius: 12px !important; box-shadow: none !important; animation: none !important; flex-wrap: wrap !important; }
+#msgContextMenu .contegg-reaction-main, #msgContextMenu .contegg-reaction-more { width: 100%; gap: 0 !important; justify-content: space-between; }
+#msgContextMenu #reactionsPanel span { width: 30px !important; height: 32px !important; flex: 0 1 30px !important; min-width: 0; font-size: 21px !important; cursor: pointer; }
+#msgContextMenu #reactionsPanel.expanded { min-height: 78px !important; padding-bottom: 5px !important; }
+#msgContextMenu .contegg-reaction-expand { width: 28px !important; height: 32px !important; top: 5px !important; right: 3px !important; }
 </style>
 
 </body>
