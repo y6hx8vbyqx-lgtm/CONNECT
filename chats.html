@@ -1,8 +1,10 @@
+<!doctype html>
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
 
     <!-- ✅ ВАЖНО: фикс зума -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 
     <title>Contegg · Messenger</title>
     
@@ -19,10 +21,10 @@
     
     
     <!-- PWA иконки -->
-    <link rel="manifest" href="/manifest.json">
-    <link rel="apple-touch-icon" href="/LOGO.png">
-    <link rel="icon" type="image/png" href="/LOGO.png">
-    <link rel="shortcut icon" href="/favicon.ico">
+    
+    
+    
+    
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css" />
@@ -11270,6 +11272,7 @@ function conteggPlaceMessageMenu(x, y) {
     const width = vp?.width || window.innerWidth;
     const height = vp?.height || window.innerHeight;
     menu.style.maxHeight = Math.max(40, height - 20) + 'px';
+    menu.style.maxWidth = Math.max(40, width - 20) + 'px';
     menu.style.left = Math.max(left + 10, Math.min(x, left + width - menu.offsetWidth - 10)) + 'px';
     menu.style.top = Math.max(top + 10, Math.min(y, top + height - menu.offsetHeight - 10)) + 'px';
 }
@@ -16808,6 +16811,15 @@ if (window.__justOpenedPanel) return;
 
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
+        const menu = document.getElementById('msgContextMenu');
+        if (menu && getComputedStyle(menu).display !== 'none') {
+            ++conteggMessageMenuRequest;
+            menu.style.display = 'none';
+            document.getElementById('reactionsPanel').style.display = 'none';
+            return;
+        }
+        if (window.__conteggCloseTopSheet?.()) return;
+        if (document.fullscreenElement || document.webkitFullscreenElement) return;
         closeAdminPanel();
         closeImagePreview();
         closeChat();
@@ -18495,17 +18507,7 @@ body.keyboard-no-transition .chat-input-bar {
     
 <script id="CONTEGG-PC-AUTO-FULLSCREEN">
 (() => {
-    /*
-     * DESKTOP FULLSCREEN CONTROLLER V8
-     *
-     * ESC while NOT fullscreen  -> enter real browser fullscreen.
-     * ESC while fullscreen      -> browser exits fullscreen natively.
-     * Entering fullscreen       -> hard layout rebuild, NO page reload.
-     * Exiting fullscreen        -> full page reload.
-     *
-     * A reload immediately after entering fullscreen would itself terminate
-     * fullscreen, so actual reload is intentionally exit-only.
-     */
+    
 
     const DESKTOP_MIN_WIDTH = 1200;
     let fullscreenTransition = false;
@@ -18543,6 +18545,7 @@ body.keyboard-no-transition .chat-input-bar {
         } finally {
             setTimeout(() => {
                 fullscreenTransition = false;
+                document.body.classList.remove('contegg-layout-settling');
             }, 260);
         }
     }
@@ -18589,36 +18592,19 @@ body.keyboard-no-transition .chat-input-bar {
             return;
         }
 
-        // Fullscreen was exited. A real reload guarantees that Chromium does
-        // not retain stale fullscreen compositing/layout geometry.
-        if (reloadScheduled) return;
-        reloadScheduled = true;
-
-        document.body.classList.add('contegg-layout-settling');
-
-        sessionStorage.setItem('contegg_returned_from_fullscreen', '1');
-
-        setTimeout(() => {
-            location.reload();
-        }, 110);
+        hardRebuildFullscreenLayout();
     }
 
+    // F8 explicitly toggles fullscreen; Escape remains the browser's exit key.
     document.addEventListener('keydown', event => {
-        if (event.key !== 'Escape') return;
+        if (event.key !== 'F8' || event.repeat || event.isComposing) return;
         if (window.innerWidth < DESKTOP_MIN_WIDTH) return;
-
-        /*
-         * When already fullscreen, do NOT preventDefault:
-         * the browser owns ESC and exits fullscreen itself.
-         */
-        if (isRealFullscreen()) return;
-
-        // Outside fullscreen ESC becomes the explicit enter shortcut.
         event.preventDefault();
-        event.stopPropagation();
-
-        enterConteggFullscreen();
-    }, true);
+        if (isRealFullscreen()) {
+            const exit = document.exitFullscreen || document.webkitExitFullscreen;
+            if (exit) Promise.resolve(exit.call(document)).catch(console.warn);
+        } else enterConteggFullscreen();
+    });
 
     document.addEventListener('fullscreenchange', handleFullscreenStateChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenStateChange);
@@ -22567,7 +22553,7 @@ body.contegg-layout-settling .modal-sheet {
 <style id="CONTEGG-FULLSCREEN-V8-CSS">
 @media (min-width:1200px) {
     body:not(.contegg-layout-settling) {
-        --contegg-fullscreen-shortcut: "Esc";
+        --contegg-fullscreen-shortcut: "F8";
     }
 }
 
@@ -23967,6 +23953,14 @@ body.contegg-has-pinned-message #chatMessages {
             modal.classList.remove('contegg-sheet-dragging');
         }
     }
+
+    window.__conteggCloseTopSheet = function() {
+        const open = [...document.querySelectorAll('.modal-overlay.show')];
+        if (!open.length) return false;
+        open.sort((a,b) => (parseInt(getComputedStyle(a).zIndex)||0)-(parseInt(getComputedStyle(b).zIndex)||0));
+        callNativeClose(open[open.length-1]);
+        return true;
+    };
 
     function callNativeClose(modal) {
         if (!modal) return;
@@ -25992,11 +25986,77 @@ body, .app-container, .page, .chat-overlay { background-color: var(--bg-primary)
 
 i[class*="fa-"]:not(.fa-spinner):not(.fa-spin)::before { }
 i:is(.fa-comment,.fa-comment-dots,.fa-comments,.fa-user,.fa-search,.fa-magnifying-glass,.fa-plus,.fa-chevron-left,.fa-arrow-left,.fa-chevron-right,.fa-chevron-down,.fa-ellipsis-v,.fa-ellipsis-vertical,.fa-ellipsis-h,.fa-ellipsis,.fa-reply,.fa-copy,.fa-pen,.fa-pencil,.fa-edit,.fa-share,.fa-share-alt,.fa-trash,.fa-trash-alt,.fa-thumbtack,.fa-paper-plane,.fa-paperclip,.fa-smile,.fa-times,.fa-xmark,.fa-check,.fa-check-double,.fa-microphone,.fa-bell,.fa-phone,.fa-video,.fa-image,.fa-bookmark,.fa-circle-check,.fa-check-circle)::before {
+ content: ""; display: inline-block; width: 1em; height: 1em; vertical-align: -.125em;
  -webkit-text-fill-color: transparent; background-color: currentColor;
  -webkit-mask: var(--contegg-icon) center / 1em 1em no-repeat;
  mask: var(--contegg-icon) center / 1em 1em no-repeat;
 }
 </style>
+
+
+<style id="contegg-ui-stability-20261018">
+/* Structural fixes: keep transient surfaces above the phone's fixed header. */
+@media (max-width:767px) {
+ #conteggPhoneHeaderLayer { z-index:100001 !important; }
+ #chatOverlay.chat-overlay { height:var(--contegg-visible-chat-height,var(--contegg-phone-base-h)) !important; }
+ #conteggPhoneChatMotionLayer {
+   transform:none !important;
+   height:var(--contegg-visible-chat-height,100%) !important;
+   will-change:auto !important;
+ }
+}
+html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+#msgContextMenu.contegg-message-menu { min-width:0 !important; animation:none !important; }
+.modal-overlay { max-width:100%; }
+.modal-overlay > .modal-sheet {
+ min-width:0;
+ max-height:calc(var(--contegg-visible-height,100dvh) - 16px) !important;
+ overscroll-behavior:contain;
+ overflow-y:auto;
+}
+.modal-overlay:not(.show) { visibility:hidden; }
+.modal-overlay.show { visibility:visible; }
+.chat-info, .chat-user-info, .chat-input, .chat-name, .chat-last-message { min-width:0; }
+.msg { overflow-wrap:anywhere; }
+.msg img, .msg video { max-width:100%; }
+input, textarea, [contenteditable="true"] { -webkit-user-select:text !important; user-select:text !important; }
+button:focus-visible, [role="button"]:focus-visible { outline:2px solid var(--text-primary); outline-offset:2px; }
+@media (min-width:1200px) {
+ :root { --contegg-desktop-left:clamp(270px,19vw,360px) !important; --contegg-desktop-right:clamp(200px,15.5vw,310px) !important; }
+}
+@media (pointer:coarse) {
+ #msgContextMenu .context-item { min-height:44px !important; font-size:14px !important; }
+}
+@media (prefers-reduced-motion:reduce) {
+ *, *::before, *::after { scroll-behavior:auto !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
+}
+</style>
+<script id="contegg-ui-viewport-stability">
+(() => {
+ const root=document.documentElement;
+ let frame=0;
+ function sync() {
+   frame=0;
+   const vv=window.visualViewport;
+   // A zoomed visual viewport must not resize the underlying application.
+   if (vv && Math.abs(vv.scale-1)>.02) return;
+   const height=vv ? vv.height : window.innerHeight;
+   const offset=vv ? vv.offsetTop : 0;
+   const set=(key,value)=>{if(root.style.getPropertyValue(key)!==value) root.style.setProperty(key,value);};
+   set('--contegg-visible-height',height+'px');
+   set('--contegg-visible-chat-height',Math.max(0,height+offset)+'px');
+   const menu=document.getElementById('msgContextMenu');
+   if (menu && getComputedStyle(menu).display!=='none' && typeof conteggPlaceMessageMenu==='function')
+     conteggPlaceMessageMenu(parseFloat(menu.style.left)||10,parseFloat(menu.style.top)||10);
+ }
+ function schedule(){if(!frame) frame=requestAnimationFrame(sync);}
+ window.addEventListener('resize',schedule,{passive:true});
+ window.visualViewport?.addEventListener('resize',schedule,{passive:true});
+ window.visualViewport?.addEventListener('scroll',schedule,{passive:true});
+ window.addEventListener('orientationchange',schedule,{passive:true});
+ sync();
+})();
+</script>
 
 </body>
 </html>
